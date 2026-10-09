@@ -29,9 +29,34 @@ pub fn models_cancel(downloads: State<'_, Arc<crate::models::ModelDownloads>>) -
     Ok(())
 }
 
+/// Starts a new GetCko, then ends this one with [`crate::exit_now`]. Tauri's
+/// `AppHandle::restart` ends with `exit`, which aborts in llama.cpp's Metal destructor.
 #[tauri::command]
 pub fn app_restart(app: tauri::AppHandle) {
-    app.restart();
+    match std::env::current_exe() {
+        Ok(exe) => {
+            // Inside a bundle (`GetCko.app/Contents/MacOS/getcko`) reopen the bundle,
+            // as Tauri does, so macOS treats it as the same app.
+            let bundle = exe
+                .ancestors()
+                .nth(3)
+                .filter(|dir| dir.extension().is_some_and(|ext| ext == "app"));
+            let spawned = match bundle {
+                Some(bundle) => std::process::Command::new("open")
+                    .arg("-n")
+                    .arg(bundle)
+                    .spawn(),
+                None => std::process::Command::new(&exe)
+                    .args(std::env::args_os().skip(1))
+                    .spawn(),
+            };
+            if let Err(error) = spawned {
+                tracing::error!("could not start a new GetCko: {error}");
+            }
+        }
+        Err(error) => tracing::error!("could not find the GetCko executable: {error}"),
+    }
+    crate::exit_now(&app, 0);
 }
 #[tauri::command]
 pub async fn setup_status(s: State<'_, Arc<AppState>>) -> AppResult<SetupStatus> {

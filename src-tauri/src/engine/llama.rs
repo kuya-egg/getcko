@@ -1068,6 +1068,7 @@ mod tests {
             },
             origin: (0.0, 0.0),
             scale: 1.0,
+            source: image::RgbaImage::new(0, 0),
         };
         let ask = |question: &str, task: &str, grammar: &str| {
             let mut reply = String::new();
