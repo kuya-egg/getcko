@@ -1,0 +1,18 @@
+/* The 1200 × 630 Open Graph card (og.html). Kit tokens only. */
+html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+
+.og { position: relative; width: 1200px; height: 630px; display: grid; grid-template-columns: 500px 1fr; align-items: center; column-gap: 24px; padding: 0 56px 0 64px; box-sizing: border-box; }
+.og-copy { display: flex; flex-direction: column; gap: 22px; }
+.og-title { margin: 8px 0 0; font-size: 72px; line-height: 72px; font-weight: 800; letter-spacing: -0.035em; }
+/* The kit hero's keyword mark: gecko-wash block, square corners, a 4 px gecko foot. */
+.og-mark { position: relative; isolation: isolate; }
+.og-mark::before { content: ""; position: absolute; inset: 0.14em -0.08em 0.02em; z-index: -1; background: var(--gc-accent-wash); }
+.og-mark::after { content: ""; position: absolute; inset: auto -0.08em 0.02em; height: 5px; background: var(--gc-accent-fill); }
+.og-support { margin: 0; font-size: 24px; line-height: 32px; }
+.og-proof { margin: 0; font-size: 15px; }
+
+.og-stage { position: relative; height: 630px; }
+.og-form { position: absolute; left: 0; top: 112px; transform: scale(0.88); transform-origin: 0 0; }
+.og-gecko { position: absolute; }
+.og-badge { position: absolute; right: 8px; bottom: 56px; margin: 0; }
+.og-url { position: absolute; left: 64px; bottom: 40px; }
