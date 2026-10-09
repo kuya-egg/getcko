@@ -144,8 +144,8 @@ export function components(setup: MockSetup): ComponentStatus[] {
   if (setup === "missing") {
     return [
       { component: "chat", ready: false, detail: "model file not found: gemma-4-E2B-it-Q4_0.gguf" },
-      { component: "embeddings", ready: false, detail: "model file not found: embeddinggemma-300M-Q8_0.gguf" },
-      { component: "speechToText", ready: false, detail: "model file not found: mmproj-gemma-4-E2B-it-Q8_0.gguf" },
+      { component: "embeddings", ready: false, detail: "model file not found: bge-small-en-v1.5-q8_0.gguf" },
+      { component: "speechToText", ready: false, detail: "model file not found: ggml-small.en.bin" },
       { component: "textToSpeech", ready: true, detail: null },
       { component: "microphone", ready: true, detail: null },
     ];

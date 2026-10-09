@@ -39,7 +39,7 @@ export function TryAgent({ agentId, agentName, templateId = null, dirty, onOpenS
   /** Hold to talk could not start (mic blocked): the release asks nothing. */
   const talkFailed = useRef(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const lines = say.en;
+  const lines = say;
   const current = lastTurn(state);
   const busy = isLive(current);
   liveRef.current = busy;
@@ -261,7 +261,7 @@ function TurnView({
   turn: TryTurn;
   latest: boolean;
   agentName: string;
-  lines: typeof say.en;
+  lines: typeof say;
   onStop: () => void;
   /** Ask the same question again (typed turns only). */
   onRetry?: () => void;

@@ -27,12 +27,12 @@ export const HERO_COPY = {
   agent: T.templates.officeHelper.name,
 } as const;
 
-/** Sample data for the mock spreadsheet and the Taglish exchange. */
+/** Sample data for the mock spreadsheet and answer. */
 export const HERO_SAMPLE = {
   fileName: "Grade 6 Sampaguita.xlsx",
-  question: "Saan ko ilalagay ang final grade ni Juan?",
+  question: "Where do I put Juan's final grade?",
   /** Answer, split so the cell and the formula can be styled. Action first, then the source chip. */
-  answer: { before: "I-type mo sa", cell: "E5", middle: "ang", formula: "=AVERAGE(B5:D5)", after: "." },
+  answer: { before: "Click", cell: "E5", middle: "and type", formula: "=AVERAGE(B5:D5)", after: "." },
   source: { doc: "Manual", page: 4 },
   sourceText: sourceLabel("Manual", 4),
   columns: ["Learner", "Q1", "Q2", "Q3", "Final"],

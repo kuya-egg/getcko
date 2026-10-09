@@ -24,9 +24,10 @@ use core_foundation::string::CFString;
 use core_graphics::display::CGDisplay;
 use core_graphics::geometry::{CGPoint, CGRect, CGSize};
 use core_graphics::window::{
-    copy_window_info, kCGNullWindowID, kCGWindowBounds, kCGWindowLayer,
-    kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName,
-    kCGWindowOwnerPID,
+    copy_window_info, kCGNullWindowID, kCGWindowBounds, kCGWindowImageBestResolution,
+    kCGWindowLayer, kCGWindowListExcludeDesktopElements, kCGWindowListOptionIncludingWindow,
+    kCGWindowListOptionOnScreenBelowWindow, kCGWindowListOptionOnScreenOnly, kCGWindowNumber,
+    kCGWindowOwnerName, kCGWindowOwnerPID,
 };
 use foreign_types::ForeignType;
 
@@ -118,7 +119,7 @@ impl Platform for MacPlatform {
             .and_then(|w| w.frame())
             .map(|f| CGRect::new(&CGPoint::new(f.x, f.y), &CGSize::new(f.width, f.height)))
             .or(target.bounds);
-        capture_display(window)
+        capture_display(window, target.window_id)
     }
 
     fn recognize_text(&self, capture: &ScreenCapture) -> Result<Vec<TextBox>, PlatformError> {
@@ -308,6 +309,8 @@ fn first_read(pid: i32) -> bool {
 struct TargetApp {
     pid: i32,
     name: String,
+    /// CoreGraphics number of the app's topmost on-screen window.
+    window_id: Option<u32>,
     /// Window frame in global points, when CoreGraphics reports it.
     bounds: Option<CGRect>,
 }
@@ -320,12 +323,13 @@ fn topmost_window_owner(accept: impl Fn(i32, &str) -> bool) -> Result<TargetApp,
     )
     .ok_or(PlatformError::NoFocusedApp)?;
     // SAFETY: the window-info keys are static CFStrings exported by CoreGraphics.
-    let (layer_key, pid_key, name_key, bounds_key) = unsafe {
+    let (layer_key, pid_key, name_key, bounds_key, number_key) = unsafe {
         (
             CFString::wrap_under_get_rule(kCGWindowLayer),
             CFString::wrap_under_get_rule(kCGWindowOwnerPID),
             CFString::wrap_under_get_rule(kCGWindowOwnerName),
             CFString::wrap_under_get_rule(kCGWindowBounds),
+            CFString::wrap_under_get_rule(kCGWindowNumber),
         )
     };
     for entry in windows.iter() {
@@ -358,7 +362,13 @@ fn topmost_window_owner(accept: impl Fn(i32, &str) -> bool) -> Result<TargetApp,
                 .find(&bounds_key)
                 .and_then(|v| v.downcast::<CFDictionary>())
                 .and_then(|d| window_rect(&d));
-            return Ok(TargetApp { pid, name, bounds });
+            let window_id = number(&number_key).and_then(|n| u32::try_from(n).ok());
+            return Ok(TargetApp {
+                pid,
+                name,
+                window_id,
+                bounds,
+            });
         }
     }
     Err(PlatformError::NoFocusedApp)
@@ -385,8 +395,13 @@ unsafe extern "C" {
 }
 
 /// Captures the display holding the centre of `window` (else the main display),
-/// cropped to `window`.
-fn capture_display(window: Option<CGRect>) -> Result<ScreenCapture, PlatformError> {
+/// cropped to `window`. With `window_id`, only that window and those below it are
+/// drawn: GetCko's own windows (main window, overlay) above the target app never
+/// reach the model, even when they overlap it.
+fn capture_display(
+    window: Option<CGRect>,
+    window_id: Option<u32>,
+) -> Result<ScreenCapture, PlatformError> {
     if !core_graphics::access::ScreenCaptureAccess.preflight() {
         return Err(PlatformError::PermissionDenied(
             PermissionKind::ScreenRecording,
@@ -413,8 +428,16 @@ fn capture_display(window: Option<CGRect>) -> Result<ScreenCapture, PlatformErro
                 })
         })
         .unwrap_or_else(CGDisplay::main);
-    let image = display
-        .image()
+    let image = window_id
+        .and_then(|id| {
+            CGDisplay::screenshot(
+                display.bounds(),
+                kCGWindowListOptionOnScreenBelowWindow | kCGWindowListOptionIncludingWindow,
+                id,
+                kCGWindowImageBestResolution,
+            )
+        })
+        .or_else(|| display.image())
         .ok_or_else(|| PlatformError::Os("display capture returned no image".into()))?;
     if image.bits_per_pixel() != 32 || image.bits_per_component() != 8 {
         return Err(PlatformError::Os(format!(

@@ -102,7 +102,7 @@ describe("componentRows", () => {
 
 describe("missingFile / componentProblem", () => {
   it("pulls the model file out of the detail", () => {
-    expect(missingFile("model file not found: embeddinggemma-300M-Q8_0.gguf")).toBe("embeddinggemma-300M-Q8_0.gguf");
+    expect(missingFile("model file not found: bge-small-en-v1.5-q8_0.gguf")).toBe("bge-small-en-v1.5-q8_0.gguf");
     expect(missingFile("not built on this OS")).toBeUndefined();
     expect(missingFile(null)).toBeUndefined();
   });

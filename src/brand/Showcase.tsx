@@ -9,7 +9,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTheme, type ThemePref } from "./theme";
 import { GetCkoSprite, MOMENT_POSE, pointPoseFor, type Moment } from "./mascot";
 import { ICON_PROPS, ICON_SIZE, Icon, type IconComponent } from "./icons";
-import { MEASURED, PLACE, T, fmtSpeed, say, sourceLabel, type AgentLanguage } from "./lexicon";
+import { MEASURED, PLACE, T, fmtSpeed, say, sourceLabel } from "./lexicon";
 import { GetCkoHero, HERO_COPY } from "./hero";
 import {
   AgentCard,
@@ -29,7 +29,7 @@ import {
   KnowledgeBaseList,
   KnowledgeBaseRow,
   Kw,
-  LanguagePicker,
+
   MockToggle,
   NewAgentCard,
   Notice,
@@ -39,14 +39,12 @@ import {
   Panel,
   ProofLine,
   SegmentedControl,
-  Select,
   SessionBar,
   Slider,
   Stat,
   StatusChip,
   Steps,
   Surface,
-  Tag,
   TargetHalo,
   TextField,
   Toast,
@@ -80,12 +78,9 @@ const BOARD = {
 /** Sample content for the screens (data, not UI copy). */
 const SAMPLE = {
   windowSize: "1040 × 680",
-  question: "“Paano mag-print ng clearance?”",
+  question: "\"Where do I put Juan's grade in the class record?\"",
   appButtons: ["New record", "Search", "Print"],
-  voices: [
-    { id: "samantha", name: "Samantha", lang: "en-US" },
-    { id: "rosa", name: "Rosa", lang: "fil-PH" },
-  ] satisfies Voice[],
+  voices: [{ id: "samantha", name: "Samantha", lang: "en-US" }] satisfies Voice[],
 };
 
 const query = (() => {
@@ -213,14 +208,12 @@ function AgentsScreen() {
           name={T.templates.officeHelper.name}
           description={T.templates.officeHelper.line}
           knowledgeBases={["Records manual"]}
-          language={T.languages.Taglish}
           onStart={() => {}}
         />
         <AgentCard
           name={T.templates.teacher.name}
           description={T.templates.teacher.line}
           knowledgeBases={["DepEd forms"]}
-          language={T.languages.English}
           onStart={() => {}}
           startVariant="secondary"
         />
@@ -228,7 +221,6 @@ function AgentsScreen() {
           name={T.templates.studyBuddy.name}
           description={T.templates.studyBuddy.line}
           knowledgeBases={["Science 6"]}
-          language={T.languages.Filipino}
           onStart={() => {}}
           startVariant="secondary"
         />
@@ -242,8 +234,7 @@ type Length = "short" | "medium" | "long";
 
 function AgentEditorScreen() {
   const [length, setLength] = useState<Length>("short");
-  const [lang, setLang] = useState<AgentLanguage>("Taglish");
-  const [voice, setVoice] = useState(SAMPLE.voices[1].id);
+  const [voice, setVoice] = useState(SAMPLE.voices[0].id);
   const [speed, setSpeed] = useState(1);
   return (
     <Shell active="agents">
@@ -273,8 +264,7 @@ function AgentEditorScreen() {
                 ]}
               />
             </div>
-            <LanguagePicker value={lang} onChange={setLang} />
-            <VoicePicker voices={SAMPLE.voices} value={voice} onChange={setVoice} onPlaySample={() => {}} language={lang} />
+            <VoicePicker voices={SAMPLE.voices} value={voice} onChange={setVoice} onPlaySample={() => {}} />
             <Slider label={T.agent.speedLabel} value={speed} onChange={setSpeed} min={0.75} max={1.5} step={0.25} format={fmtSpeed} />
           </div>
         </Panel>
@@ -347,7 +337,7 @@ function OverlayScreen() {
         citations={[{ source: "Records manual", page: 12 }]}
         latency={MEASURED.firstSpokenWord ?? undefined}
       >
-        {say.tl.pointClick(print, "taas, kanan")}
+        {say.pointClick(print, "upper right")}
       </AnswerCard>
     </Surface>
   );
@@ -359,16 +349,16 @@ function VariantsScreen() {
   return (
     <Surface as="div" texture="none" tone="canvas" className="grid h-full grid-cols-2 content-center justify-items-center gap-6 p-8">
       <AnswerCard agent={agent} question={SAMPLE.question} citations={[{ source: "Records manual", page: 12 }]}>
-        {say.tl.pointClick("Print", "taas, kanan")}
+        {say.pointClick("Print", "upper right")}
       </AnswerCard>
       <AnswerCard variant="bestGuess" agent={agent} question={SAMPLE.question}>
-        {say.tl.pointClick("Print", "taas, kanan")}
+        {say.pointClick("Print", "upper right")}
       </AnswerCard>
       <AnswerCard variant="dontKnow" agent={agent} question={SAMPLE.question}>
-        {say.tl.dontKnow}
+        {say.dontKnow}
       </AnswerCard>
       <AnswerCard variant="noTarget" agent={agent} question={SAMPLE.question}>
-        {say.tl.noTarget}
+        {say.noTarget}
       </AnswerCard>
     </Surface>
   );
@@ -508,7 +498,7 @@ const TYPE = [
   { name: "Display", cls: "text-display font-display", sample: T.product.tagline },
   { name: "H1", cls: "text-h1 font-display", sample: T.nav.knowledgeBases },
   { name: "H2", cls: "text-h2 font-display", sample: T.knowledgeBase.emptyTitle },
-  { name: "Answer", cls: "text-answer", sample: say.tl.pointClick("Save", "taas, kanan") },
+  { name: "Answer", cls: "text-answer", sample: say.pointClick("Save", "upper right") },
   { name: "Label", cls: "text-label", sample: T.actions.addDocuments },
   { name: "Eyebrow", cls: "eyebrow", sample: T.agent.sectionVoice },
   { name: "Keys", cls: "text-keys font-mono nums", sample: sourceLabel("Manual", 4) },
@@ -586,16 +576,10 @@ function Parts() {
           <StatusChip status="failed" />
           <OfflineBadge detail={MAC} />
           <CitationChip source="Manual" page={4} onClick={() => {}} />
-          <Tag>{T.languages.Taglish}</Tag>
         </div>
       </Part>
       <Part label={B.parts.fields}>
         <TextField label={T.agent.nameLabel} defaultValue={T.templates.officeHelper.name} />
-        <Select
-          label={T.agent.languageLabel}
-          defaultValue="Taglish"
-          options={(["English", "Filipino", "Taglish"] as const).map((l) => ({ value: l, label: T.languages[l] }))}
-        />
       </Part>
       <Part label={B.parts.choices}>
         <Toggle label={T.agent.answerOutLoudLabel} defaultChecked />
