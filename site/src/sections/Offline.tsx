@@ -28,7 +28,7 @@ export function Offline() {
         </div>
 
         <div className="flex flex-col gap-6 rounded-panel border border-border bg-surface p-6 shadow-overlay lg:col-span-6">
-          <Stat label={T.stats.firstSpokenWord} value={MEASURED.firstSpokenWord} unit={T.stats.unitSeconds} digits={1} where={T.proof.measuredOn} />
+          <Stat label={T.stats.firstSpokenWord} value={MEASURED.firstSpokenWord} unit={T.stats.unitSeconds} digits={2} where={c.measuredOn} />
           <Stat label={T.stats.tokensPerSecond} value={MEASURED.tokensPerSecond} unit={T.stats.unitTokens} where={T.proof.measuredOn} />
           <ProofLine items={[T.proof.wifiOff, MEASURED.bytesSent != null && T.proof.bytesSent(MEASURED.bytesSent)]} />
           <div className="border-t border-border pt-5">

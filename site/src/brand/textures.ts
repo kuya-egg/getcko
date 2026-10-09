@@ -207,7 +207,7 @@ export const TEXTURES: Record<TextureId, Texture> = {
   "canopy-bottom": v2("canopy-bottom", "Pothos growing up from a section's bottom edge (repeat-x band, 192px).", 384, 192, "repeat-x", "left bottom"),
   "canopy-corner": v2("canopy-corner", "A branch entering the top-right corner (no-repeat, 320px). Hero corners without the gecko plate.", 320, 320, "no-repeat", "right top"),
   pointer: v2("pointer", "Pixel cursors aimed at bracketed targets on a coordinate field. Screen Help, how-it-points explainers.", 240, 240, "repeat", "0 0"),
-  weave: v2("weave", "Banig: pandan-strip weave with a dyed nested diamond. Section bands (Taglish, community, about).", 160, 160, "repeat", "0 0"),
+  weave: v2("weave", "Banig: pandan-strip weave with a dyed nested diamond. Section bands (voice, community, about).", 160, 160, "repeat", "0 0"),
   "dither-hi": v2("dither-hi", "Flat 8/16 Bayer dither. Heavy tone for bands and footers.", 16, 16, "repeat", "0 0"),
   "section-hero": v2("section-hero", "Hero plate: ghost GetcKo standing in pothos, its trail walking in from the left. Anchor right bottom; text top-left.", 1040, 560, "no-repeat", "right bottom", "sections"),
   "section-how": v2("section-how", "How-it-works band: ruler edges, prints walking left to right, a bracketed stop every 640px.", 640, 176, "repeat-x", "left center", "sections"),

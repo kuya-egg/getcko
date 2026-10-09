@@ -7,9 +7,9 @@ import { GeckoSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
 const TEMPLATES = [
-  { ...T.templates.officeHelper, kbs: ["Office manual"], language: T.languages.English },
-  { ...T.templates.teacher, kbs: ["DepEd forms"], language: T.languages.English },
-  { ...T.templates.studyBuddy, kbs: ["My notes"], language: T.languages.English },
+  { ...T.templates.officeHelper, kbs: ["Office manual"] },
+  { ...T.templates.teacher, kbs: ["DepEd forms"] },
+  { ...T.templates.studyBuddy, kbs: ["My notes"] },
 ];
 
 /** Templates on the canopy edge. GetcKo points down-right at the first card's Start. */
@@ -39,7 +39,6 @@ export function Agents({ onWatch }: { onWatch: () => void }) {
                 name={t.name}
                 description={t.line}
                 knowledgeBases={t.kbs}
-                language={t.language}
                 onStart={onWatch}
                 startVariant={i === 0 ? "primary" : "secondary"}
               />

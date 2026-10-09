@@ -43,7 +43,7 @@ web
 |---|---|
 | Shortcut | `⌥ Space` (macOS), `Ctrl Space` (Windows), from inside any app |
 | Overlay | Transparent, frameless, always-on-top, click-through; gecko beside the target, answer card bottom-right. Visible on screen share; no stealth mode |
-| Main window | Agents (templates, instructions, knowledge bases, voice, answer length and language), knowledge bases (import .md/.txt/.pdf, status per document), settings, onboarding (Accessibility → Screen Recording → Microphone → Shortcut) |
+| Main window | Agents (templates, instructions, knowledge bases, voice, answer length), knowledge bases (import .md/.txt/.pdf, status per document), settings, onboarding (Accessibility → Screen Recording → Microphone → Shortcut) |
 | Voice | Hold to talk → speech-to-text on this Mac; answers spoken sentence by sentence; Esc stops |
 | Showcase | 5-minute live pitch in airplane mode with a network monitor; 1-minute demo video |
 
@@ -52,15 +52,15 @@ web
 | Capability | Detail |
 |---|---|
 | Knowledge bases | Passages embedded and stored in one SQLite file with sqlite-vector; answers cite document and page; "I don't know" when nothing relevant is found |
-| Agents | Name, instructions, up to 5 knowledge bases, answer length and language (English, Filipino, Taglish), voice. Templates: Office Helper, Teacher, Study Buddy, Taglish Explainer. One agent per session |
-| Screen Help | Reads the focused app's accessibility tree; the model picks the target; the gecko points. Screenshot fallback labeled "Best guess" |
+| Agents | Name, instructions, up to 5 knowledge bases, answer length, voice. Answers in English. Templates: Office Helper, Teacher, Study Buddy. One agent per session |
+| Screen Help | Reads the focused app's accessibility tree; Gemma picks the element; the gecko points. On screens without readable elements, Qwen3-VL-2B points from a screenshot, labeled "Best guess" |
 | Speech | Answer out loud and Hold to talk, stoppable with Esc |
-| Models | Gemma 4 E2B (chat, vision), EmbeddingGemma-300m (embeddings), whisper.cpp (speech-to-text), OS voices via the Rust `tts` crate. Numbers in `docs/MODELS.md` |
+| Models | Gemma 4 E2B (chat, element picking, tier-2 vision; Gemma Terms of Use); Qwen3-VL-2B (tier-3 pointing on screens without readable elements, loaded on demand; Apache-2.0); bge-small-en-v1.5 (embeddings; MIT); whisper.cpp small.en in a helper process (speech-to-text; MIT); OS voices via the Rust `tts` crate. About 5.4 GB of models, downloaded once. Numbers in `docs/MODELS.md` |
 
 - **Hard constraints:** no cloud AI in the core path; no accounts, servers or sync; GetcKo never clicks or types for the user; never claims a source that is not in the retrieved passages.
 - Fonts and assets are bundled so the UI works offline.
 - Hackathon: AppBuildersPH 2026 "Local AI"; code freeze Oct 10, 10:00 AM; reused code and assets disclosed.
-- *(open)* Which demo apps have the best AX trees; whether a Filipino voice exists on macOS; which sample manual is the demo knowledge base.
+- *(open)* Which demo apps have the best AX trees; which sample manual is the demo knowledge base.
 
 ## Brand Commitments
 
@@ -70,7 +70,7 @@ web
 | Tagline | "Gets mo na." ("Now you get it.") Product line: "Help that sits right next to your cursor." |
 | Mascot | 22 × 27 cell pixel gecko, 31 poses chosen by moment (`MOMENT_POSE`). Whole-number scales, never smoothed or recolored, one per screen, still while the user types, never covering the target |
 | Logo | Head mark (sprite rows 0–10) + "GetcKo" in Bricolage 800; files in `public/brand/logo/` |
-| Voice | Friendly, short, specific; action → reason → source; Taglish when the agent is Taglish; "on this Mac", "Offline"; sentence case; no emoji |
+| Voice | Friendly, short, specific; action → reason → source; plain English; "on this Mac", "Offline"; sentence case; no emoji |
 | Show, don't tell | Headline ≤ 6 words, body ≤ 1 line; the rest becomes keyword chips, steps, a diagram or motion |
 | Identity | Textured sections, solid content cards, one green for the helper, sun yellow only for the target halo, ink for dark surfaces; no gradients, glows or glass |
 
@@ -87,7 +87,7 @@ web
 2. **The user's screen is the hero.** GetcKo sits beside the work, never on it.
 3. **Honest.** "Offline", measured numbers only, real sources or "I don't know".
 4. **Visible helper, not a stealth tool.** Nothing hides from screen share.
-5. **Plain help for unconfident users.** Short, spoken, shown; Filipino and Taglish are first-class.
+5. **Plain help for unconfident users.** Short, spoken, shown, in plain English.
 
 ## Accessibility & Inclusion
 
@@ -95,12 +95,12 @@ web
 - Real `<button>`, `<a href>`, `<input>` + `<label>`; icon-only buttons have `aria-label`; targets ≥ 44px; visible focus.
 - Keyboard: dialogs trap and return focus; the answer card never steals focus; Esc = stop speaking → close answer → close dialog.
 - Speech always stoppable with Esc; no autoplay unless "Answer out loud" is on.
-- Users include older adults and people with low digital skills; English, Filipino and Taglish answers.
+- Users include older adults and people with low digital skills; answers are in plain English.
 
 ## Landing page (`site/`)
 
 - **Surface:** the public marketing page, Vite + React, deployed at https://getcko.vercel.app (Vercel project `getcko`). Mode: persuade.
 - **Primary action:** "Watch the 1-min demo" (`DEMO_VIDEO_URL` in `src/config.ts`; until set, the dialog says the demo is being recorded).
 - **Audience on this page:** hackathon judges first (seconds of attention), then teachers and LGU staff.
-- **Proof shown:** the one measured figure in `MEASURED` (question to first spoken word, 1.5 s, Taglish demo median from `docs/MODELS.md` on `dev`, M4 Pro). Every other number stays `null` and renders nothing.
+- **Proof shown:** the one measured figure in `MEASURED`: end of speech → first spoken word, 1.04 s (accented-English clip, 10-run median, M4 Pro, Whisper small.en; the US-English clip measured 1.19 s), `docs/MODELS.md` finding 40. Every other number stays `null` and renders nothing.
 - **Open:** GitHub links and "Open source" stay hidden until `REPO_PUBLIC = true` in `src/config.ts`.
