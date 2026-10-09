@@ -12,6 +12,8 @@ import type { ModelFile } from "../../bindings/ModelFile";
 import type { ModelRole } from "../../bindings/ModelRole";
 
 export function formatModelSize(bytes: number): string {
+  const megabytes = Math.max(1, Math.round(bytes / 1_000_000));
+  if (megabytes < 1000) return `${megabytes} MB`;
   return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
 }
 

@@ -9,10 +9,10 @@ import { registerAskHotkey, setStopKeyActive } from "./input/hotkeys";
 import { detectPlatform } from "./input/platform";
 import { Gecko } from "./pointer/Gecko";
 import { Halo } from "./pointer/Halo";
-import { placeGecko, placePanel } from "./pointer/placement";
+import { placeGecko, placePanel, rectsIntersect } from "./pointer/placement";
 import { SPRITE_COLS, SPRITE_ROWS } from "./pointer/sprite";
 import { initialFollowState, reduceFollow } from "./pointer/follow";
-import { positionFractions, positionFromFractions, parseBarPosition, type BarPosition } from "./ui/sessionBarPosition";
+import { composerBesideBar, positionFractions, positionFromFractions, parseBarPosition, type BarPosition } from "./ui/sessionBarPosition";
 import { coverMonitor, coverPrimaryMonitor, currentWorkArea, showOverlayOnce, useClickThrough } from "./pointer/window";
 import { geckoPose, initialOverlayState, isBestGuess, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./state/turn";
 import type { GeckoPlacement, Size, TurnStatus } from "./types";
@@ -50,8 +50,9 @@ export function Overlay() {
   const [barPosition, setBarPosition] = useState<BarPosition>(() => parseBarPosition(localStorage.getItem("getcko.sessionBar")) ?? { x: 1, y: 1 });
   const [flightLanded, setFlightLanded] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  useClickThrough([panelRef, barRef], state.composerOpen);
+  useClickThrough([panelRef, barRef, composerRef], state.composerOpen);
   useEffect(() => {
     followDispatch({ type: "tick", now: performance.now() });
     const timer = window.setInterval(() => followDispatch({ type: "tick", now: performance.now() }), 40);
@@ -253,13 +254,26 @@ export function Overlay() {
   const toArea = (r: Rect): Rect => ({ ...r, x: r.x - area.x, y: r.y - area.y });
   const barBounds = { width: barRef.current?.offsetWidth ?? 280, height: barRef.current?.offsetHeight ?? 64 };
   const barPoint = positionFromFractions(barPosition, viewport, barBounds);
-  // The card keeps clear of the gecko at its target and of the (movable) session bar.
-  const avoid = [
-    ...(pointing ? [toArea({ x: pointing.x, y: pointing.y, ...sprite })] : []),
-    ...(barVisible ? [toArea({ ...barPoint, ...barBounds })] : []),
-  ];
-  const inArea = placePanel(targetShown ? toArea(target.rect) : null, area, panel, PANEL_MARGIN, avoid);
-  const panelAt = { x: inArea.x + area.x, y: inArea.y + area.y };
+  // The ask box opens attached to the bar (480 px wide by CSS until measured).
+  const composerBounds = { width: composerRef.current?.offsetWidth ?? 480, height: composerRef.current?.offsetHeight ?? 60 };
+  const composerAt = composerBesideBar({ ...barPoint, ...barBounds }, composerBounds, viewport);
+  // The answer card opens attached to the widget too (above the ask box when it is open,
+  // else the bar), unless that would cover the target or the gecko at it; then it takes
+  // the screen corner clear of all of them.
+  const anchor: Rect = state.composerOpen ? { ...composerAt, ...composerBounds } : { ...barPoint, ...barBounds };
+  const besideWidget = composerBesideBar(anchor, panel, viewport);
+  const geckoRect: Rect | null = pointing ? { x: pointing.x, y: pointing.y, ...sprite } : null;
+  const covers = (r: Rect | null) => r !== null && rectsIntersect({ ...besideWidget, ...panel }, r);
+  let panelAt = besideWidget;
+  if (covers(targetShown ? target.rect : null) || covers(geckoRect)) {
+    const avoid = [
+      ...(geckoRect ? [toArea(geckoRect)] : []),
+      ...(barVisible ? [toArea({ ...barPoint, ...barBounds })] : []),
+      ...(state.composerOpen ? [toArea({ ...composerAt, ...composerBounds })] : []),
+    ];
+    const inArea = placePanel(targetShown ? toArea(target.rect) : null, area, panel, PANEL_MARGIN, avoid);
+    panelAt = { x: inArea.x + area.x, y: inArea.y + area.y };
+  }
   const atTarget = (follow.mode === "target" || follow.mode === "dwelling") && pointing !== null;
   const gecko: GeckoPlacement = atTarget && pointing
     ? pointing
@@ -323,15 +337,18 @@ export function Overlay() {
             onNext={nextSteps ? () => startAsk({ type: "text", text: NEXT_STEP }, NEXT_STEP, true, nextSteps) : undefined}
           />
         )}
-        <Composer
-          open={state.composerOpen}
-          screenHelp={screenHelp}
-          onSubmit={(text) => startAsk({ type: "text", text }, text, screenHelp, [])}
-          onClose={() => dispatch({ type: "closeComposer" })}
-          onMicDown={micDown}
-          onMicUp={micUp}
-          onToggleScreenHelp={() => setScreenHelp((on) => !on)}
-        />
+        <div style={{ position: "fixed", left: composerAt.x, top: composerAt.y }}>
+          <Composer
+            ref={composerRef}
+            open={state.composerOpen}
+            screenHelp={screenHelp}
+            onSubmit={(text) => startAsk({ type: "text", text }, text, screenHelp, [])}
+            onClose={() => dispatch({ type: "closeComposer" })}
+            onMicDown={micDown}
+            onMicUp={micUp}
+            onToggleScreenHelp={() => setScreenHelp((on) => !on)}
+          />
+        </div>
         {barVisible && <SessionBar
           ref={barRef}
           style={{ position: "fixed", left: barPoint.x, top: barPoint.y }}

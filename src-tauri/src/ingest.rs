@@ -9,9 +9,6 @@ use sha2::{Digest, Sha256};
 /// Errors that can occur while extracting document text.
 #[derive(Debug, thiserror::Error)]
 pub enum IngestError {
-    /// The document format is not yet supported.
-    #[error("{0} files are not supported yet")]
-    Unsupported(&'static str),
     /// Extraction produced no useful text.
     #[error("no text found (scanned PDF?)")]
     NoText,
@@ -23,9 +20,7 @@ pub enum IngestError {
 impl From<IngestError> for AppError {
     fn from(error: IngestError) -> Self {
         match error {
-            IngestError::Unsupported(_) | IngestError::NoText => {
-                Self::new(ErrorKind::Invalid, error.to_string())
-            }
+            IngestError::NoText => Self::new(ErrorKind::Invalid, error.to_string()),
             IngestError::Read(_) => Self::new(ErrorKind::Io, error.to_string()),
         }
     }
@@ -132,8 +127,121 @@ pub fn extract(bytes: &[u8], kind: DocumentKind) -> Result<Extracted, IngestErro
                 page_count: Some(page_count),
             })
         }
-        DocumentKind::Docx => Err(IngestError::Unsupported("Word")),
-        DocumentKind::Pptx => Err(IngestError::Unsupported("PowerPoint")),
+        DocumentKind::Docx => {
+            let mut archive = office_archive(bytes)?;
+            let text = paragraphs(&office_part(&mut archive, "word/document.xml")?)?;
+            if text.trim().is_empty() {
+                return Err(IngestError::NoText);
+            }
+            Ok(Extracted {
+                sections: vec![Section {
+                    text,
+                    location: "Document".into(),
+                }],
+                page_count: None,
+            })
+        }
+        DocumentKind::Pptx => {
+            let mut archive = office_archive(bytes)?;
+            // ppt/slides/slide12.xml: order by number, not by name ("slide10" < "slide2").
+            let mut slides: Vec<(u32, String)> = archive
+                .file_names()
+                .filter_map(Result::ok)
+                .filter_map(|name| {
+                    let number = name
+                        .strip_prefix("ppt/slides/slide")?
+                        .strip_suffix(".xml")?
+                        .parse()
+                        .ok()?;
+                    Some((number, name.into_owned()))
+                })
+                .collect();
+            slides.sort_unstable();
+            let mut sections = Vec::new();
+            for (number, name) in slides {
+                let text = paragraphs(&office_part(&mut archive, &name)?)?;
+                if !text.trim().is_empty() {
+                    sections.push(Section {
+                        text,
+                        location: format!("Slide {number}"),
+                    });
+                }
+            }
+            if sections.is_empty() {
+                return Err(IngestError::NoText);
+            }
+            Ok(Extracted {
+                sections,
+                page_count: None,
+            })
+        }
+    }
+}
+
+/// Largest XML part read from a Word or PowerPoint file (a guard against zip bombs).
+const MAX_OFFICE_PART_BYTES: u64 = 64 * 1024 * 1024;
+
+type OfficeArchive<'a> = zip::ZipArchive<std::io::Cursor<&'a [u8]>>;
+
+fn office_archive(bytes: &[u8]) -> Result<OfficeArchive<'_>, IngestError> {
+    zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|error| IngestError::Read(error.to_string()))
+}
+
+fn office_part(archive: &mut OfficeArchive<'_>, name: &str) -> Result<String, IngestError> {
+    use std::io::Read;
+    let part = archive
+        .by_name(name)
+        .map_err(|error| IngestError::Read(error.to_string()))?;
+    let mut xml = String::new();
+    part.take(MAX_OFFICE_PART_BYTES)
+        .read_to_string(&mut xml)
+        .map_err(|error| IngestError::Read(error.to_string()))?;
+    Ok(xml)
+}
+
+/// The text of one Office Open XML part, a line per paragraph: `t` elements hold the
+/// text runs and `p` ends a paragraph, in both WordprocessingML (`w:`) and DrawingML
+/// (`a:`, slides); `tab` and `br` are whitespace.
+fn paragraphs(xml: &str) -> Result<String, IngestError> {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut text = String::new();
+    let mut in_run = false;
+    loop {
+        match reader
+            .read_event()
+            .map_err(|error| IngestError::Read(error.to_string()))?
+        {
+            Event::Start(element) if element.local_name().as_ref() == "t" => in_run = true,
+            Event::End(element) => match element.local_name().as_ref() {
+                "t" => in_run = false,
+                "p" => text.push('\n'),
+                _ => {}
+            },
+            Event::Empty(element) => match element.local_name().as_ref() {
+                "tab" => text.push('\t'),
+                "br" | "p" => text.push('\n'),
+                _ => {}
+            },
+            Event::Text(run) if in_run => text.push_str(&run.xml10_content()),
+            Event::GeneralRef(reference) if in_run => {
+                let character = match reference.resolve_char_ref() {
+                    Ok(Some(character)) => Some(character),
+                    _ => match &*reference {
+                        "amp" => Some('&'),
+                        "lt" => Some('<'),
+                        "gt" => Some('>'),
+                        "quot" => Some('"'),
+                        "apos" => Some('\''),
+                        _ => None,
+                    },
+                };
+                text.extend(character);
+            }
+            Event::Eof => return Ok(text),
+            _ => {}
+        }
     }
 }
 
@@ -428,11 +536,72 @@ mod tests {
         );
     }
 
+    /// A Word or PowerPoint file: a zip of the given parts.
+    fn office_file(parts: &[(&str, &str)]) -> Vec<u8> {
+        use std::io::Write;
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, xml) in parts {
+            writer
+                .start_file(*name, zip::write::SimpleFileOptions::default())
+                .expect("zip entry");
+            writer.write_all(xml.as_bytes()).expect("zip write");
+        }
+        writer.finish().expect("zip finish").into_inner()
+    }
+
     #[test]
-    fn docx_is_unsupported_and_empty_text_has_no_chunks() {
+    fn word_file_reads_paragraphs_runs_and_entities() {
+        let docx = office_file(&[(
+            "word/document.xml",
+            r#"<?xml version="1.0"?><w:document xmlns:w="w"><w:body>
+<w:p><w:r><w:t>Grades</w:t></w:r><w:r><w:t xml:space="preserve"> &amp; attendance</w:t></w:r></w:p>
+<w:p><w:r><w:t>Quizzes</w:t><w:tab/><w:t>20%</w:t></w:r></w:p>
+<w:p/></w:body></w:document>"#,
+        )]);
+        let extracted = extract(&docx, DocumentKind::Docx).expect("word text");
+        assert_eq!(extracted.sections.len(), 1);
+        assert_eq!(extracted.sections[0].location, "Document");
+        assert!(
+            extracted.sections[0]
+                .text
+                .starts_with("Grades & attendance\nQuizzes\t20%\n"),
+            "{:?}",
+            extracted.sections[0].text
+        );
+    }
+
+    #[test]
+    fn slides_are_sections_in_slide_number_order() {
+        let slide = |text: &str| {
+            format!(
+                r#"<p:sld xmlns:p="p" xmlns:a="a"><a:p><a:r><a:t>{text}</a:t></a:r></a:p></p:sld>"#
+            )
+        };
+        let pptx = office_file(&[
+            ("ppt/slides/slide10.xml", &slide("Ten")),
+            ("ppt/slides/slide2.xml", &slide("Two")),
+            ("ppt/slides/slide3.xml", &slide("")),
+            ("ppt/slides/_rels/slide2.xml.rels", "<Relationships/>"),
+        ]);
+        let extracted = extract(&pptx, DocumentKind::Pptx).expect("slide text");
+        let got: Vec<_> = extracted
+            .sections
+            .iter()
+            .map(|s| (s.location.as_str(), s.text.trim()))
+            .collect();
+        assert_eq!(got, [("Slide 2", "Two"), ("Slide 10", "Ten")]);
+    }
+
+    #[test]
+    fn unreadable_office_files_and_empty_text_have_no_chunks() {
         assert!(matches!(
-            extract(b"", DocumentKind::Docx),
-            Err(IngestError::Unsupported("Word"))
+            extract(b"not a zip", DocumentKind::Docx),
+            Err(IngestError::Read(_))
+        ));
+        let empty = office_file(&[("word/document.xml", "<w:document xmlns:w=\"w\"/>")]);
+        assert!(matches!(
+            extract(&empty, DocumentKind::Docx),
+            Err(IngestError::NoText)
         ));
         assert!(
             chunk(

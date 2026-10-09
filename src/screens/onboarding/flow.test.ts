@@ -223,6 +223,11 @@ describe("model download helpers", () => {
   it("formats decimal gigabytes with one decimal place", () => {
     expect(formatModelSize(5_200_000_000)).toBe("5.2 GB");
   });
+  it("shows sizes under a gigabyte in megabytes, never 0.0 GB", () => {
+    expect(formatModelSize(36_806_944)).toBe("37 MB");
+    expect(formatModelSize(999_600_000)).toBe("1.0 GB");
+    expect(formatModelSize(1_000_000_000)).toBe("1.0 GB");
+  });
   it("groups projector files into human rows", () => {
     const files: ModelFile[] = [
       { file: "chat.gguf", role: "chat", required: true, bytes: 1_000_000_000, present: false },

@@ -27,3 +27,18 @@ export function positionFractions(position: BarPosition, viewport: BarViewport, 
     y: bounded.y / Math.max(1, viewport.height - bar.height),
   };
 }
+
+/** Gap between the session bar and the ask box it opens, CSS px. */
+export const COMPOSER_GAP = 8;
+
+/**
+ * Where the ask box opens: attached to the session bar, above it when it fits there,
+ * else below; flush with the bar's edge nearer the screen side, kept on screen.
+ */
+export function composerBesideBar(bar: BarPosition & BarViewport, composer: BarViewport, viewport: BarViewport): BarPosition {
+  const above = bar.y - COMPOSER_GAP - composer.height;
+  const y = above >= 0 ? above : bar.y + bar.height + COMPOSER_GAP;
+  const leftHalf = bar.x + bar.width / 2 < viewport.width / 2;
+  const x = leftHalf ? bar.x : bar.x + bar.width - composer.width;
+  return clampBarPosition({ x, y }, viewport, composer);
+}

@@ -1,9 +1,11 @@
 //! Prompt construction and streaming answer parsing.
 //!
 //! A turn asks the model twice with prompts that share one prefix (system, screen,
-//! question, passages), so the second request only evaluates its own short suffix:
-//! 1. target: which screen element to point at, constrained to the element ids;
-//! 2. answer: prose that cites passages, told which element the pointer shows.
+//! question), so the second request only evaluates its own suffix:
+//! 1. target: which screen element to point at, constrained to the element ids. It
+//!    never sees the passages: with a passage that answers a fact question in view,
+//!    the model pointed at some element anyway (0/9 no-target questions, finding 49);
+//! 2. answer: the passages, which element the pointer shows, then prose citing them.
 //!
 //! The screen part can be evaluated while the user is still speaking
 //! ([`TurnPrompt::warm_user`]), before the question is known.
@@ -13,8 +15,10 @@ use crate::model::{
 
 /// General grounding and answer-quality rules (BR-6).
 pub const BASE_RULES: &str = "Be grounded and honest: answer from the supplied screen and passages. If neither supports an answer, say \"I don't know\". Be brief; lead with the action, then the reason, then the source.";
-/// Product guarantees that remain in force for every agent configuration.
-pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages (BR-4). Never offer to click or type for the user (BR-14). Never write screen element ids such as e12 in an answer.";
+/// Product guarantees that remain in force for every agent configuration: BR-4 (no
+/// invented sources) and BR-14 (no offers to act). The ids stay out of the text: the
+/// model copied "[BR-4]" into answers as if it were a citation.
+pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages. Never offer to click or type for the user. Never write screen element ids such as e12 in an answer.";
 /// Choice meaning "no element fits" in the target pass.
 pub const NO_TARGET: &str = "none";
 
@@ -153,12 +157,28 @@ impl TurnPrompt {
         task
     }
 
-    /// The last part of the answer-pass prompt: what the pointer shows, then the task.
-    /// `cite`: passages were supplied, so ask for `[n]` citations (asking without
-    /// passages makes the model cite element ids or app names instead).
-    pub fn answer_task(pointed: Pointed<'_>, cite: bool) -> String {
+    /// The answer pass after the shared body (and screenshot): the passages, what the
+    /// pointer shows, then the task. With passages it asks for `[n]` citations (asking
+    /// without passages makes the model cite element ids or app names instead).
+    pub fn answer_task(pointed: Pointed<'_>, passages: &[RetrievedPassage<'_>]) -> String {
         use std::fmt::Write;
         let mut task = String::new();
+        // No passages: say nothing. A marker here gets echoed into the answer
+        // ("[no documents]", "(No passage found)").
+        if !passages.is_empty() {
+            task.push_str("Passages:");
+            for (index, passage) in passages.iter().enumerate() {
+                let _ = write!(
+                    task,
+                    "\n[{}] {}, {}: {}",
+                    index + 1,
+                    passage.document_name,
+                    passage.location,
+                    passage.text
+                );
+            }
+            task.push_str("\n\n");
+        }
         match pointed {
             Pointed::Element(element) => {
                 let _ = write!(
@@ -178,32 +198,18 @@ impl TurnPrompt {
             Pointed::Nothing => {}
         }
         task.push_str(ANSWER_TASK);
-        task.push_str(if cite { CITE_TASK } else { NO_SOURCE_TASK });
+        task.push_str(if passages.is_empty() {
+            NO_SOURCE_TASK
+        } else {
+            CITE_TASK
+        });
         task
     }
 
-    /// Screen, task steps, question and passages: the part both passes share. A
-    /// screenshot, when used, goes right after it.
-    pub fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
-        use std::fmt::Write;
-        let mut user = format!("{}{}Question: {question}\n\n", self.context, self.task);
-        // No passages: say nothing. A marker here gets echoed into the answer
-        // ("[no documents]", "(No passage found)").
-        if !passages.is_empty() {
-            user.push_str("Passages:");
-            for (index, passage) in passages.iter().enumerate() {
-                let _ = write!(
-                    user,
-                    "\n[{}] {}, {}: {}",
-                    index + 1,
-                    passage.document_name,
-                    passage.location,
-                    passage.text
-                );
-            }
-            user.push_str("\n\n");
-        }
-        user
+    /// Screen, task steps and question: the part both passes share. A screenshot,
+    /// when used, goes right after it.
+    pub fn body(&self, question: &str) -> String {
+        format!("{}{}Question: {question}\n\n", self.context, self.task)
     }
 }
 
@@ -600,18 +606,20 @@ mod tests {
             text: "Enter grades in the Q1 column.",
         }];
         let question = "Where do I put Juan's grade?";
-        let body = turn.body(question, &passages);
+        let body = turn.body(question);
         assert!(body.starts_with(turn.warm_user()));
-        assert!(body.contains("[1] Manual, p. 4: Enter grades"));
+        // The target pass sees only the body: passages belong to the answer pass.
+        assert!(!body.contains("Enter grades"));
         assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
-        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), true);
+        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), &passages);
+        assert!(answer_task.starts_with("Passages:\n[1] Manual, p. 4: Enter grades"));
         assert!(answer_task.contains("\"Q1, Juan Dela Cruz\""));
         // Roles in the user's words: the answer repeats them.
         let field = ScreenElement {
             role: "textField".into(),
             ..screen.elements[1].clone()
         };
-        let field_task = TurnPrompt::answer_task(Pointed::Element(&field), true);
+        let field_task = TurnPrompt::answer_task(Pointed::Element(&field), &passages);
         assert!(field_task.contains("this field: "), "{field_task}");
         assert!(!field_task.contains("textField"));
         let listed = ScreenSnapshot {
@@ -626,10 +634,11 @@ mod tests {
         );
         assert!(!listed_prompt.warm_user().contains("textField"));
         assert!(!answer_task.contains("e2"));
-        assert!(TurnPrompt::answer_task(Pointed::Guess, true).contains("best guess"));
-        assert!(!TurnPrompt::answer_task(Pointed::Nothing, true).contains("pointer"));
+        assert!(TurnPrompt::answer_task(Pointed::Guess, &passages).contains("best guess"));
+        assert!(!TurnPrompt::answer_task(Pointed::Nothing, &passages).contains("pointer"));
         assert!(answer_task.contains("[n]"));
-        assert!(!TurnPrompt::answer_task(Pointed::Nothing, false).contains("[n]"));
+        let bare = TurnPrompt::answer_task(Pointed::Nothing, &[]);
+        assert!(!bare.contains("[n]") && !bare.contains("Passages"));
         // Tier 2 explains the drawn ids; tier 3 asks for a point, not an id.
         assert!(TurnPrompt::target_task(ScreenMode::ElementsWithImage).contains("id written"));
         assert!(TurnPrompt::target_task(ScreenMode::ImageOnly).contains("[y, x]"));
@@ -728,7 +737,7 @@ mod tests {
                 step("Then?", "Click Save.", None),
             ],
         );
-        let user = turn.body("Next?", &[]);
+        let user = turn.body("Next?");
         assert!(user.starts_with(turn.warm_user()));
         let first = user
             .find("Step 1: Q: Open file? A: Click File. (pointed at: File)")
@@ -741,7 +750,7 @@ mod tests {
         assert!(user.contains("continuing this task"));
         assert!(
             !TurnPrompt::new(&templates_draft(), None, &[])
-                .body("Next?", &[])
+                .body("Next?")
                 .contains("Earlier steps")
         );
     }
@@ -752,7 +761,7 @@ mod tests {
             None,
             &[step("q", &"x".repeat(1000), None)],
         );
-        let user = turn.body("Next?", &[]);
+        let user = turn.body("Next?");
         assert!(user.contains(&format!("A: {}…", "x".repeat(300))));
         assert!(!user.contains(&"x".repeat(301)));
     }

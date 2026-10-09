@@ -69,7 +69,7 @@ cargo test -- --ignored
 | macOS Accessibility screen capture | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) |
 | Windows UI Automation screen capture | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
 | Whisper small.en speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
-| DOCX/PPTX ingestion | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
+| DOCX/PPTX ingestion | Implemented (shared Rust code) | [macOS engineer](docs/team/macos-engineer.md) |
 | Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
 | Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |
 

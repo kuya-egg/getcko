@@ -406,7 +406,7 @@ fn main() {
                 let aim = pipeline::aim(
                     chat.as_ref() as &dyn ChatModel,
                     &turn.system,
-                    &turn.body(question, &[]),
+                    &turn.body(question),
                     ScreenMode::Elements,
                     &snapshot,
                     None,
@@ -483,7 +483,7 @@ fn main() {
                 let aim = pipeline::aim(
                     chat.as_ref() as &dyn ChatModel,
                     &turn.system,
-                    &turn.body(question, &[]),
+                    &turn.body(question),
                     mode,
                     screen,
                     shot.as_ref(),
@@ -762,7 +762,7 @@ fn survey(
             let aim = pipeline::aim(
                 chat,
                 &turn.system,
-                &turn.body(&question, &[]),
+                &turn.body(&question),
                 mode,
                 screen,
                 shot.as_ref(),
