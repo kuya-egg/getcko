@@ -132,6 +132,28 @@ fn context<'a>(
 #[cfg(target_os = "windows")]
 const FLASH_ATTENTION_DISABLED: i32 = 0;
 
+/// GPU memory left free for the system and the models already loaded.
+const GPU_HEADROOM: u64 = 256 << 20;
+
+/// Free memory of the GPU llama.cpp offloads to (shared memory on an integrated
+/// GPU), or `None` without one.
+pub(crate) fn gpu_free_bytes() -> Option<u64> {
+    llama_cpp_2::list_llama_ggml_backend_devices()
+        .into_iter()
+        .find(|d| {
+            matches!(
+                d.device_type,
+                llama_cpp_2::LlamaBackendDeviceType::Gpu | llama_cpp_2::LlamaBackendDeviceType::IntegratedGpu
+            )
+        })
+        .map(|d| d.memory_free as u64)
+}
+
+/// Size of `path` on disk, 0 when unreadable.
+pub(crate) fn file_bytes(path: &Path) -> u64 {
+    std::fs::metadata(path).map_or(0, |m| m.len())
+}
+
 /// Chat model loaded from a GGUF file.
 ///
 /// `session` and `mtmd` hold pointers into `model`; they are declared first so
@@ -401,8 +423,15 @@ impl LlamaChat {
         )?;
         let mtmd = if projector.is_file() {
             let projector_path = projector.to_string_lossy();
+            // A projector the GPU has no room for would abort the process (llama.cpp
+            // asserts on a failed buffer allocation); it runs on the CPU instead.
+            let room = file_bytes(projector).saturating_mul(3) / 2 + GPU_HEADROOM;
+            let use_gpu = device == "gpu" && gpu_free_bytes().is_none_or(|free| free >= room);
+            if device == "gpu" && !use_gpu {
+                tracing::warn!("not enough GPU memory for the image projector; it runs on the CPU");
+            }
             let params = MtmdContextParams {
-                use_gpu: device == "gpu",
+                use_gpu,
                 n_threads: threads(),
                 print_timings: false,
                 ..MtmdContextParams::default()
@@ -849,6 +878,7 @@ pub struct OnDemand<T> {
     loaded: std::sync::OnceLock<T>,
     /// Serializes the first load so two callers do not both load.
     loading: Mutex<()>,
+    check: Option<Box<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl<T> OnDemand<T> {
@@ -870,6 +900,7 @@ impl<T> OnDemand<T> {
             what,
             loaded: std::sync::OnceLock::new(),
             loading: Mutex::new(()),
+            check: None,
         })
     }
 
@@ -898,6 +929,18 @@ impl<T> OnDemand<T> {
     /// Whether the model is in memory.
     pub fn is_loaded(&self) -> bool {
         self.loaded.get().is_some()
+    }
+
+    /// Whether loading would be attempted now (see [`OnDemand::with_check`]).
+    pub fn can_load(&self) -> bool {
+        self.check.as_ref().is_none_or(|check| check())
+    }
+
+    /// Adds a check that must pass before loading (e.g. free GPU memory).
+    #[must_use]
+    pub fn with_check(mut self, check: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        self.check = Some(Box::new(check));
+        self
     }
 }
 

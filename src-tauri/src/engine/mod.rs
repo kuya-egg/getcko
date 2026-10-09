@@ -171,6 +171,12 @@ pub trait Grounder: Send + Sync {
     /// # Errors
     /// Runtime failure.
     fn ground(&self, image: &RgbImage, instruction: &str) -> EngineResult<Option<(f64, f64)>>;
+
+    /// Whether the model is loaded or there is room to load it now. When not, tier 3
+    /// reads the screenshot's text instead.
+    fn ready(&self) -> bool {
+        true
+    }
 }
 
 /// On-device speech-to-text.

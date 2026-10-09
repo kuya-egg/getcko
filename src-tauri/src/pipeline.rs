@@ -172,7 +172,11 @@ const DESKTOP: &str = "Desktop (no app open)";
 
 /// Whether tier 3 uses the grounding model (the engine has loaded and has one).
 fn has_grounder(state: &AppState) -> bool {
-    state.engine.get().is_some_and(|engine| engine.grounder.is_some())
+    state
+        .engine
+        .get()
+        .and_then(|engine| engine.grounder.as_deref())
+        .is_some_and(crate::engine::Grounder::ready)
 }
 
 /// Reads the screen and evaluates the active agent's prompt prefix for it, so the turn
@@ -355,7 +359,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             .active_agent()?
             .ok_or_else(|| AppError::invalid("no agent — pick a template first"))?,
     };
-    let grounder = engine.grounder.as_deref();
+    // A grounder with no room to load (GPU memory) is skipped: tier 3 reads text.
+    let grounder = engine.grounder.as_deref().filter(|g| g.ready());
     // A voice turn uses the screen read (and evaluated) when its push-to-talk press
     // started. Anything else reads the screen now; the prompt prefix evaluated when
     // the composer opened is reused from the cache if the screen did not change.
@@ -1041,9 +1046,15 @@ pub fn aim<'a>(
         // A grounding model alone scored higher than text-first, then grounder
         // (MODELS.md): once Gemma picks a text box the grounder never sees the question.
         if let Some(Grounding { model, question }) = grounding {
-            let point = model
-                .ground(&shot.image, question)
-                .map_err(AppError::from)?;
+            let point = match model.ground(&shot.image, question) {
+                Ok(point) => point,
+                Err(error) => {
+                    // The screenshot was taken for the grounder (no text read from
+                    // it), so Gemma points on it instead.
+                    tracing::warn!(%error, "grounding model failed; Gemma points instead");
+                    return point(chat, turn, body, shot, keep_going);
+                }
+            };
             return Ok(point.map_or(Aim::Nothing, |(fx, fy)| {
                 let (x, y) = crate::screenshot::to_physical(
                     shot,
