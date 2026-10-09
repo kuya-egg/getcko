@@ -66,7 +66,7 @@ impl TurnPrompt {
             // Measured on scripts/fixtures/taglish-questions.json (MODELS.md): more
             // natural than "a natural mix of Filipino and English", no less correct.
             Language::Taglish => {
-                "Taglish: write the way a Filipino co-teacher talks: Filipino sentence structure with everyday English words mixed in (\"i-click mo\", \"yung\", \"tapos\"). Keep screen labels exactly as shown and never name element roles (textField, popUpButton, checkbox). Only give the steps the question asks for. These style rules never override the rules above."
+                "Taglish: write the way a Filipino co-teacher talks: Filipino sentence structure with everyday English words mixed in (\"i-click mo\", \"yung\", \"tapos\"). Keep screen labels exactly as shown and never name element roles (textField, comboBox). Only give the steps the question asks for. These style rules never override the rules above."
             }
         });
         let max_tokens = match agent.answer_length {
@@ -172,7 +172,7 @@ impl TurnPrompt {
                 let _ = write!(
                     task,
                     "The pointer is showing the user this {}: \"{}\"",
-                    element.role,
+                    plain_role(&element.role),
                     truncate_chars(&element.label, 60)
                 );
                 if let Some(value) = &element.value {
@@ -249,6 +249,34 @@ pub fn choices_grammar(choices: &[String]) -> String {
 pub fn target_element<'a>(reply: &str, snapshot: &'a ScreenSnapshot) -> Option<&'a ScreenElement> {
     let id = reply.trim();
     snapshot.elements.iter().find(|element| element.id == id)
+}
+
+/// A shared role ([`crate::platform::ROLES`]) as a user would say it: the answer
+/// pass repeats the word it is given ("this textField" became "sa textField na").
+fn plain_role(role: &str) -> &'static str {
+    match role {
+        "button" => "button",
+        "checkbox" => "checkbox",
+        "radio" => "option",
+        "textField" => "field",
+        "textArea" => "text box",
+        "comboBox" => "drop-down",
+        "list" => "list",
+        "listItem" | "row" => "item",
+        "menu" => "menu",
+        "menuItem" => "menu item",
+        "menuBar" => "menu bar",
+        "tab" => "tab",
+        "link" => "link",
+        "cell" => "cell",
+        "table" => "table",
+        "image" => "picture",
+        "text" => "text",
+        "slider" => "slider",
+        "toolbar" => "toolbar",
+        "window" => "window",
+        _ => "item",
+    }
 }
 
 fn truncate_chars(text: &str, limit: usize) -> String {
@@ -535,6 +563,14 @@ mod tests {
         assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
         let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), true);
         assert!(answer_task.contains("\"Q1, Juan Dela Cruz\""));
+        // Roles in the user's words: the answer repeats them.
+        let field = ScreenElement {
+            role: "textField".into(),
+            ..screen.elements[1].clone()
+        };
+        let field_task = TurnPrompt::answer_task(Pointed::Element(&field), true);
+        assert!(field_task.contains("this field: "), "{field_task}");
+        assert!(!field_task.contains("textField"));
         assert!(!answer_task.contains("e2"));
         assert!(TurnPrompt::answer_task(Pointed::Guess, true).contains("best guess"));
         assert!(!TurnPrompt::answer_task(Pointed::Nothing, true).contains("pointer"));

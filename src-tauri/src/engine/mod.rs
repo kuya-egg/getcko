@@ -246,8 +246,8 @@ impl Engine {
                 )
                 .map(Arc::new);
                 let embedder =
-                    llama::LlamaEmbedder::load(&rt, &models_dir.join(EMBEDDING_MODEL_FILE))
-                        .map(|m| Arc::new(m) as Arc<dyn Embedder>);
+                    llama::LazyEmbedder::new(&rt, &models_dir.join(EMBEDDING_MODEL_FILE))
+                        .map(|lazy| Arc::new(lazy) as Arc<dyn Embedder>);
                 (chat, embedder)
             }
             Err(err) => (Err(EngineError::Runtime(err.to_string())), Err(err)),

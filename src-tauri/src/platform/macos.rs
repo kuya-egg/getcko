@@ -668,8 +668,12 @@ fn describe(node: &Ax, window: Option<Rect>, displays: &[(CGRect, f64)]) -> Opti
         return None;
     }
     // Unnamed, unrecognised elements (ruler ticks, layout groups carrying a number)
-    // can't be asked about or described; they only lengthen the prompt.
-    if label.is_empty() && role == "other" {
+    // can't be asked about or described; they only lengthen the prompt. Empty table
+    // cells and rows are wrappers: the field or text inside is listed on its own,
+    // and in a dense grid the wrappers alone fill the element cap (a 9x8 grade grid:
+    // 90 of 150 slots, 11 of its 72 fields kept).
+    if label.is_empty() && (role == "other" || (value.is_none() && matches!(role, "cell" | "row")))
+    {
         return None;
     }
     Some(ScreenElement {

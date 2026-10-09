@@ -36,6 +36,10 @@ Speech-to-text is shared through Gemma 4 E2B's audio encoder; there is nothing s
 - Before any shared-trait change: coordinate exact trait signature, test fixtures and same-PR macOS implementation with macOS engineer.
 - By P0 integration: send overlay engineer real monitor/DPI test cases and observed coordinate conversions; send UI engineer permission semantics and microphone availability states.
 - By P1: send backend/frontend engineers DOCX/PPTX extraction errors and status transitions; send team Windows GPU/CPU logs and installer evidence.
+- From the macOS engineer (parity rules for the UIA walk, `docs/MODELS.md` findings 18–33):
+  - Drop unnamed `other` elements and unnamed, valueless `cell`/`row` wrappers: in a dense grid the empty wrappers alone filled the 150-element cap (a 9×8 grade grid kept 11 of its 72 fields; with the rule, all 72).
+  - Check the scripted tasks with `./scripts/tier-eval.sh` and the held-out pages with `--heldout`. The harness opens only Chrome, Finder and TextEdit (macOS); the held-out pages are plain HTML and work in any browser for a Windows equivalent.
+  - The answer prompt now names roles in plain words (`prompt::plain_role`): keep `ROLES` as the only role vocabulary so the mapping covers Windows too.
 
 ## Done
 - [ ] UIA snapshot excludes own PID, maps roles, is DPI-aware and passes conformance.

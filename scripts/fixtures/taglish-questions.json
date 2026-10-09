@@ -38,15 +38,15 @@
       "app": "TextEdit",
       "window": "GetCko letter.rtf",
       "elements": [
-        ["popUpButton", "Font family"],
+        ["comboBox", "Font family"],
         ["comboBox", "Font size"],
         ["checkbox", "Bold"],
         ["checkbox", "Italic"],
         ["checkbox", "Underline"],
         ["radio", "Align center"],
-        ["popUpButton", "Lists bullet and numbering"],
-        ["popUpButton", "Line and paragraph spacing"],
-        ["colorWell", "Text color"]
+        ["comboBox", "Lists bullet and numbering"],
+        ["comboBox", "Line and paragraph spacing"],
+        ["button", "Text color"]
       ],
       "passages": []
     },

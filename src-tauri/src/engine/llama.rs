@@ -64,6 +64,7 @@ const CHAT_CONTEXT: u32 = 4096;
 const EMBED_CONTEXT: u32 = 2048;
 
 /// Initialized llama.cpp backend shared by all loaded models.
+#[derive(Clone)]
 pub struct Runtime {
     backend: Arc<LlamaBackend>,
 }
@@ -745,6 +746,68 @@ impl Transcriber for LlamaChat {
     }
 }
 
+/// EmbeddingGemma loaded on first use: only agents with documents search, so most
+/// sessions never load it. Kept once loaded: dropping it did not return its memory
+/// (llama.cpp keeps the allocation) and reloading costs ~0.3 s per search.
+pub struct LazyEmbedder {
+    rt: Runtime,
+    path: std::path::PathBuf,
+    loaded: std::sync::OnceLock<LlamaEmbedder>,
+    /// Serializes the first load so two searches do not both load.
+    loading: Mutex<()>,
+}
+
+impl LazyEmbedder {
+    /// Checks the model file exists; loads nothing yet.
+    ///
+    /// # Errors
+    /// [`EngineError::MissingModel`] when the file is missing.
+    pub fn new(rt: &Runtime, path: &Path) -> EngineResult<Self> {
+        if !path.is_file() {
+            return Err(EngineError::MissingModel(path.display().to_string()));
+        }
+        Ok(Self {
+            rt: rt.clone(),
+            path: path.to_owned(),
+            loaded: std::sync::OnceLock::new(),
+            loading: Mutex::new(()),
+        })
+    }
+
+    /// The model, loading it now on first use.
+    fn get(&self) -> EngineResult<&LlamaEmbedder> {
+        if let Some(model) = self.loaded.get() {
+            return Ok(model);
+        }
+        let _guard = self.loading.lock().map_err(runtime_error)?;
+        if let Some(model) = self.loaded.get() {
+            return Ok(model);
+        }
+        let started = std::time::Instant::now();
+        let model = LlamaEmbedder::load(&self.rt, &self.path)?;
+        tracing::info!(
+            elapsed_ms = started.elapsed().as_millis(),
+            "embedding model loaded"
+        );
+        Ok(self.loaded.get_or_init(|| model))
+    }
+
+    /// Whether the model is in memory.
+    pub fn is_loaded(&self) -> bool {
+        self.loaded.get().is_some()
+    }
+}
+
+impl Embedder for LazyEmbedder {
+    fn embed_documents(&self, texts: &[&str]) -> EngineResult<Vec<Vec<f32>>> {
+        self.get()?.embed_documents(texts)
+    }
+
+    fn embed_query(&self, text: &str) -> EngineResult<Vec<f32>> {
+        self.get()?.embed_query(text)
+    }
+}
+
 /// EmbeddingGemma-backed normalized vector generator.
 pub struct LlamaEmbedder {
     backend: Arc<LlamaBackend>,
@@ -1060,6 +1123,20 @@ mod tests {
         assert!((norm - 1.0).abs() < 1e-4);
         let cosine = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
         assert!(cosine(&query, &docs[0]) > cosine(&query, &docs[1]));
+    }
+    #[test]
+    #[ignore = "needs model files"]
+    fn lazy_embedder_loads_on_first_search() {
+        let rt = Runtime::init().expect("runtime initializes");
+        let path = model_path("embeddinggemma-300M-Q8_0.gguf");
+        let lazy = LazyEmbedder::new(&rt, &path).expect("file exists");
+        assert!(!lazy.is_loaded(), "nothing loads before the first search");
+        let question = "How should I grade student assignments?";
+        let first = lazy.embed_query(question).expect("query embeds");
+        assert!(lazy.is_loaded());
+        let eager = LlamaEmbedder::load(&rt, &path).expect("embedding model loads");
+        assert_eq!(first, eager.embed_query(question).expect("query embeds"));
+        assert!(LazyEmbedder::new(&rt, &model_path("missing.gguf")).is_err());
     }
     #[test]
     #[ignore = "needs model files"]
