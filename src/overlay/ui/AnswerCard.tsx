@@ -1,7 +1,7 @@
 import type { CSSProperties, Ref } from "react";
 import type { Answer } from "../../bindings/Answer";
 import type { PointerTarget } from "../../bindings/PointerTarget";
-import { MAX_TASK_STEPS } from "../state/turn";
+import { isBestGuess, MAX_TASK_STEPS } from "../state/turn";
 import type { TurnStatus } from "../types";
 import { CitationChip } from "./CitationChip";
 import { formatLatency, latencyBreakdown } from "./latency";
@@ -70,7 +70,9 @@ export function AnswerCard(props: AnswerCardProps) {
             Step {props.step} of {MAX_TASK_STEPS}
           </span>
         )}
-        {answer?.confidence === "bestGuess" && <span className="gc-chip gc-chip--guess">Best guess</span>}
+        {(answer?.confidence === "bestGuess" || (props.target && isBestGuess(props.target))) && (
+          <span className="gc-chip gc-chip--guess">Best guess</span>
+        )}
         <span className="gc-chip gc-chip--offline">Offline</span>
         <span className="gc-answer-actions">
           {STOPPABLE.includes(status) && (
@@ -85,8 +87,12 @@ export function AnswerCard(props: AnswerCardProps) {
       </div>
       <div className="gc-answer-body">
         <Body status={status} sentences={props.sentences} answer={answer} error={props.error} />
-        {props.screenHelp && props.target === null && answered && (
-          <p className="gc-caption">I couldn't point at anything on this screen.</p>
+        {props.screenHelp && answered && props.target === null && (
+          <p className="gc-caption">
+            {answer !== null && answer.screenMode === null
+              ? "I can't read this app's screen, so I can't point at anything here."
+              : "I couldn't point at anything on this screen."}
+          </p>
         )}
         {props.taskEnded && (
           <p className="gc-caption">

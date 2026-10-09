@@ -245,6 +245,10 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             }
         }
     }
+    // Nothing on screen could be read (no elements, no screenshot): no tier applies.
+    if screenshot.is_none() && snapshot.as_ref().is_some_and(|s| s.elements.is_empty()) {
+        mode = None;
+    }
     let mut transcribe_ms = None;
     let question = match request.input {
         AskInput::Text { text } => {

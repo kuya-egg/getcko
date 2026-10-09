@@ -12,7 +12,7 @@ import { Halo } from "./pointer/Halo";
 import { placeGecko, placePanel } from "./pointer/placement";
 import { SPRITE_COLS, SPRITE_ROWS } from "./pointer/sprite";
 import { coverMonitor, coverPrimaryMonitor, currentWorkArea, showOverlayOnce, useClickThrough } from "./pointer/window";
-import { geckoPose, initialOverlayState, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./state/turn";
+import { geckoPose, initialOverlayState, isBestGuess, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./state/turn";
 import type { GeckoPlacement, HaloVariant, Size, TurnStatus } from "./types";
 import { AnswerCard } from "./ui/AnswerCard";
 import { Composer } from "./ui/Composer";
@@ -171,7 +171,7 @@ export function Overlay() {
     facing: "right",
     scale: GECKO_SCALE,
   };
-  const haloVariant: HaloVariant = state.answer?.confidence === "bestGuess" ? "soft" : "exact";
+  const haloVariant: HaloVariant = target !== null && isBestGuess(target) ? "soft" : "exact";
   const nextSteps = nextTaskSteps(state);
 
   const closeComposerOnBackdrop = (e: PointerEvent<HTMLDivElement>) => {

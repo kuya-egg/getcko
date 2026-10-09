@@ -538,7 +538,8 @@ pub struct Answer {
     pub citations: Vec<Citation>,
     pub target: Option<PointerTarget>,
     pub confidence: Confidence,
-    /// `None` when screen help was off.
+    /// `None` when screen help was off or nothing on screen could be read
+    /// (no accessible elements and no screenshot).
     pub screen_mode: Option<ScreenMode>,
     pub latency: Latency,
 }

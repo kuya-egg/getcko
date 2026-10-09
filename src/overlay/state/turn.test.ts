@@ -71,6 +71,17 @@ describe("guided task (S5)", () => {
     expect(run([{ type: "dismiss" }], two).task).toEqual([]);
   });
 
+  it("does not name a best-guess point in the next step's context", () => {
+    const guess: PointerTarget = { ...target, elementId: null, label: "Best guess" };
+    const s = run([
+      askText("step 1"),
+      { type: "askResolved", turnId: 1 },
+      ev({ type: "target", turnId: 1, target: guess }),
+      ev({ type: "finished", answer: { ...answer(1, guess), question: "step 1", text: "answer 1" } }),
+    ]);
+    expect(nextTaskSteps(s)).toEqual([{ question: "step 1", answer: "answer 1", targetLabel: null }]);
+  });
+
   it("does not offer next for answers without screen help or before they finish", () => {
     const noScreen = run([
       { type: "asked", input: "text", screenHelp: false, question: "q", task: [] },

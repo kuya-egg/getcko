@@ -8,6 +8,7 @@ import type { TurnId } from "./TurnId";
 
 export type Answer = { turnId: TurnId, question: string, text: string, citations: Array<Citation>, target: PointerTarget | null, confidence: Confidence, 
 /**
- * `None` when screen help was off.
+ * `None` when screen help was off or nothing on screen could be read
+ * (no accessible elements and no screenshot).
  */
 screenMode: ScreenMode | null, latency: Latency, };

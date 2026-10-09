@@ -1,3 +1,4 @@
+import type { PointerTarget } from "../../bindings/PointerTarget";
 import type { TaskStep } from "../../bindings/TaskStep";
 import type { TurnEvent } from "../../bindings/TurnEvent";
 import type { TurnId } from "../../bindings/TurnId";
@@ -42,9 +43,15 @@ export function nextTaskSteps(state: OverlayState): TaskStep[] | null {
   const step: TaskStep = {
     question: state.answer.question,
     answer: state.answer.text,
-    targetLabel: state.target?.label ?? null,
+    // A best-guess point has no element name to carry into the next step's prompt.
+    targetLabel: state.target && !isBestGuess(state.target) ? state.target.label : null,
   };
   return [...state.task, step];
+}
+
+/** A tier-3 point read from a screenshot, not an element (known from the target event). */
+export function isBestGuess(target: PointerTarget): boolean {
+  return target.elementId === null;
 }
 
 function nextMinTurnId(state: OverlayState): TurnId {
