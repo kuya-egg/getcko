@@ -24,7 +24,7 @@ Implement the visible, click-through screen helper and streaming answer experien
 
 ### P1 — 1–4 AM
 6. Implement S5 “next”: continue task context for at most 5 steps with a fresh screen snapshot per step. Acceptance: after step 5, end the guided task and tell the user; retain prior task context only up to that limit. Use `screenSnapshot`, `ask`, `TurnEvent`.
-7. Render targetless answers honestly (“can’t read this app”) and S4 screenshot fallback as “best guess” when backend supplies `Confidence::BestGuess`; never draw a nonexistent target (BR-16, BR-18).
+7. Render screen tiers ([three tiers](../architecture.md#screen-understanding-three-tiers)): targetless answers honestly ("can't read this app"); `Answer.screenMode === "imageOnly"` / `Confidence` `bestGuess` shows a "best guess" label and a softer halo since there is no element box (BR-16, BR-18); `PointerTarget.elementId` may be `null` for tier-3 points. The core hides the `overlay` window for the instant of a screenshot and shows it again: do not re-show or re-position it yourself in response, and keep the gecko's state across the hide. Optionally show `Latency.captureMs` in the latency footer.
 
 ### P2
 8. If ahead, add configurable Windows Ctrl+Space shortcut preference while retaining the default parity mapping. Acceptance: shortcut changes only the trigger, not command/event behaviour; stop remains immediate (T3). Use `ask`, `stop` and global-shortcut plugin.
@@ -39,4 +39,4 @@ Implement the visible, click-through screen helper and streaming answer experien
 - [ ] Multi-monitor placement uses physical monitor bounds and CSS-relative target rect correctly.
 - [ ] Sprite states, halo, sentences, citation chips and measured latency respond to events.
 - [ ] Text/voice input and stop/hotkeys use shared commands on both OSes.
-- [ ] P1 “next” supports no more than 5 steps; fallback is labelled best guess.
+- [ ] P1 "next" supports no more than 5 steps; tier-3 answers are labelled best guess and survive the capture hide/show.

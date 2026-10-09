@@ -24,9 +24,14 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
 4. Add macOS `NSMicrophoneUsageDescription`. Ensure microphone permission denial appears as unavailable, without requesting unrelated permissions.
 
 ### P1 — 1–4 AM
-5. Add S4 screenshot fallback using Gemma vision/mmproj and Screen Recording permission only in a paired macOS+Windows `Platform` trait change. Acceptance: image answers are labelled “best guess”; empty AX trees still have P0 targetless answer behaviour. Coordinate the Windows implementation in the same PR.
+5. Build screen tiers 2 and 3 ([three tiers](../architecture.md#screen-understanding-three-tiers), S4) in one PR with the Windows engineer's `capture`:
+   - `Platform::capture` in `macos.rs` with ScreenCaptureKit (monitor containing the focused window, RGBA8 + `MonitorFrame`); `PermissionDenied(ScreenRecording)` when not granted.
+   - Engine vision: llama-cpp-2 `mtmd`, `ChatRequest.image`, mmproj file in `fetch-models.sh` + `tauri.models.conf.json` with SHA-256.
+   - Core: tier choice in `pipeline.rs`, hide `overlay` → capture → show, resize, numbered-box drawing with element IDs, `TARGET: x,y` parsing for tier 3 only, image px → `PointerTarget` with `elementId: null` and `Confidence::BestGuess`; add `Answer.screenMode`, `Latency.captureMs`; `GETCKO_SCREEN_MODE` override for benchmarks.
+   - Acceptance: tier 2 still answers with an element ID; tier 3 is labelled best guess; Screen Recording denied → tier 1 only, empty snapshot → targetless answer; regenerate `src/bindings` and tell both frontend engineers about the changed types.
 6. Add benchmark script and `docs/MODELS.md` with PRD latency table values measured over 10 runs on the demo Mac; include machine/model/date and method. Acceptance: median spoken-response ≤3 s target is reported honestly, with all latency figures reproducible (BR-24); do not publish estimates as measurements.
    Starting point measured on the M4 Pro (Oct 9, debug build, Metal): first launch of a new build loads models in ~16.6 s, ~15.9 s of it llama.cpp compiling its embedded Metal library; the next launch loaded in 0.87 s. First token 0.47–0.74 s for a ~420-token prompt (budget 0.3 s); full 55–63-token answer 1.1–1.3 s; top-5 retrieval 13–44 ms. Warm-launch the release build once before the pitch, investigate prompt-prefill cost (smaller snapshot, shorter system prompt) and record before/after numbers.
+   Include the [tier measurement protocol](../architecture.md#screen-understanding-three-tiers): 10 scripted tasks × 3 apps in each forced tier, accuracy and latency per tier; it decides whether tier 2 stays on.
 
 ### P2
 7. If ahead, benchmark exact-search vs `vector_quantize` on the demo library and record whether R7’s Recall@5 stays within a few points. Acceptance: publish no quantized-search quality claim without measured comparison; keep exact search as baseline.
@@ -42,5 +47,5 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
 - [ ] Permission prompts/statuses and microphone disclosure are in place.
 - [ ] Whisper model is verified by checksum and bundled; T1–T4 criteria recorded.
 - [ ] Shared whisper/tts implementations build and work on Windows too.
-- [ ] Any screenshot Platform method shipped with Windows implementation in same PR.
+- [ ] Tiers 2–3 shipped with the Windows `capture` in the same PR; tier measurements recorded in `docs/MODELS.md`.
 - [ ] Ten-run measured benchmark and `docs/MODELS.md` are reproducible.

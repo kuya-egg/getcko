@@ -24,7 +24,7 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 
 ### P1 — 1–4 AM
 4. Replace Unsupported extraction arms in `src-tauri/src/ingest.rs` for DOCX and PPTX (R6). Acceptance: imports use existing queued processing and live `document` events; preserve page/section location where available; DOCX/PPTX reaches Ready with extractable text; 20-page PDF remains Ready <60 s on M4 Pro (R1 baseline). Commands/events: `doc_import`, `onDocument`.
-5. Pair S4 screenshot fallback with macOS engineer in one trait-change PR; implement Windows capture using Screen Recording semantics appropriate to Windows while returning the same `ScreenSnapshot`/confidence contract. Acceptance: same “best guess” label and targetless behavior as macOS; no OS-only IPC.
+5. Implement `Platform::capture` in `windows.rs` for screen tiers 2 and 3 ([three tiers](../architecture.md#screen-understanding-three-tiers), S4), in the same PR as the macOS engineer's core and vision work. Use Windows.Graphics.Capture (or DXGI desktop duplication) for the monitor containing the focused window; return RGBA8, `width`, `height` and that monitor's `MonitorFrame` in desktop physical pixels. Do **not** use `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` to hide GetCko: it also hides GetCko from screen sharing (breaks BR-3); the core hides the overlay around the capture instead. Acceptance: same `ScreenCapture` contract and permission semantics as macOS (`ScreenRecording` → `NotRequired` unless capture is blocked by policy); a tier-3 point lands correctly on 100%/150%/200% scaled monitors; then run the tier measurement protocol on a Windows machine and add the Windows rows to `docs/MODELS.md`.
 6. Produce a Windows `bun run tauri:build` installer with models. Build prerequisites: MSVC Build Tools, Rust, bun, CMake, Vulkan SDK for GPU, Git Bash for `bun run models`. Verify on a Windows machine: Vulkan GPU path and CPU fallback both load the same model files; record actual logs and installer outcome.
 
 ### P2
@@ -40,6 +40,6 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 - [ ] Windows permissions and screen-reading behaviour match shared API semantics.
 - [ ] `cpal` microphone gives 16 kHz mono and works on both Windows and macOS.
 - [ ] DOCX and PPTX extractable text imports meet R6 and document status events.
-- [ ] Any screenshot capability addition includes both OS implementations in the same PR.
+- [ ] `capture` shipped in the same PR as the macOS side; Windows tier measurements recorded.
 - [ ] Windows installer bundles the same models; Vulkan and CPU fallback have recorded machine evidence.
 - [ ] Same acceptance scripts and parity checklist pass on Windows as on macOS.

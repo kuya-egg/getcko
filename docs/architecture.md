@@ -64,6 +64,33 @@ The `overlay` and `main` are Tauri window labels. Types crossing IPC are defined
 
 Engine and platform trait calls block. Run them on worker threads, never the async runtime. Keep at most one targeted element and ensure the panel does not cover it.
 
+## Screen understanding: three tiers
+
+The model points by **element ID** whenever it can. A small local model picks an ID from a list reliably, but guessing pixel coordinates is error-prone. Clicky (farzaa/clicky) is screenshot-only with `[POINT:x,y]` from Claude's computer-use model; that works for a cloud frontier model, not for Gemma 4 E2B. Screenshots are therefore *context* for hard screens, and coordinates are a last resort.
+
+| Tier | `ScreenMode` | When the core picks it | Model input | Model answers | Pointer | `Confidence` |
+|---|---|---|---|---|---|---|
+| 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 elements | Element list only | `TARGET: e12` | exact element bounds | `normal` |
+| 2 | `elementsWithImage` | Snapshot non-empty but fails the tier-1 test (unlabelled icons, look-alike cells) | Element list **plus** a screenshot with a numbered box drawn on every listed element, labelled with the same IDs | `TARGET: e12` | exact element bounds | `normal` |
+| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot only | `TARGET: 640,312` (image pixels) | point mapped to the monitor | `bestGuess` (BR-18) |
+
+Rules:
+- Screen Recording denied or no capture available → tier 1 only; an empty snapshot gives a targetless answer ("can't read this app"), never a guess.
+- Tiers 2 and 3 are chosen per question by the core (`pipeline.rs`), identically on both OSes; the UI never chooses.
+- GetCko's own windows must not appear in the screenshot. The core hides the `overlay` window, captures, then shows it again (same code on both OSes; no OS-specific capture exclusion, which on Windows would also hide GetCko from screen sharing and break BR-3).
+- Benchmark override: `GETCKO_SCREEN_MODE=elements|elementsWithImage|imageOnly` forces a tier for measurement only.
+
+Contract additions (one PR containing both OS implementations, per the parity rule):
+
+| Piece | Addition | Owner |
+|---|---|---|
+| `Platform` trait | `fn capture(&self) -> Result<ScreenCapture, PlatformError>`: RGBA8 pixels of the monitor containing the focused window, `width`, `height`, and that monitor's `MonitorFrame` (desktop physical px). `PermissionDenied(ScreenRecording)` when not granted. | macOS engineer (`macos.rs`, ScreenCaptureKit), Windows engineer (`windows.rs`, Windows.Graphics.Capture or DXGI duplication) |
+| Engine | llama-cpp-2 `mtmd` feature; `ChatRequest.image: Option<&EncodedImage>`; `mmproj-gemma-4-E2B-it-Q8_0.gguf` (557 MB) added to `scripts/fetch-models.sh` and `tauri.models.conf.json` | macOS engineer |
+| Core | Tier choice, resize to the model's image size, numbered-box drawing (set-of-mark), coordinate mapping image px → monitor → `PointerTarget`; parser accepts `TARGET: x,y` only in tier 3 | macOS engineer |
+| IPC types | `PointerTarget.elementId` becomes `string \| null` (null for tier-3 points); `Answer.screenMode: ScreenMode`; `Latency.captureMs` | macOS engineer; consumed by frontend |
+
+Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 scripted tasks × 3 demo apps, each run in all three forced tiers, on the demo Mac and on a Windows machine. Record per tier: correct element out of 10 (target ≥ 8/10, S2), first-token and total latency (budget ≈ 3 s end to end), into `docs/MODELS.md`. Tier 2 stays enabled only if it raises accuracy on the screens that trigger it without breaking the budget; otherwise those screens fall back to tier 1.
+
 ## Cross-platform parity
 
 macOS and Windows expose identical commands and behaviour. OS code lives only in `src-tauri/src/platform/macos.rs` and `windows.rs`, implementing the same `Platform` trait; both implementations pass `platform::conformance`. Any trait or IPC contract change updates both OS sides in the same PR. `whisper-rs`, `tts`, and `cpal` are cross-platform and used identically on both systems. llama.cpp uses Metal on macOS, Vulkan on Windows, automatic CPU fallback on both, and the same model files. No OS-only command or behaviour is permitted.
@@ -74,6 +101,7 @@ macOS and Windows expose identical commands and behaviour. OS code lives only in
 |---|---:|---|
 | `gemma-4-E2B-it-Q4_0.gguf` | 2.8 GB | Chat, target selection; vision fallback when enabled |
 | `embeddinggemma-300M-Q8_0.gguf` | 0.33 GB | Local embeddings, 256 dimensions |
+| `mmproj-gemma-4-E2B-it-Q8_0.gguf` (planned, tiers 2–3) | 0.56 GB | Gemma 4 E2B vision projector for screenshots |
 
 `bun run models` fetches and SHA-256 verifies models using `scripts/fetch-models.sh`. Development uses `src-tauri/models/`; release bundles models via `bun run tauri:build` and `src-tauri/tauri.models.conf.json`. `GETCKO_MODELS_DIR` overrides model location. Nothing downloads at runtime; the only network use is explicit model setup.
 
