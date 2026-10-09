@@ -1,0 +1,18 @@
+A high-fidelity website design comp: the settled first viewport of a desktop landing page (1440px wide, a website screenshot, NOT a poster) for "GetCko", a private desktop AI copilot.
+LAYOUT (centered, symmetric, calm):
+- Slim white nav: left ink rounded-square app icon with the pixel gecko head + wordmark "GetCko"; right links "How it works", "Agents", "Privacy" and an ink button "Watch the demo".
+- TOP CENTER: huge black display headline on ONE line "Your manual. Your screen."; centered gray subline "One gecko in between. Every model runs on your laptop."; centered ink button "▶ Watch the 1-min demo".
+- BELOW, centered as a pair on a shared baseline: the gecko sprite (about 380px tall) slightly left of center, pointing up-right at ONE small straight macOS window just to its right titled "Student Record" with two rows "Student  Cruz, Juan" and "Final grade  [ empty field ]"; the empty field wears a crisp 3px sun-yellow #FFC83D halo.
+THE GECKO: the attached reference image is the EXACT mascot sprite. Reproduce it pixel-for-pixel (same 22x27 pixel grid, same pose: standing, one small arm raised pointing up-right, tail curling at bottom-left, big square white eyes with black pupils, flat smile, pink cheek, mint belly), only scaled up as a whole with hard square pixel edges. Do NOT redraw it, do NOT change its pose, proportions, mouth, or add pixels. Exactly one gecko.
+DECLUTTER RULES: this hero has at most THREE things: the headline block, the gecko, and its single target. No manual card, no answer card, no extra panels, no decorative pixels lying around. Huge calm white space. Everything straight.
+DESIGN SYSTEM (binding, do not deviate):
+- Page ground is pure flat white #FFFFFF. Secondary wells #F6F7F4. Hairline borders 1px #E6E8E3. Text near-black ink #0E0F0C, secondary text #4A4D46.
+- ONE accent: gecko green #39D86F, used only as solid fills (the mascot body, a small live dot, an icon-button fill). Green text is the darker #0F7A3D (links, citation chips with 1.5px #0F7A3D outline).
+- Sun yellow #FFC83D appears ONLY as a single crisp 3px ring/halo around the ONE element the gecko is pointing at. Nowhere else.
+- Absolutely NO gradients, NO glows, NO glassmorphism, NO neon, NO 3D renders, NO dark mode page, NO purple/blue. Flat, crisp, calm, generous white space. Shadows are very soft and subtle only on floating cards.
+- Typography: display headlines in Bricolage Grotesque ExtraBold (chunky, slightly quirky grotesque, very tight letter spacing); UI text in Geist (clean neo-grotesque); numbers and shortcuts in Geist Mono; one tiny pixel-font badge (Silkscreen) only for "Gets mo na." near the mascot.
+- Buttons: primary = solid ink #0E0F0C fill, white text, 14px rounded corners, can hold a small dark keycap. Secondary = white with 2px ink border. Chips are pills.
+- Mascot "GetCko": a flat 2D PIXEL-ART gecko made of chunky perfectly square pixels, thick black pixel outline, bright green #39D86F body, light green highlight, pale mint belly, small pink cheek, two big white square eyes with black pupils, standing upright and pointing up-right with one little arm. Crisp hard pixel edges, no anti-aliasing, no shading gradients. Only ONE gecko visible per screen.
+- Signature motion idea of this page is MORPHING: things dissolve into square pixels and reassemble as something else (shown frozen mid-morph as a stream/cascade of crisp square pixel blocks).
+- Overall feel: as playful and confident as the "Not Boring Software" (notbor.ing) website, but executed with this restrained white + ink + one-green system. Award-winning marketing site craft.
+- Copy must be real and legible. Do not invent testimonials, customer logos, prices, star ratings, or statistics. Brand name is "GetCko".
