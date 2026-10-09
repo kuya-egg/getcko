@@ -91,7 +91,13 @@ fn runtime_error(error: impl std::fmt::Display) -> EngineError {
     EngineError::Runtime(error.to_string())
 }
 fn threads() -> i32 {
-    std::thread::available_parallelism().map_or(1, |n| i32::try_from(n.get()).unwrap_or(i32::MAX))
+    let logical =
+        std::thread::available_parallelism().map_or(1, |n| i32::try_from(n.get()).unwrap_or(i32::MAX));
+    // On Windows laptops (4 cores, 8 threads) more CPU threads did not speed up GPU
+    // prompt reading, but they starved the speech helper running at the same time.
+    #[cfg(target_os = "windows")]
+    let logical = logical.min(4);
+    logical
 }
 
 fn load_model(rt: &Runtime, path: &Path, layers: u32) -> EngineResult<LlamaModel> {

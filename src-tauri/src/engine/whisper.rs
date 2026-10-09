@@ -126,7 +126,15 @@ impl Transcriber for WhisperTranscriber {
             let Some(helper) = process.as_mut() else {
                 continue;
             };
-            match Self::request(helper, pcm, hint) {
+            let started = std::time::Instant::now();
+            let reply = Self::request(helper, pcm, hint);
+            tracing::debug!(
+                audio_s = pcm.len() as f64 / 16_000.0,
+                hint_chars = hint.chars().count(),
+                elapsed_ms = started.elapsed().as_millis(),
+                "speech helper transcribed"
+            );
+            match reply {
                 Ok(Ok(text)) => return Ok(text),
                 Ok(Err(message)) => return Err(EngineError::Runtime(message)),
                 Err(error) => {
@@ -136,6 +144,42 @@ impl Transcriber for WhisperTranscriber {
             }
         }
         Err(EngineError::Runtime("speech helper keeps failing".into()))
+    }
+}
+
+/// The user waits on every transcription: keep Windows from treating the helper (a
+/// windowless child of an app that is usually in the background) as background work.
+/// It opts out of power throttling (Efficiency mode lowers its clock speed) and runs
+/// above normal priority, so it is not starved while the model reads the screen.
+#[cfg(windows)]
+fn keep_responsive(child: &std::process::Child) {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Threading::{
+        ABOVE_NORMAL_PRIORITY_CLASS, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+        ProcessPowerThrottling, SetPriorityClass, SetProcessInformation,
+    };
+    let process = HANDLE(child.as_raw_handle());
+    let state = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        StateMask: 0,
+    };
+    // SAFETY: `process` is the live child's handle; `state` is a valid struct of the
+    // size passed. Failures only leave the defaults in place.
+    unsafe {
+        if let Err(error) = SetProcessInformation(
+            process,
+            ProcessPowerThrottling,
+            (&raw const state).cast(),
+            size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+        ) {
+            tracing::debug!(%error, "speech helper keeps power throttling");
+        }
+        if let Err(error) = SetPriorityClass(process, ABOVE_NORMAL_PRIORITY_CLASS) {
+            tracing::debug!(%error, "speech helper keeps normal priority");
+        }
     }
 }
 
@@ -158,6 +202,8 @@ fn spawn(helper: &Path, model: &Path) -> EngineResult<Helper> {
     let mut child = command
         .spawn()
         .map_err(|error| EngineError::Runtime(format!("starting speech helper: {error}")))?;
+    #[cfg(windows)]
+    keep_responsive(&child);
     let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
         let _ = child.kill();
         return Err(EngineError::Runtime(

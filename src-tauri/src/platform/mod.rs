@@ -75,6 +75,13 @@ pub trait Platform: Send + Sync {
     /// [`PlatformError::Unavailable`] where capture is not implemented.
     fn capture(&self) -> Result<ScreenCapture, PlatformError>;
 
+    /// Whether [`Platform::capture`] would show GetCko's own windows lying over the
+    /// target, so the caller must hide them around it. `false` lets the overlay stay
+    /// on screen (no flicker) when capture takes the target window alone.
+    fn capture_shows_own_windows(&self) -> bool {
+        true
+    }
+
     /// Text the OS reads in `capture` (tier 3: screens without accessible elements).
     /// Bounds are desktop physical pixels, like [`ScreenElement::bounds`]. On-device
     /// only (macOS Vision; Windows `Windows.Media.Ocr`).

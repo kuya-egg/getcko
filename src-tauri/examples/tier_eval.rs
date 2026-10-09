@@ -663,7 +663,7 @@ fn aim_like_app<'a>(
 ) -> Aim<'a> {
     let body = turn.body(question);
     let actions = if pipeline::plans(mode) {
-        let actions = pipeline::plan(chat, &turn.system, &body, &|| true).expect("plan pass");
+        let actions = pipeline::plan(chat, turn, &body, shot, &|| true).expect("plan pass");
         pipeline::without_done(actions, screen)
     } else {
         Vec::new()

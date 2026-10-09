@@ -26,6 +26,28 @@ pub mod whisper;
 use std::path::Path;
 use std::sync::Arc;
 
+/// Free physical memory needed to run the speech helper next to the chat model: its
+/// ~1.2 GB (Whisper small.en and buffers) plus room for the rest of the system.
+const WHISPER_MIN_FREE: u64 = 2 << 30;
+
+/// Physical memory free now, where the OS reports it.
+fn available_memory() -> Option<u64> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        let mut status = MEMORYSTATUSEX {
+            dwLength: size_of::<MEMORYSTATUSEX>() as u32,
+            ..Default::default()
+        };
+        // SAFETY: `status` is a valid MEMORYSTATUSEX with its length set.
+        unsafe { GlobalMemoryStatusEx(&raw mut status) }.ok()?;
+        Some(status.ullAvailPhys)
+    }
+    // macOS: unified memory with compression; the helper is not paged out there.
+    #[cfg(not(windows))]
+    None
+}
+
 use crate::error::{AppError, ErrorKind};
 use crate::model::{ComponentStatus, EngineComponent, Voice};
 
@@ -275,8 +297,24 @@ impl Engine {
         // The same loaded Gemma serves chat and, when its projector loaded, speech-to-text.
         // Whisper small.en in its helper process (MODELS.md: ~0.2 s per clip vs
         // 440-670 ms for Gemma's audio encoder; base.en garbled accented English); Gemma when the helper or its model is missing.
-        let whisper = whisper::WhisperTranscriber::locate_helper()
-            .ok_or_else(|| "speech helper not built (scripts/build-whisper.sh)".to_owned())
+        // On a machine short of RAM the helper's ~1.2 GB is paged out between questions
+        // and every transcription reloads it from disk (Iris Xe laptop, 16 GB: 2 s of
+        // speech took 33 s at 400 MB free). Gemma, already loaded, transcribes instead.
+        let low_memory = chat.as_ref().is_ok_and(|model| model.supports_audio())
+            && available_memory().is_some_and(|free| free < WHISPER_MIN_FREE);
+        let whisper = (!low_memory)
+            .then_some(())
+            .ok_or_else(|| {
+                format!(
+                    "not enough free memory for the speech helper ({} MB free, {} MB needed)",
+                    available_memory().unwrap_or(0) >> 20,
+                    WHISPER_MIN_FREE >> 20
+                )
+            })
+            .and_then(|()| {
+                whisper::WhisperTranscriber::locate_helper()
+                    .ok_or_else(|| "speech helper not built (scripts/build-whisper.sh)".to_owned())
+            })
             .and_then(|helper| {
                 whisper::WhisperTranscriber::start(
                     &helper,

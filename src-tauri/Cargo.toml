@@ -90,6 +90,7 @@ windows = { version = "0.62", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Ole",
   "Win32_System_Registry",
+  "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_System_Variant",
   "Win32_System_WinRT",
@@ -109,6 +110,11 @@ tempfile = "3"
 [profile.dev.package."*"]
 # llama.cpp and sqlite are unusably slow unoptimised; our own crate stays debuggable.
 opt-level = 3
+
+[profile.dev.package.getcko]
+# Light optimisation keeps it debuggable while the per-pixel screenshot work
+# (capture conversion, resize, marks) stops taking seconds in `tauri dev`.
+opt-level = 1
 
 [profile.release]
 codegen-units = 1

@@ -171,6 +171,12 @@ impl Platform for WindowsPlatform {
         })
     }
 
+    fn capture_shows_own_windows(&self) -> bool {
+        // A target window is captured on its own; only the whole-monitor capture (no
+        // app window, just the desktop) would include the overlay.
+        topmost_window(std::process::id()).is_none()
+    }
+
     fn recognize_text(&self, capture: &ScreenCapture) -> Result<Vec<TextBox>, PlatformError> {
         let (width, height) = (capture.width as usize, capture.height as usize);
         if width == 0 || height == 0 || capture.rgba.len() != width * height * 4 {

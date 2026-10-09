@@ -97,6 +97,19 @@ pub enum PrepareFor {
 }
 
 static VOICE_PRESSES: AtomicU64 = AtomicU64::new(0);
+/// The push-to-talk press whose screen is being read right now (0: none).
+static READING_PRESS: AtomicU64 = AtomicU64::new(0);
+/// How long a voice turn waits for its press's screen read to finish instead of
+/// reading the screen again (a new screenshot would be encoded again: seconds).
+const PREPARED_WAIT: Duration = Duration::from_secs(4);
+
+/// Marks a press's screen read as running until dropped.
+struct Reading(u64);
+impl Drop for Reading {
+    fn drop(&mut self) {
+        let _ = READING_PRESS.compare_exchange(self.0, 0, Ordering::SeqCst, Ordering::SeqCst);
+    }
+}
 
 /// Numbers a push-to-talk press; only the newest press's prepared screen is used.
 pub fn next_voice_prepare() -> u64 {
@@ -123,7 +136,7 @@ fn read_screen(
     grounder: bool,
 ) -> ScreenRead {
     let mut read = ScreenRead {
-        mode: Some(screen_mode(snapshot)),
+        mode: Some(within_budget(screen_mode(snapshot))),
         ..ScreenRead::default()
     };
     if let Some(wanted) = read.mode
@@ -163,6 +176,37 @@ fn read_screen(
 
 /// A prepared screen older than this is re-read instead.
 const PREPARED_MAX_AGE: Duration = Duration::from_secs(60);
+
+/// Longest a screenshot may take to evaluate for tier 2 to stay on (architecture:
+/// tier 2 stays enabled only without breaking the ~3 s budget; otherwise those screens
+/// fall back to tier 1). Tier 2 matched tier 1's accuracy on the regression set.
+const TIER2_BUDGET_MS: u32 = 3_000;
+/// Time the last screenshot took to evaluate on this machine (0: not measured yet).
+static SCREENSHOT_COST_MS: AtomicU32 = AtomicU32::new(0);
+
+/// Records how long evaluating a screenshot took (push-to-talk prefill).
+fn note_screenshot_cost(elapsed_ms: u32) {
+    let before = SCREENSHOT_COST_MS.swap(elapsed_ms, Ordering::SeqCst);
+    if before <= TIER2_BUDGET_MS && elapsed_ms > TIER2_BUDGET_MS {
+        tracing::info!(
+            elapsed_ms,
+            budget_ms = TIER2_BUDGET_MS,
+            "screenshots are too slow on this machine; tier 2 screens use the element list"
+        );
+    }
+}
+
+/// `mode`, with tier 2 replaced by tier 1 once a screenshot is known to take longer
+/// than [`TIER2_BUDGET_MS`] here (an Intel Iris Xe takes ~6 s at 1024 px). A forced
+/// `GETCKO_SCREEN_MODE` is kept.
+fn within_budget(mode: ScreenMode) -> ScreenMode {
+    let slow = SCREENSHOT_COST_MS.load(Ordering::SeqCst) > TIER2_BUDGET_MS;
+    if mode == ScreenMode::ElementsWithImage && slow && std::env::var("GETCKO_SCREEN_MODE").is_err() {
+        ScreenMode::Elements
+    } else {
+        mode
+    }
+}
 /// Element ids are a few tokens; the grammar ends the reply after one.
 const TARGET_MAX_TOKENS: u32 = 8;
 /// `[yyyy, xxxx]` can take one token per character; the grammar ends it sooner.
@@ -186,6 +230,13 @@ fn has_grounder(state: &AppState) -> bool {
 /// composer, or the release of its mic button, to another window. Runs while the
 /// user speaks or types; failures only cost that head start.
 pub fn prepare_turn(app: &tauri::AppHandle, state: &AppState, purpose: PrepareFor) {
+    let _reading = match purpose {
+        PrepareFor::Voice(press) => {
+            READING_PRESS.store(press, Ordering::SeqCst);
+            Some(Reading(press))
+        }
+        PrepareFor::Typing => None,
+    };
     let snapshot = match state
         .platform
         .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
@@ -197,57 +248,69 @@ pub fn prepare_turn(app: &tauri::AppHandle, state: &AppState, purpose: PrepareFo
         }
     };
     let taken = Instant::now();
-    let screen = (matches!(purpose, PrepareFor::Voice(_)) && !overlay_focused(app))
-        .then(|| read_screen(app, state.platform.as_ref(), &snapshot, has_grounder(state)));
-    let shot = screen.as_ref().and_then(|s| s.shot.clone());
-    if let PrepareFor::Voice(press) = purpose
-        // A newer press has started reading the screen: this one is out of date.
-        && press == VOICE_PRESSES.load(Ordering::SeqCst)
-        && let Ok(mut prepared) = state.prepared.lock()
-    {
-        *prepared = Some(PreparedScreen {
-            taken,
-            press,
-            snapshot: snapshot.clone(),
-            screen,
-        });
-    }
-    // Pressing again while this one read the screen: only the newest press is evaluated
-    // (each evaluation holds the model for seconds on a laptop GPU).
-    if let PrepareFor::Voice(press) = purpose
-        && press != VOICE_PRESSES.load(Ordering::SeqCst)
-    {
-        return;
-    }
-    let prefilled = (|| -> AppResult<()> {
-        let agent = state
-            .store
-            .active_agent()?
-            .ok_or_else(|| AppError::invalid("no active agent"))?;
-        let engine = state
-            .engine
-            .get()
-            .ok_or_else(|| AppError::unavailable("models are loading"))?;
-        let chat = engine
-            .chat
-            .as_ref()
-            .ok_or_else(|| AppError::unavailable("chat model is not available"))?;
-        let turn = TurnPrompt::new(&agent.draft, Some(&snapshot), &[]);
-        chat.prefill(&ChatRequest {
+    // Only the newest press is evaluated (each evaluation holds the model for seconds
+    // on a laptop GPU); a composer prepare always is.
+    let current = || match purpose {
+        PrepareFor::Voice(press) => press == VOICE_PRESSES.load(Ordering::SeqCst),
+        PrepareFor::Typing => true,
+    };
+    let chat = state.engine.get().and_then(|engine| engine.chat.clone());
+    let agent = state.store.active_agent().ok().flatten();
+    let turn = agent.map(|agent| TurnPrompt::new(&agent.draft, Some(&snapshot), &[]));
+    let prefill = |shot: Option<&Prepared>| {
+        let (Some(chat), Some(turn)) = (chat.as_ref(), turn.as_ref()) else {
+            tracing::debug!("prompt not prefilled: no model or no active agent");
+            return;
+        };
+        let request = ChatRequest {
             system: &turn.system,
             user: turn.warm_user(),
             max_tokens: turn.max_tokens,
             grammar: None,
-            image: shot.as_ref().map(|s| ImagePart {
+            image: shot.map(|s| ImagePart {
                 image: &s.image,
                 text_after: "",
             }),
-        })
-        .map_err(AppError::from)
-    })();
-    if let Err(error) = prefilled {
-        tracing::debug!(error = %error.message, "prompt not prefilled");
-    }
+        };
+        if let Err(error) = chat.prefill(&request) {
+            tracing::debug!(%error, "prompt not prefilled");
+        }
+    };
+    // The capture hides the overlay only where it would show it; hiding a focused
+    // overlay would send the user's keys or button release elsewhere.
+    let take_shot = matches!(purpose, PrepareFor::Voice(_))
+        && !(overlay_focused(app) && state.platform.capture_shows_own_windows());
+    std::thread::scope(|scope| {
+        // The screenshot (capture, resize, marks) is taken while the model reads the
+        // element list, and handed to the turn as soon as it exists.
+        let reader = scope.spawn(|| {
+            let screen = take_shot
+                .then(|| read_screen(app, state.platform.as_ref(), &snapshot, has_grounder(state)));
+            let shot = screen.as_ref().and_then(|s| s.shot.clone());
+            if let PrepareFor::Voice(press) = purpose
+                && current()
+                && let Ok(mut prepared) = state.prepared.lock()
+            {
+                *prepared = Some(PreparedScreen {
+                    taken,
+                    press,
+                    snapshot: snapshot.clone(),
+                    screen,
+                });
+            }
+            shot
+        });
+        if current() {
+            prefill(None);
+        }
+        let shot = reader.join().ok().flatten();
+        // Then the screenshot on top of the element list already in the cache.
+        if shot.is_some() && current() {
+            let encoding = Instant::now();
+            prefill(shot.as_ref());
+            note_screenshot_cost(ms(encoding));
+        }
+    });
 }
 
 pub fn run_turn(
@@ -364,6 +427,21 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     // A voice turn uses the screen read (and evaluated) when its push-to-talk press
     // started. Anything else reads the screen now; the prompt prefix evaluated when
     // the composer opened is reused from the cache if the screen did not change.
+    if matches!(request.input, AskInput::Voice) {
+        // The press's screen may still be being read (capture, resize): wait for it
+        // rather than taking a second screenshot that would be encoded again.
+        let press = VOICE_PRESSES.load(Ordering::SeqCst);
+        let waited = Instant::now();
+        while READING_PRESS.load(Ordering::SeqCst) == press
+            && !state
+                .prepared
+                .lock()
+                .is_ok_and(|p| p.as_ref().is_some_and(|p| p.press == press))
+            && waited.elapsed() < PREPARED_WAIT
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     let prepared = state
         .prepared
         .lock()
@@ -518,9 +596,10 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     let step = guide_step(
         state,
         chat.as_ref(),
-        &turn.system,
+        &turn,
         &body,
         snapshot.as_ref(),
+        screenshot.as_ref(),
         request.next_step.unwrap_or(false).then(|| {
             resume
                 .as_ref()
@@ -708,6 +787,9 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         ?confidence,
         pointed = target.is_some(),
         capture_ms,
+        transcribe_ms,
+        // From the question known (after speech-to-text) to the first answer word.
+        first_token_ms,
         total_ms = ms(started),
         "turn finished"
     );
@@ -862,20 +944,35 @@ pub fn aim_step<'a>(
 
 /// Plan pass (PRD S5): the actions that answer `body`'s question, in plain words and
 /// in order ([`prompt::PLAN_TASK`]); empty when the question needs no actions.
+///
+/// With `shot` the screenshot follows the screen context as in every other pass, so
+/// the plan reuses the screenshot evaluated at push-to-talk and leaves it cached for
+/// the target and answer passes (text-only, it overwrote the cached image and the
+/// target pass encoded it again: ~6 s on an Intel Iris Xe).
 pub fn plan(
     chat: &dyn ChatModel,
-    system: &str,
+    turn: &TurnPrompt,
     body: &str,
+    shot: Option<&Prepared>,
     keep_going: &dyn Fn() -> bool,
 ) -> AppResult<Vec<String>> {
+    // A replaced turn stops before reading its prompt: evaluating it is the
+    // expensive part (seconds on a laptop GPU) and would evict the newer turn's cache.
+    if !keep_going() {
+        return Ok(Vec::new());
+    }
     let mut reply = String::new();
+    let (user, after) = split_at_image(turn, body, prompt::PLAN_TASK, shot.is_some());
     chat.generate(
         &ChatRequest {
-            system,
-            user: &format!("{body}{}", prompt::PLAN_TASK),
+            system: &turn.system,
+            user: &user,
             max_tokens: prompt::PLAN_MAX_TOKENS,
             grammar: None,
-            image: None,
+            image: shot.map(|s| ImagePart {
+                image: &s.image,
+                text_after: &after,
+            }),
         },
         &mut |piece| {
             reply.push_str(piece);
@@ -934,9 +1031,10 @@ pub fn without_done(actions: Vec<String>, screen: &ScreenSnapshot) -> Vec<String
 fn guide_step(
     state: &AppState,
     chat: &dyn ChatModel,
-    system: &str,
+    turn: &TurnPrompt,
     body: &str,
     screen: Option<&ScreenSnapshot>,
+    shot: Option<&Prepared>,
     next: Option<Option<(&str, usize)>>,
     plan_on: bool,
     keep_going: &dyn Fn() -> bool,
@@ -966,7 +1064,7 @@ fn guide_step(
         let Some((original, before)) = resume.filter(|_| plan_on) else {
             return Ok(None);
         };
-        let planned = plan(chat, system, original, keep_going)?;
+        let planned = plan(chat, turn, original, shot, keep_going)?;
         if planned.is_empty() {
             return Ok(None);
         }
@@ -992,7 +1090,7 @@ fn guide_step(
     if !plan_on {
         return Ok(None);
     }
-    let actions = not_done(plan(chat, system, body, keep_going)?);
+    let actions = not_done(plan(chat, turn, body, shot, keep_going)?);
     if actions.len() < 2 {
         return Ok(None);
     }
@@ -1206,6 +1304,11 @@ fn target_reply(
     shot: Option<&Prepared>,
     keep_going: &dyn Fn() -> bool,
 ) -> AppResult<String> {
+    // A replaced turn stops before reading its prompt: evaluating it is the
+    // expensive part (seconds on a laptop GPU) and would evict the newer turn's cache.
+    if !keep_going() {
+        return Ok(String::new());
+    }
     let mut reply = String::new();
     let (user, after) = split_at_image(turn, body, task, shot.is_some());
     chat.generate(
@@ -1383,9 +1486,12 @@ fn capture_screen(
     // One capture at a time: a second one would show the overlay again mid-capture.
     static CAPTURE: Mutex<()> = Mutex::new(());
     let _one = CAPTURE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Hidden only when the capture would show it (Windows captures the target window
+    // alone); hiding takes it off screen for the whole capture.
     let overlay = app
         .get_webview_window("overlay")
-        .filter(|w| w.is_visible().unwrap_or(false));
+        .filter(|w| w.is_visible().unwrap_or(false))
+        .filter(|_| platform.capture_shows_own_windows());
     if let Some(window) = &overlay {
         if let Err(error) = window.hide() {
             tracing::warn!(%error, "could not hide the overlay for capture");
@@ -1506,6 +1612,16 @@ pub fn stop(state: &AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn slow_screenshots_turn_tier_2_into_tier_1() {
+        assert_eq!(within_budget(ScreenMode::ElementsWithImage), ScreenMode::ElementsWithImage);
+        note_screenshot_cost(TIER2_BUDGET_MS + 1);
+        assert_eq!(within_budget(ScreenMode::ElementsWithImage), ScreenMode::Elements);
+        // Tier 3 has no element list to fall back to; tier 1 stays tier 1.
+        assert_eq!(within_budget(ScreenMode::ImageOnly), ScreenMode::ImageOnly);
+        assert_eq!(within_budget(ScreenMode::Elements), ScreenMode::Elements);
+        note_screenshot_cost(0);
+    }
     #[test]
     fn screenshot_follows_the_screen_context() {
         let agent = crate::templates::get(TemplateId::OfficeHelper).draft;
