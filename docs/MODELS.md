@@ -160,4 +160,25 @@ An earlier survey over 15 apps (Safari, Chrome, Finder, Calculator, TextEdit, Sy
 
    Remaining misses: empty grade fields have no text, so the model points at the column header ("Q1") instead of the cell; TextEdit's toolbar is icons (Vision reads B I U S as one "BIUS" box; alignment and list buttons have no text). Icons need a GUI grounding model (e.g. UI-TARS-2B, Apache-2.0, GGUF) — not bundled.
 23. **Text recognition loads its model on first use:** 28 s for the first call in a cold system, ~110 ms after. GetCko warms it up at startup on a 64×32 blank image (`pipeline::warm_up_text_recognition`).
+24. **Grounding model head-to-head (tier 3): Qwen3-VL-2B wins, not bundled.** Both run as a separate llama.cpp model (`engine::grounder::LlamaGrounder`, ChatML prompt, reply parsed as `(x, y)` on 0–1000; both models use that order, checked on a synthetic two-square image). The harness loads one with `GETCKO_GROUNDER=ui-tars|qwen3-vl`; the app does not. Same 30 questions, forced tier 3:
+
+| Setup | Chrome | Finder | TextEdit | Total | Target pass |
+|---|---|---|---|---|---|
+| Text first (finding 22) | 5 | 8 | 2 | 15/30 | ~1 s |
+| UI-TARS-2B-SFT Q4_K_M alone | 2 | 6 | 1 | 9/30 | ~165 ms |
+| **Qwen3-VL-2B-Instruct Q4_K_M alone** | 8 | 7 | 4 | **19/30** | ~215 ms |
+| Text first, then UI-TARS | 6 | 8 | 2 | 16/30 | ~1 s |
+| Text first, then Qwen3-VL | 6 | 8 | 2 | 16/30 | ~1 s |
+
+   Text first, then grounder barely helps: Gemma almost always picks some text box (often the wrong one, e.g. "BIUS"), so the grounder seldom runs. With a grounder, `pipeline::aim` therefore asks it first, on an unmarked screenshot. A rerun reproduced Qwen3-VL's Chrome 8/10 and TextEdit 4/10.
+
+| Cost (M-series, Metal, files in page cache) | Qwen3-VL-2B | UI-TARS-2B |
+|---|---|---|
+| Files (model + projector) | 1,056 + 424 MB = 1.48 GB | 1,065 + 1,269 MB = 2.33 GB |
+| Load | 0.4–0.8 s | 1.0–1.5 s |
+| First point after load / warm point | 1.3 s / ~0.2 s | 2.5 s / ~0.2 s |
+| Physical footprint added, idle / after a point | +0.9 / +1.0 GB | +1.5 / +1.6 GB |
+
+   Gemma alone is ~0.9 GB physical footprint (RSS 3.5 GB counts mmapped weights). Dropping a grounder returns its memory. Cold-disk load is unmeasured.
+25. **Qwen3-VL-2B cannot replace Gemma.** On the demo class record both pick the right field and cite both passages, but Qwen3-VL's Taglish is broken ("kung kaya magbigay ngayon ngayon … sumbaga sa na pagkakasunod") and it repeats role names ("textField"); its English is fine. It also has no audio input, so speech-to-text would still need Gemma.
 
