@@ -651,7 +651,7 @@ fn finder_folder() -> PathBuf {
 }
 
 /// The app's target pass for a new question (`pipeline::run`): with an element list, a
-/// guided-task plan of two or more actions points at its first action.
+/// guided-task plan of two or more actions not yet done points at its first action.
 fn aim_like_app<'a>(
     chat: &dyn ChatModel,
     turn: &TurnPrompt,
@@ -663,7 +663,8 @@ fn aim_like_app<'a>(
 ) -> Aim<'a> {
     let body = turn.body(question);
     let actions = if pipeline::plans(mode) {
-        pipeline::plan(chat, &turn.system, &body, &|| true).expect("plan pass")
+        let actions = pipeline::plan(chat, &turn.system, &body, &|| true).expect("plan pass");
+        pipeline::without_done(actions, screen)
     } else {
         Vec::new()
     };

@@ -16,7 +16,7 @@ use getcko_lib::{
         ChatModel, ChatRequest, Flow,
         llama::{LlamaChat, Runtime},
     },
-    model::{Rect, ScreenElement, ScreenMode, ScreenSnapshot, TaskStep, TemplateId},
+    model::{AgentDraft, Rect, ScreenElement, ScreenMode, ScreenSnapshot, TaskStep, TemplateId},
     pipeline::{self, Aim},
     prompt::{self, AnswerParser, Pointed, TurnPrompt},
     templates,
@@ -125,7 +125,10 @@ const TASKS: &[Task] = &[
     },
 ];
 
+/// The screen before step `step` (0-based): steps before it are done, so the fields
+/// they filled hold a value and the boxes they ticked are on, as the app reads them.
 fn screen(task: &Task, step: usize) -> ScreenSnapshot {
+    let done = &task.steps[..step.min(task.steps.len())];
     ScreenSnapshot {
         app_name: task.app.into(),
         window_title: Some(task.app.into()),
@@ -137,9 +140,16 @@ fn screen(task: &Task, step: usize) -> ScreenSnapshot {
                 id: format!("e{}", i + 1),
                 role: (*role).into(),
                 label: (*label).into(),
-                value: (*label == "Display")
-                    .then(|| task.display.get(step).map(|v| (*v).to_owned()))
-                    .flatten(),
+                value: match *role {
+                    "text" if *label == "Display" => {
+                        task.display.get(step).map(|v| (*v).to_owned())
+                    }
+                    "textField" if done.contains(label) => {
+                        Some(format!("my {}", label.to_lowercase()))
+                    }
+                    "checkbox" => Some(if done.contains(label) { "1" } else { "0" }.to_owned()),
+                    _ => None,
+                },
                 bounds: Rect {
                     x: 40.0 * f64::from(u32::try_from(i % 4).unwrap_or(0)),
                     y: 40.0 * f64::from(u32::try_from(i / 4).unwrap_or(0)),
@@ -148,6 +158,46 @@ fn screen(task: &Task, step: usize) -> ScreenSnapshot {
                 },
             })
             .collect(),
+    }
+}
+
+/// The plan of `question` on `snapshot` with no earlier steps, as the app plans it:
+/// actions the screen shows as done left out.
+fn plan_on(
+    chat: &dyn ChatModel,
+    agent: &AgentDraft,
+    snapshot: &ScreenSnapshot,
+    question: &str,
+) -> Vec<String> {
+    let turn = TurnPrompt::new(agent, Some(snapshot), &[]);
+    let actions =
+        pipeline::plan(chat, &turn.system, &turn.body(question), &|| true).expect("plan pass");
+    pipeline::without_done(actions, snapshot)
+}
+
+/// The element the first action of `actions` grounds to on `snapshot`, if any.
+fn first_grounded(
+    chat: &dyn ChatModel,
+    agent: &AgentDraft,
+    snapshot: &ScreenSnapshot,
+    actions: &[String],
+) -> Option<String> {
+    let turn = TurnPrompt::new(agent, Some(snapshot), &[]);
+    let action = actions.first()?;
+    match pipeline::aim(
+        chat,
+        &turn.system,
+        &turn.body(action),
+        ScreenMode::Elements,
+        snapshot,
+        None,
+        None,
+        &|| true,
+    )
+    .expect("target pass")
+    {
+        Aim::Element(element) => Some(element.label.clone()),
+        _ => None,
     }
 }
 
@@ -194,27 +244,41 @@ fn main() {
     let agent = templates::get(TemplateId::OfficeHelper).draft;
     let mut rows = Vec::new();
     let (mut first_right, mut all_right, mut all_steps) = (0, 0, 0);
+    let (mut resume_right, mut resume_all) = (0, 0);
     for task in TASKS {
         eprintln!("\n== {} ({})", task.question, task.app);
         let mut earlier: Vec<TaskStep> = Vec::new();
+        // The stored plan and the step it starts at (pipeline::Guide).
         let mut planned: Vec<String> = Vec::new();
+        let mut plan_start = 0;
         let mut right = 0;
         for (index, expected) in task.steps.iter().enumerate() {
             let snapshot = screen(task, index);
             let question = if index == 0 { task.question } else { NEXT_STEP };
             let turn = TurnPrompt::new(&agent, Some(&snapshot), &earlier);
             let body = turn.body(question);
-            // As the app does (pipeline::guide_step): plan on the first question, then
-            // ground one planned action per step; no plan or none left: the question.
+            // As the app does (pipeline::guide_step): plan on the first question and keep
+            // a plan of two or more actions; a "next step" without one plans the first
+            // question again on the screen as it is now (nothing left: the task is done).
+            let mut done = false;
             if index == 0 {
-                planned = pipeline::plan(chat.as_ref(), &turn.system, &body, &|| true)
-                    .expect("plan pass");
+                planned = pipeline::without_done(
+                    pipeline::plan(chat.as_ref(), &turn.system, &body, &|| true)
+                        .expect("plan pass"),
+                    &snapshot,
+                );
                 if planned.len() < 2 {
                     planned.clear();
                 }
                 eprintln!("  plan: {planned:?}");
+            } else if planned.is_empty() {
+                planned = plan_on(chat.as_ref(), &agent, &snapshot, task.question);
+                planned.truncate(getcko_lib::model::MAX_TASK_STEPS.saturating_sub(index));
+                plan_start = index;
+                done = planned.is_empty();
+                eprintln!("  plan at step {}: {planned:?}", index + 1);
             }
-            let action = planned.get(index);
+            let action = index.checked_sub(plan_start).and_then(|i| planned.get(i));
             let action_body =
                 action.map(|action| TurnPrompt::new(&agent, Some(&snapshot), &[]).body(action));
             let aim_with = |body: &str| {
@@ -230,16 +294,19 @@ fn main() {
                 )
                 .expect("target pass")
             };
-            let aim = match &action_body {
-                Some(action_body) => match aim_with(action_body) {
+            let aim = match (&action_body, done) {
+                (_, true) => Aim::Nothing,
+                (Some(action_body), false) => match aim_with(action_body) {
                     Aim::Nothing => aim_with(&body),
                     found => found,
                 },
-                None => aim_with(&body),
+                (None, false) => aim_with(&body),
             };
-            let note = action
-                .map(|action| prompt::step_note(index + 1, planned.len(), action))
-                .unwrap_or_default();
+            let note = match action {
+                Some(action) => prompt::step_note(index + 1, plan_start + planned.len(), action),
+                None if done => prompt::TASK_DONE_NOTE.to_owned(),
+                None => String::new(),
+            };
             let (label, pointed) = match aim {
                 Aim::Element(element) => (Some(element.label.clone()), Pointed::Element(element)),
                 _ => (None, Pointed::Nothing),
@@ -262,21 +329,40 @@ fn main() {
                 target_label: label,
             });
         }
+        // Resuming: the task's question planned afresh with the first k steps done, as
+        // a "next step" without a stored plan does. Its first action should be step k+1.
+        let mut resumed = 0;
+        for k in 1..task.steps.len() {
+            let snapshot = screen(task, k);
+            let actions = plan_on(chat.as_ref(), &agent, &snapshot, task.question);
+            let first = first_grounded(chat.as_ref(), &agent, &snapshot, &actions);
+            let ok = first.as_deref() == Some(task.steps[k]);
+            resumed += usize::from(ok);
+            eprintln!(
+                "  {} resume after {k}: want {:?}, first {:?} of {actions:?}",
+                if ok { "ok  " } else { "MISS" },
+                task.steps[k],
+                first.as_deref().unwrap_or("nothing"),
+            );
+        }
         all_right += right;
         all_steps += task.steps.len();
+        resume_right += resumed;
+        resume_all += task.steps.len() - 1;
         rows.push(format!(
-            "| {} | {right}/{} |",
+            "| {} | {right}/{} | {resumed}/{} |",
             task.question,
-            task.steps.len()
+            task.steps.len(),
+            task.steps.len() - 1
         ));
     }
-    println!("\n| Task | Steps pointed at correctly |");
-    println!("|---|---|");
+    println!("\n| Task | Steps pointed at correctly | Resumed at the right step |");
+    println!("|---|---|---|");
     for row in rows {
         println!("{row}");
     }
     println!(
-        "\nFirst step right: {first_right}/{}; all steps: {all_right}/{all_steps}",
+        "\nFirst step right: {first_right}/{}; all steps: {all_right}/{all_steps}; resumed: {resume_right}/{resume_all}",
         TASKS.len()
     );
 }

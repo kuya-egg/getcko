@@ -70,6 +70,9 @@ pub fn step_note(number: usize, total: usize, action: &str) -> String {
     )
 }
 
+/// Answer-pass note when "next step" planned the task again and found nothing left.
+pub const TASK_DONE_NOTE: &str = "The user asked for the next step of the task in the earlier steps, and every action of it already shows as done on the screen. Say the task looks done; do not tell the user to click anything.\n\n";
+
 /// One retrieved passage and its display location.
 pub struct RetrievedPassage<'a> {
     pub document_name: &'a str,

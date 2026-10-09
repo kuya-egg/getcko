@@ -21,8 +21,8 @@ export interface AnswerCardProps {
   onDismiss(): void;
   /** Shown as "Next step" once the answer finished; absent when the guided task cannot continue. */
   onNext?: () => void;
-  /** 1-based step of the guided task (S5) and its step count, `null` for a stand-alone question. */
-  step: { number: number; total: number } | null;
+  /** 1-based step of the guided task (S5) and, with a plan, its step count; `null` for a stand-alone question. */
+  step: { number: number; total: number | null } | null;
   /** The guided task just finished its last step. */
   taskEnded: boolean;
   style?: CSSProperties;
@@ -67,7 +67,8 @@ export function AnswerCard(props: AnswerCardProps) {
         <span className="gc-answer-title">GetCko{props.agentName ? ` · ${props.agentName}` : ""}</span>
         {props.step !== null && (
           <span className="gc-chip gc-chip--guess">
-            Step {props.step.number} of {props.step.total}
+            Step {props.step.number}
+            {props.step.total !== null && ` of ${props.step.total}`}
           </span>
         )}
         {(answer?.confidence === "bestGuess" || (props.target && isBestGuess(props.target))) && (

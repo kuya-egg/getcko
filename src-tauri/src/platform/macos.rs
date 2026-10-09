@@ -683,6 +683,12 @@ fn describe(node: &Ax, window: Option<Rect>, displays: &[(CGRect, f64)]) -> Opti
         }
     }
     let raw_value = node.string("AXValue").filter(|v| !v.trim().is_empty());
+    // The selected tab is already open, so clicking it does nothing, and its name repeats
+    // the window title. Listed, it drew questions that echo the page title: "How do I
+    // create an account?" planned one action, Chrome's tab "Create your account".
+    if role == "tab" && matches!(raw_value.as_deref(), Some("1" | "on")) {
+        return None;
+    }
     let label = ["AXTitle", "AXDescription", "AXPlaceholderValue", "AXHelp"]
         .iter()
         .find_map(|attr| node.string(attr).filter(|s| !s.trim().is_empty()))

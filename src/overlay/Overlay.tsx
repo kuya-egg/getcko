@@ -153,6 +153,25 @@ export function Overlay() {
     return () => observer.disconnect();
   }, []);
 
+  // The bar and the ask box are clamped and anchored by their current size: read once
+  // per render, an expanded bar kept its compact width and ran off the screen edge.
+  const [barSize, setBarSize] = useState<Size>({ width: 280, height: 64 });
+  const [composerSize, setComposerSize] = useState<Size>({ width: 480, height: 60 });
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setBarSize({ width: el.offsetWidth, height: el.offsetHeight }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [barVisible]);
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setComposerSize({ width: el.offsetWidth, height: el.offsetHeight }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [state.composerOpen]);
+
   // Move to the target's monitor. Never react to the core's capture hide/show.
   useEffect(() => {
     if (!target) return;
@@ -252,10 +271,10 @@ export function Overlay() {
   // placePanel works in work-area coordinates; shift into it and back out.
   const area: Rect = workArea ?? { x: 0, y: 0, ...viewport };
   const toArea = (r: Rect): Rect => ({ ...r, x: r.x - area.x, y: r.y - area.y });
-  const barBounds = { width: barRef.current?.offsetWidth ?? 280, height: barRef.current?.offsetHeight ?? 64 };
+  const barBounds = barSize;
   const barPoint = positionFromFractions(barPosition, viewport, barBounds);
-  // The ask box opens attached to the bar (480 px wide by CSS until measured).
-  const composerBounds = { width: composerRef.current?.offsetWidth ?? 480, height: composerRef.current?.offsetHeight ?? 60 };
+  // The ask box opens attached to the bar.
+  const composerBounds = composerSize;
   const composerAt = composerBesideBar({ ...barPoint, ...barBounds }, composerBounds, viewport);
   // The answer card opens attached to the widget too (above the ask box when it is open,
   // else the bar), unless that would cover the target or the gecko at it; then it takes
@@ -332,7 +351,7 @@ export function Overlay() {
             target={state.target}
             onStop={handleStop}
             onDismiss={() => dispatch({ type: "dismiss" })}
-            step={state.planStep ?? (state.task.length > 0 ? { number: state.task.length + 1, total: MAX_TASK_STEPS } : null)}
+            step={state.planStep ?? (state.task.length > 0 ? { number: state.task.length + 1, total: null } : null)}
             taskEnded={
               state.status === "finished" &&
               (state.planStep !== null ? state.planStep.number >= state.planStep.total : state.task.length + 1 >= MAX_TASK_STEPS)
