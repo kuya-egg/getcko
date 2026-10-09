@@ -1,104 +1,124 @@
 # GetCko
 
-GetCko is a local, offline desktop helper that stays visible while you work: it answers questions over your local documents with retrieval-augmented generation (RAG), supports configurable agents, helps with what is on screen, and can speak answers aloud. Models run on-device; nothing downloads at runtime.
+![GetCko](docs/brand/readme-hero.png)
 
-## Quick start
+## Project name
 
-### Prerequisites
+**GetCko**, an offline desktop copilot. Built for the AppBuildersPH 2026 "Local AI" challenge.
 
-- **macOS:** Xcode Command Line Tools, Rust, [bun](https://bun.sh/), and CMake (`brew install cmake`).
-- **Windows:** MSVC Build Tools, Rust, bun, CMake, Vulkan SDK, and Git Bash (used by the model-fetch script).
+## Problem
+
+People are being pushed onto digital tools faster than they can learn them, and the help that exists, cloud AI assistants, needs a screenshot of a screen full of private data plus a working internet connection.
+
+- **Digitization is now law.** The E-Governance Act (RA 12254), signed Sept 5, 2025, requires national agencies, LGUs, state universities and GOCCs to digitize their services ([w.media](https://w.media/marcos-signs-law-in-push-for-digital-transformation/)).
+- **Low digital skills.** Only about 40% of Filipinos have at least one of the six basic ICT skills, lowest among people aged 65 and over ([PIDS](https://pids.gov.ph/details/fact-friday-on-digital-literacy-skills-of-filipinos)).
+- **Privacy holds people back from AI.** 81.4% of developers have security or privacy concerns about AI agents, and 28.2% say their company forbids agent tools ([Stack Overflow 2025](https://survey.stackoverflow.co/2025/ai)).
+
+Teachers, LGU staff and office workers on newly digitized systems need "where do I click, and why?" answered on their own screen, without sending citizen, student or client data to a cloud.
+
+## Brief description
+
+GetCko stays on screen while you work. Ask it a question by typing or by holding a key and talking:
+
+- **Screen Help:** it points at the button or field you need with a gecko and a halo, and explains it. For a task with several steps, it points at one step at a time and moves on with **Next step**.
+- **Your documents (RAG):** it answers from your own PDFs, Word, PowerPoint and text files, and cites the passage.
+- **Customizable agents:** templates such as Office Helper, Teacher and Study Buddy, each with its own instructions, answer length, voice and knowledge bases.
+- **Voice:** hold to talk, and answers are spoken aloud.
+
+Every model runs on your Mac. Nothing is uploaded, and it works with Wi-Fi off.
+
+## Tools
+
+| Tool | Used for |
+|---|---|
+| [Tauri 2](https://tauri.app/) (Rust) | Desktop app, windows, global shortcut |
+| React 19, TypeScript, Vite, Tailwind CSS 4 | Main window and on-screen overlay |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) through `llama-cpp-2` (Metal) | Running the models on the GPU |
+| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (separate helper process) | Speech to text |
+| SQLite with [sqlite-vector](https://github.com/sqliteai/sqlite-vector) 1.1.2 | Agents, knowledge bases and document search |
+| macOS Accessibility, CoreGraphics and Vision | Reading the screen, screenshots, on-device text recognition |
+| macOS speech voices (AVFoundation) | Spoken answers |
+| GSAP, three.js | Animation |
+| [bun](https://bun.sh/) | Packages and scripts |
+| Claude Code; OpenAI Codex | AI coding assistants used during development (Codex also generated the landing page's design mocks) |
+
+## Assets
+
+| Asset | Source | License |
+|---|---|---|
+| GetCko gecko sprite, poses, app icon, icons, textures | The team's GetCko brand kit v0.4 (`src/brand/`, `docs/brand/`) | The team's own |
+| Bricolage Grotesque, Geist, Geist Mono, Silkscreen fonts | [Fontsource](https://fontsource.org/), bundled locally | OFL-1.1 |
+| Pixelarticons | [pixelarticons](https://pixelarticons.com/) | MIT |
+
+## Models
+
+All models are downloaded once by `bun run models` (listed with SHA-256 checksums in `src-tauri/models.json`) and run locally.
+
+| Model | Used for | Size | License |
+|---|---|---|---|
+| Gemma 4 E2B Instruct (Q4_0) and its vision/audio projector | Answers, reading screenshots, planning steps | 3.4 GB | [Gemma Terms of Use](https://ai.google.dev/gemma/terms) |
+| bge-small-en-v1.5 (Q8_0) | Document search | 37 MB | MIT |
+| Whisper small.en | Speech to text | 488 MB | MIT |
+| Qwen3-VL 2B Instruct (Q4_K_M) and its projector | Pointing on screens whose buttons cannot be read | 1.6 GB | Apache-2.0 |
+
+## How to run
+
+Tested from a clean clone on an Apple Silicon Mac (M4 Pro, macOS 27.0.1, Xcode installed, Rust 1.99, bun 1.4.2, CMake 4.4).
+
+### What you need
+
+- **A Mac with Apple Silicon** (M1 or newer). Intel Macs are not supported. 16 GB of memory is recommended.
+- **About 20 GB of free disk space:** 5.4 GB of models, a 5.1 GB app, and build files.
+- **An internet connection for setup only.** GetCko itself runs offline.
+- **Tools:**
+
+  | Tool | Install |
+  |---|---|
+  | Xcode Command Line Tools | `xcode-select --install` |
+  | [Homebrew](https://brew.sh/) | see its website |
+  | CMake | `brew install cmake` |
+  | Rust 1.88 or newer | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+  | [bun](https://bun.sh/) | `curl -fsSL https://bun.sh/install \| bash` |
+
+  Open a new terminal after installing Rust and bun.
+
+### Build and open the app
 
 From the repository root:
 
 ```sh
-bun install
-bun run models
-bun run tauri dev
+bun install                         # web packages
+bun run models                      # downloads 5.4 GB of models once and checks each file
+bash scripts/build-whisper.sh       # builds the speech-to-text helper
+bun run tauri:build --bundles app   # builds GetCko.app with the models inside
+open src-tauri/target/release/bundle/macos/GetCko.app
 ```
 
-`bun run models` downloads and SHA-256 verifies the manifest-listed files into `src-tauri/models/` for development and release bundles. In normal use, required models download once with consent during onboarding; optional speech and grounding models can also be selected then. The app does not fetch models during use. `GETCKO_MODELS_DIR` overrides the model directory; otherwise bundled models take precedence and downloads are stored in app data.
+The first build takes several minutes because it compiles llama.cpp. Build it in a normal folder, such as your home folder; macOS blocks parts of an app that runs from `/tmp`.
 
-Build a release with `bun run tauri:build`; this bundles about 5.2 GB of models.
+To run without building an app, use `bun run tauri dev` after `bun run models`. In that mode macOS gives the permissions below to the terminal app that started it (Terminal, iTerm, VS Code, …), not to GetCko.
 
-## Tests
+### First run
 
-```sh
-cd src-tauri
-cargo test
-cargo test -- --ignored
-```
+1. **Wait for the models.** The first launch shows "Getting the models ready" for about 25 seconds. Later launches take about a second.
+2. **Allow the permissions** GetCko asks for. If macOS sends you to System Settings > Privacy & Security, switch GetCko on there.
 
-`cargo test` regenerates the TypeScript IPC bindings in `src/bindings/`. The ignored tests require the real models; fetch them first with `bun run models` from the repository root.
+   | Permission | What it is for | Needed? |
+   |---|---|---|
+   | Accessibility | Reading the buttons and fields of the app you are using, so GetCko can point at them | Yes, for pointing |
+   | Screen Recording | Screenshots of screens whose buttons cannot be read | Optional. macOS asks you to quit and reopen GetCko. |
+   | Microphone | Hold to talk | Optional |
 
-## Repository guide
+3. **Pick an agent.** On the Agents page click **Use Office Helper**.
+4. **Close the main window** (⌘W). The GetCko bar stays at the bottom of the screen; click its agent name to open the window again.
+5. **Ask.** Open any app, tap **⌥ Space** (Option+Space), type a question such as "How do I make the title bold?" in TextEdit, and press Return. Hold **⌥ Space** to ask by voice instead. Press Esc to stop an answer.
 
-| Path | Contents |
+### If something goes wrong
+
+| Problem | Fix |
 |---|---|
-| `src-tauri/src/commands.rs` | Tauri IPC commands and app-facing operations |
-| `src-tauri/src/engine/` | Local inference engine and model loading |
-| `src-tauri/src/error.rs` | Shared application error types |
-| `src-tauri/src/ingest.rs` | Document text extraction and ingestion |
-| `src-tauri/src/model.rs` | Serialized domain and IPC data types |
-| `src-tauri/src/paths.rs` | Application data, model, and resource paths |
-| `src-tauri/src/pipeline.rs` | Ask/answer and document-processing orchestration |
-| `src-tauri/src/platform/` | OS screen-accessibility platform interface and implementations |
-| `src-tauri/src/pointer.rs` | Screen element pointer-target selection and geometry |
-| `src-tauri/src/prompt.rs` | Prompt construction for local model tasks |
-| `src-tauri/src/store/` | SQLite persistence and vector search |
-| `src-tauri/src/templates.rs` | Built-in agent templates |
-| `src/lib/getcko.ts` | Typed TypeScript client for Tauri commands and events |
-| `src/bindings/` | Generated TypeScript types from Rust |
-| `docs/architecture.md` | Architecture, IPC contract, setup, and runtime details |
-| `docs/team/` | Team ownership and implementation briefs |
-| `site/` | Landing page (Vite + React), its `PRODUCT.md` / `DESIGN.md`, and approved design mocks in `site/.impeccable/` |
-
-## Team briefs
-
-- [Main-window frontend](docs/team/frontend-app.md)
-- [Overlay frontend](docs/team/frontend-overlay.md)
-- [macOS engineer](docs/team/macos-engineer.md)
-- [Windows engineer](docs/team/windows-engineer.md)
-- [Designer](docs/team/designer.md)
-
-## Status
-
-| Area | Status | Owner |
-|---|---|---|
-| Rust core: SQLite + sqlite-vector, local llama.cpp inference, document/RAG and agent pipeline, typed IPC | Implemented and verified | Core |
-| macOS Accessibility screen capture | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) |
-| Windows UI Automation screen capture | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
-| Whisper small.en speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
-| DOCX/PPTX ingestion | Implemented (shared Rust code) | [macOS engineer](docs/team/macos-engineer.md) |
-| Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
-| Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |
-
-## Landing page (`site/`)
-
-The marketing site is a separate Vite + React app built on the GetcKo brand kit v0.4 (vendored from `main` into `site/src/brand` and `site/src/components/ui`; rules in `site/DESIGN.md`). Live at https://getcko.vercel.app.
-
-```sh
-cd site
-bun install
-bun run dev           # http://localhost:5180 (append ?intro to replay the logo intro)
-bun run build         # typecheck and build into site/dist
-vercel deploy --prod  # deploy to Vercel (project: getcko)
-```
-
-Before launch, set the flags in `site/src/config.ts`:
-
-- `DEMO_VIDEO_URL`: the hosted 1-minute demo video. Until it's set, "Watch the 1-min demo" opens a "being recorded" notice.
-- `REPO_PUBLIC`: set to `true` once the repo is public under an OSI license. This shows the GitHub links and the "Open source" line.
-
-Social card: `site/public/og.png` (1200 × 630) is a capture of the dev-only page `site/og.html`, built from the real brand pieces. After changing the hero copy or form, run `bun run dev`, open http://localhost:5180/og.html at 1200 × 630, and save the screenshot over `public/og.png`.
-
-## Licenses and disclosure
-
-- **sqlite-vector 1.1.2:** Apache-2.0; vendored binaries are in `src-tauri/vendor/sqlite-vector`.
-- **Gemma 4 E2B:** review and comply with the applicable [Gemma Terms of Use](https://ai.google.dev/gemma/terms).
-- **Qwen3-VL-2B-Instruct:** Apache-2.0.
-- **bge-small-en-v1.5:** MIT.
-- **whisper.cpp:** MIT; **Whisper small.en weights:** MIT.
-- **llama.cpp:** MIT, used through `llama-cpp-2`.
-- **Tauri:** Tauri 2 framework and associated crates; see [Tauri’s licensing information](https://tauri.app/).
-- **AI development tools:** Claude Code was used during development. The landing page's design mocks were generated with OpenAI Codex image generation, and its code was written and reviewed with Claude and Codex.
+| `bun run models` stops with "checksum mismatch" | The download was cut off. Run it again; it resumes. |
+| A permission is on but GetCko still says it is off | Rebuilding changes the app's signature. Remove GetCko from that list in System Settings with the minus button, open GetCko again and allow it again. `tccutil reset All com.getcko` clears every GetCko permission at once. |
+| ⌥ Space does nothing | Another app may use Option+Space (Raycast, Alfred, ChatGPT and other launchers). Quit it or change its shortcut, then reopen GetCko. |
+| "Pick an agent first." | Agents page > Use Office Helper. |
+| "Apple could not verify GetCko" (an app you were sent, not one you built) | Run `xattr -dr com.apple.quarantine /path/to/GetCko.app`, then open it again. The app is not notarised. |

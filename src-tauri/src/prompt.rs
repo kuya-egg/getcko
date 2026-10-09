@@ -233,8 +233,10 @@ impl TurnPrompt {
                 }
                 task.push_str(". Refer to it by what it shows.\n\n");
             }
+            // The words the throwaway probe measured (finding 51); "never mention the
+            // image or the circle": the answer said "as indicated by the yellow circle".
             Pointed::Guess => task.push_str(
-                "The pointer is showing a best guess read from the screenshot; say it is a best guess.\n\n",
+                "The image is a close-up of the screen around the pointer, which is circled in yellow. Answer about what is inside the circle and call it by what it is (for example \"the speaker icon\"); never mention the image or the circle. The pointer is a best guess; say so.\n\n",
             ),
             Pointed::Nothing => {}
         }
@@ -258,7 +260,8 @@ impl TurnPrompt {
 #[derive(Debug, Clone, Copy)]
 pub enum Pointed<'a> {
     Element(&'a ScreenElement),
-    /// A tier-3 point read from the screenshot.
+    /// A tier-3 point read from the screenshot; the answer pass gets
+    /// [`crate::screenshot::close_up`] of it instead of the whole screenshot.
     Guess,
     Nothing,
 }
