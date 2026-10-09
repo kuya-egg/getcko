@@ -137,7 +137,7 @@ pub struct LlamaChat {
 pub enum PromptFormat {
     /// Gemma 4 `<|turn>role … <turn|>` (Gemma 4 E2B).
     Gemma4,
-    /// ChatML `<|im_start|>role … <|im_end|>` (Qwen-family models: Qwen3-VL, UI-TARS).
+    /// ChatML `<|im_start|>role … <|im_end|>` (Qwen-family models: Qwen3-VL).
     ChatMl,
 }
 

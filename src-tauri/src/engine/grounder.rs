@@ -1,47 +1,20 @@
-//! GUI grounding models run through the shared llama.cpp runtime. Both reply with a
-//! point normalized to 0–1000; they differ in prompt and reply wording.
+//! Tier-3 GUI grounding with Qwen3-VL-2B-Instruct (Apache-2.0) through the shared
+//! llama.cpp runtime; it replies with a point normalized to 0–1000.
 
 use std::path::Path;
 
 use super::llama::{LlamaChat, PromptFormat, Runtime};
 use super::{ChatModel, ChatRequest, EngineResult, Flow, Grounder, ImagePart, RgbImage};
 
-/// Which grounding model a [`LlamaGrounder`] runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GrounderKind {
-    /// ByteDance UI-TARS-2B-SFT (Qwen2-VL based, Apache-2.0): replies
-    /// `Action: click(start_box='(x,y)')`.
-    UiTars,
-    /// Qwen3-VL-2B-Instruct (Apache-2.0): replies `{"point_2d": [x, y]}`.
-    Qwen3Vl,
+/// Qwen3-VL's point instruction; it replies `{"point_2d": [x, y]}`.
+fn prompt(instruction: &str) -> String {
+    format!(
+        "The user asked: \"{instruction}\"\nPoint to the one UI element in the screenshot \
+         where the user should act. Reply only with JSON: {{\"point_2d\": [x, y]}}"
+    )
 }
 
-impl GrounderKind {
-    fn name(self) -> &'static str {
-        match self {
-            Self::UiTars => "UI-TARS-2B",
-            Self::Qwen3Vl => "Qwen3-VL-2B",
-        }
-    }
-
-    fn prompt(self, instruction: &str) -> String {
-        match self {
-            // UI-TARS's grounding template (actions only, no thought).
-            Self::UiTars => format!(
-                "You are a GUI agent. You are given a task and your action history, with screenshots. \
-                 You need to perform the next action to complete the task.\n\n## Output Format\n\n\
-                 Action: ...\n\n## Action Space\nclick(start_box='<|box_start|>(x1,y1)<|box_end|>')\n\n\
-                 ## User Instruction\n{instruction}"
-            ),
-            Self::Qwen3Vl => format!(
-                "The user asked: \"{instruction}\"\nPoint to the one UI element in the screenshot \
-                 where the user should act. Reply only with JSON: {{\"point_2d\": [x, y]}}"
-            ),
-        }
-    }
-}
-
-/// Largest coordinate in both models' replies.
+/// Largest coordinate in the model's replies.
 const SCALE: f64 = 1000.0;
 /// A point reply is a few dozen tokens at most.
 const MAX_TOKENS: u32 = 48;
@@ -49,7 +22,6 @@ const MAX_TOKENS: u32 = 48;
 /// A grounding model with its own llama.cpp context.
 pub struct LlamaGrounder {
     chat: LlamaChat,
-    kind: GrounderKind,
 }
 
 impl LlamaGrounder {
@@ -57,24 +29,19 @@ impl LlamaGrounder {
     ///
     /// # Errors
     /// Missing files or a runtime failure.
-    pub fn load(
-        rt: &Runtime,
-        kind: GrounderKind,
-        model: &Path,
-        projector: &Path,
-    ) -> EngineResult<Self> {
+    pub fn load(rt: &Runtime, model: &Path, projector: &Path) -> EngineResult<Self> {
         let chat = LlamaChat::load_with_format(rt, model, projector, PromptFormat::ChatMl)?;
-        Ok(Self { chat, kind })
+        Ok(Self { chat })
     }
 }
 
 impl Grounder for LlamaGrounder {
     fn name(&self) -> &'static str {
-        self.kind.name()
+        "Qwen3-VL-2B"
     }
 
     fn ground(&self, image: &RgbImage, instruction: &str) -> EngineResult<Option<(f64, f64)>> {
-        let prompt = self.kind.prompt(instruction);
+        let prompt = prompt(instruction);
         let mut reply = String::new();
         self.chat.generate(
             &ChatRequest {
@@ -93,12 +60,12 @@ impl Grounder for LlamaGrounder {
             },
         )?;
         // A point, never user text.
-        tracing::debug!(model = self.kind.name(), reply = %reply, "grounding");
+        tracing::debug!(reply = %reply, "grounding");
         Ok(parse_point(&reply))
     }
 }
 
-/// The first `(x, y)` or `[x, y]` pair of the reply as fractions, when both are
+/// The first `[x, y]` (or `(x, y)`) pair of the reply as fractions, when both are
 /// within 0..=1000. Numbers outside brackets (`point_2d`) are ignored.
 fn parse_point(reply: &str) -> Option<(f64, f64)> {
     let start = reply.char_indices().find_map(|(index, c)| {
@@ -122,9 +89,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_both_reply_styles_as_x_y_fractions() {
+    fn reads_the_point_as_x_y_fractions() {
         assert_eq!(
-            parse_point("Action: click(start_box='(250,500)')"),
+            parse_point(r#"{"point_2d": [250, 500]}"#),
             Some((0.25, 0.5))
         );
         assert_eq!(parse_point(r#"{"point_2d": [1000, 0]}"#), Some((1.0, 0.0)));
