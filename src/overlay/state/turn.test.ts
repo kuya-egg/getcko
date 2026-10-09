@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { Answer } from "../../bindings/Answer";
 import type { PointerTarget } from "../../bindings/PointerTarget";
 import type { TurnEvent } from "../../bindings/TurnEvent";
+import type { TaskStep } from "../../bindings/TaskStep";
 import type { OverlayAction, OverlayState } from "../types";
-import { geckoPose, initialOverlayState, reduceOverlay } from "./turn";
+import { geckoPose, initialOverlayState, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./turn";
 
 const target: PointerTarget = {
   elementId: "e1",
@@ -27,11 +28,57 @@ function answer(turnId: number, t: PointerTarget | null): Answer {
 const ev = (event: TurnEvent): OverlayAction => ({ type: "event", event });
 const run = (actions: OverlayAction[], from: OverlayState = initialOverlayState) =>
   actions.reduce(reduceOverlay, from);
-const askText = (question = "where is save"): OverlayAction => ({
+const askText = (question = "where is save", task: TaskStep[] = []): OverlayAction => ({
   type: "asked",
   input: "text",
   screenHelp: true,
   question,
+  task,
+});
+
+describe("guided task (S5)", () => {
+  const finishStep = (from: OverlayState, n: number, task: TaskStep[]) =>
+    run(
+      [
+        askText(`step ${n}`, task),
+        { type: "askResolved", turnId: n },
+        ev({ type: "target", turnId: n, target }),
+        ev({ type: "finished", answer: { ...answer(n, target), question: `step ${n}`, text: `answer ${n}` } }),
+      ],
+      from,
+    );
+
+  it("offers next for steps 1-4, sends earlier steps oldest first, and ends after step 5", () => {
+    let s = finishStep(initialOverlayState, 1, []);
+    for (let n = 2; n <= MAX_TASK_STEPS; n++) {
+      const steps = nextTaskSteps(s);
+      expect(steps).toHaveLength(n - 1);
+      expect(steps?.[0]).toEqual({ question: "step 1", answer: "answer 1", targetLabel: "Save" });
+      expect(steps?.[steps.length - 1]?.question).toBe(`step ${n - 1}`);
+      s = finishStep(s, n, steps ?? []);
+    }
+    expect(s.task).toHaveLength(MAX_TASK_STEPS - 1);
+    expect(nextTaskSteps(s)).toBeNull();
+  });
+
+  it("a fresh question or dismiss drops the earlier steps", () => {
+    const two = finishStep(finishStep(initialOverlayState, 1, []), 2, [
+      { question: "step 1", answer: "answer 1", targetLabel: "Save" },
+    ]);
+    expect(two.task).toHaveLength(1);
+    expect(run([askText("unrelated")], two).task).toEqual([]);
+    expect(run([{ type: "dismiss" }], two).task).toEqual([]);
+  });
+
+  it("does not offer next for answers without screen help or before they finish", () => {
+    const noScreen = run([
+      { type: "asked", input: "text", screenHelp: false, question: "q", task: [] },
+      { type: "askResolved", turnId: 1 },
+      ev({ type: "finished", answer: answer(1, null) }),
+    ]);
+    expect(nextTaskSteps(noScreen)).toBeNull();
+    expect(nextTaskSteps(run([askText(), { type: "askResolved", turnId: 1 }]))).toBeNull();
+  });
 });
 
 describe("reduceOverlay", () => {
@@ -151,7 +198,7 @@ describe("geckoPose", () => {
   it("follows a full voice turn", () => {
     const steps: OverlayAction[] = [
       { type: "listen" },
-      { type: "asked", input: "voice", screenHelp: true, question: null },
+      { type: "asked", input: "voice", screenHelp: true, question: null, task: [] },
       ev({ type: "phase", turnId: 0, phase: "thinking" }),
       { type: "askResolved", turnId: 0 },
       ev({ type: "target", turnId: 0, target }),

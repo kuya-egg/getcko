@@ -166,9 +166,10 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   padding: 8px 8px 0 16px;
 }
-.gc-answer-title { font: 600 14px/20px var(--gc-font-ui); }
+.gc-answer-title { font: 600 14px/20px var(--gc-font-ui); white-space: nowrap; }
 .gc-answer-actions { display: flex; margin-left: auto; }
 .gc-answer-body { padding: 8px 16px 16px; }
 .gc-answer-text,

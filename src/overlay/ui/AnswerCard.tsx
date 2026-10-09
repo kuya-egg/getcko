@@ -1,6 +1,7 @@
 import type { CSSProperties, Ref } from "react";
 import type { Answer } from "../../bindings/Answer";
 import type { PointerTarget } from "../../bindings/PointerTarget";
+import { MAX_TASK_STEPS } from "../state/turn";
 import type { TurnStatus } from "../types";
 import { CitationChip } from "./CitationChip";
 import { formatLatency, latencyBreakdown } from "./latency";
@@ -18,7 +19,12 @@ export interface AnswerCardProps {
   target: PointerTarget | null | undefined;
   onStop(): void;
   onDismiss(): void;
+  /** Shown as "Next step" once the answer finished; absent when the guided task cannot continue. */
   onNext?: () => void;
+  /** 1-based step of the guided task (S5), `null` for a stand-alone question. */
+  step: number | null;
+  /** The guided task just finished its last allowed step. */
+  taskEnded: boolean;
   style?: CSSProperties;
   ref?: Ref<HTMLDivElement>;
 }
@@ -59,6 +65,11 @@ export function AnswerCard(props: AnswerCardProps) {
       <div className="gc-answer-header">
         <span className="gc-dot" aria-hidden="true" />
         <span className="gc-answer-title">GetCko{props.agentName ? ` · ${props.agentName}` : ""}</span>
+        {props.step !== null && (
+          <span className="gc-chip gc-chip--guess">
+            Step {props.step} of {MAX_TASK_STEPS}
+          </span>
+        )}
         {answer?.confidence === "bestGuess" && <span className="gc-chip gc-chip--guess">Best guess</span>}
         <span className="gc-chip gc-chip--offline">Offline</span>
         <span className="gc-answer-actions">
@@ -76,6 +87,12 @@ export function AnswerCard(props: AnswerCardProps) {
         <Body status={status} sentences={props.sentences} answer={answer} error={props.error} />
         {props.screenHelp && props.target === null && answered && (
           <p className="gc-caption">I couldn't point at anything on this screen.</p>
+        )}
+        {props.taskEnded && (
+          <p className="gc-caption">
+            That was step {MAX_TASK_STEPS} of {MAX_TASK_STEPS}, so this guided task is done. Ask a new question to
+            start another.
+          </p>
         )}
       </div>
       {answer && (

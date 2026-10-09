@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { AskInput } from "../bindings/AskInput";
+import type { TaskStep } from "../bindings/TaskStep";
 import type { MonitorFrame } from "../bindings/MonitorFrame";
 import type { Rect } from "../bindings/Rect";
 import { agentActive, ask, onTurn, pttStart, stop } from "../lib/getcko";
@@ -11,7 +12,7 @@ import { Halo } from "./pointer/Halo";
 import { placeGecko, placePanel } from "./pointer/placement";
 import { SPRITE_COLS, SPRITE_ROWS } from "./pointer/sprite";
 import { coverMonitor, coverPrimaryMonitor, currentWorkArea, showOverlayOnce, useClickThrough } from "./pointer/window";
-import { geckoPose, initialOverlayState, reduceOverlay } from "./state/turn";
+import { geckoPose, initialOverlayState, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./state/turn";
 import type { GeckoPlacement, HaloVariant, Size, TurnStatus } from "./types";
 import { AnswerCard } from "./ui/AnswerCard";
 import { Composer } from "./ui/Composer";
@@ -20,6 +21,8 @@ import { SessionBar } from "./ui/SessionBar";
 const GECKO_SCALE = 2;
 const PANEL_MARGIN = 24;
 const BUSY: Partial<Record<TurnStatus, true>> = { listening: true, transcribing: true, thinking: true, answering: true };
+/** Question sent for S5 "next"; the earlier steps travel in `AskRequest.task`. */
+const NEXT_STEP = "What's the next step?";
 
 export function Overlay() {
   const platform = useMemo(() => detectPlatform(), []);
@@ -83,21 +86,19 @@ export function Overlay() {
       .catch(() => setAgentName(null));
   }, [state.awaiting]);
 
-  const startAsk = useCallback(
-    (input: AskInput, question: string | null) => {
-      const run = pendingAsk.current.then(async () => {
-        dispatch({ type: "asked", input: input.type, screenHelp, question });
-        try {
-          const turnId = await ask({ input, screenHelp, agentId: null });
-          dispatch({ type: "askResolved", turnId });
-        } catch (e: unknown) {
-          dispatch({ type: "askRejected", message: e instanceof Error ? e.message : String(e) });
-        }
-      });
-      pendingAsk.current = run;
-    },
-    [screenHelp],
-  );
+  /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5). */
+  const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[]) => {
+    const run = pendingAsk.current.then(async () => {
+      dispatch({ type: "asked", input: input.type, screenHelp: help, question, task });
+      try {
+        const turnId = await ask({ input, screenHelp: help, agentId: null, task });
+        dispatch({ type: "askResolved", turnId });
+      } catch (e: unknown) {
+        dispatch({ type: "askRejected", message: e instanceof Error ? e.message : String(e) });
+      }
+    });
+    pendingAsk.current = run;
+  }, []);
 
   const micDown = useCallback(() => {
     if (recording.current) return;
@@ -116,9 +117,9 @@ export function Overlay() {
     recording.current = null;
     if (!started) return;
     void started.then((ok) => {
-      if (ok) startAsk({ type: "voice" }, null);
+      if (ok) startAsk({ type: "voice" }, null, screenHelp, []);
     });
-  }, [startAsk]);
+  }, [startAsk, screenHelp]);
 
   const handleStop = useCallback(() => {
     dispatch({ type: "stop" });
@@ -171,6 +172,7 @@ export function Overlay() {
     scale: GECKO_SCALE,
   };
   const haloVariant: HaloVariant = state.answer?.confidence === "bestGuess" ? "soft" : "exact";
+  const nextSteps = nextTaskSteps(state);
 
   const closeComposerOnBackdrop = (e: PointerEvent<HTMLDivElement>) => {
     if (state.composerOpen && e.target === e.currentTarget) dispatch({ type: "closeComposer" });
@@ -194,12 +196,15 @@ export function Overlay() {
             target={state.target}
             onStop={handleStop}
             onDismiss={() => dispatch({ type: "dismiss" })}
+            step={state.task.length > 0 ? state.task.length + 1 : null}
+            taskEnded={state.status === "finished" && state.task.length + 1 >= MAX_TASK_STEPS}
+            onNext={nextSteps ? () => startAsk({ type: "text", text: NEXT_STEP }, NEXT_STEP, true, nextSteps) : undefined}
           />
         )}
         <Composer
           open={state.composerOpen}
           screenHelp={screenHelp}
-          onSubmit={(text) => startAsk({ type: "text", text }, text)}
+          onSubmit={(text) => startAsk({ type: "text", text }, text, screenHelp, [])}
           onClose={() => dispatch({ type: "closeComposer" })}
           onMicDown={micDown}
           onMicUp={micUp}

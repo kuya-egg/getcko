@@ -64,6 +64,19 @@ The `overlay` and `main` are Tauri window labels. Types crossing IPC are defined
 
 Engine and platform trait calls block. Run them on worker threads, never the async runtime. Keep at most one targeted element and ensure the panel does not cover it.
 
+## Overlay window
+
+Code: [`src/overlay/`](../src/overlay/) (page `overlay.html`, window label `overlay`, capability `src-tauri/capabilities/overlay.json`).
+
+| Rule | Detail |
+|---|---|
+| Global shortcuts | Owned by the overlay. `⌥Space` (macOS) / `Ctrl+Space` (Windows): hold ≥ 250 ms = `ptt_start`, release = `ask` voice; tap = text composer. Global `Esc` is registered **only while the answer card is open** and calls `stop`. The main window must not register these keys. |
+| Turn ownership | `turn` events go to every window. The overlay shows only turns it started (it adopts an unseen `turnId` only while its own `ask` is in flight), so main-window "Try this agent" turns never open the overlay card. |
+| Placement | Covers `PointerTarget.monitor` with `PhysicalPosition`/`PhysicalSize`; panels stay inside the monitor work area (Dock, menu bar and taskbar sit above always-on-top windows) and never cover the target or the gecko. |
+| Click-through | Ignores cursor events except while the cursor is over the panel (polled) or the composer is open. |
+| Capture hide | Never re-shows or re-positions itself on visibility/focus changes; state survives the core's hide/show around a screenshot. |
+| Guided task (S5) | "Next step" sends `AskRequest.task` (earlier steps, oldest first) with `screenHelp: true`; after step 5 the card says the task is done and stops offering next. |
+
 ## Screen understanding: three tiers
 
 The model points by **element ID** whenever it can. A small local model picks an ID from a list reliably, but guessing pixel coordinates is error-prone. Clicky (farzaa/clicky) is screenshot-only with `[POINT:x,y]` from Claude's computer-use model; that works for a cloud frontier model, not for Gemma 4 E2B. Screenshots are therefore *context* for hard screens, and coordinates are a last resort.

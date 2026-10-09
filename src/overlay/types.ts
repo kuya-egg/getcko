@@ -3,6 +3,7 @@
 import type { Answer } from "../bindings/Answer";
 import type { PointerTarget } from "../bindings/PointerTarget";
 import type { TurnEvent } from "../bindings/TurnEvent";
+import type { TaskStep } from "../bindings/TaskStep";
 import type { TurnId } from "../bindings/TurnId";
 
 /** Mascot pose, design system §6. */
@@ -53,14 +54,22 @@ export interface OverlayState {
   cardOpen: boolean;
   /** Text composer visible and focused (window interactive). */
   composerOpen: boolean;
+  /**
+   * Earlier steps of the guided task this turn continues (S5), oldest first; empty for a fresh
+   * question. The current turn is step `task.length + 1`.
+   */
+  task: TaskStep[];
 }
 
 export type OverlayAction =
   | { type: "event"; event: TurnEvent }
   /** Mic held (`pttStart()` called). */
   | { type: "listen" }
-  /** Local ask about to be sent; `question` is known for text input only. */
-  | { type: "asked"; input: InputMode; screenHelp: boolean; question: string | null }
+  /**
+   * Local ask about to be sent; `question` is known for text input only. `task` holds the earlier
+   * steps sent with it (`[]` starts a fresh question and ends any guided task).
+   */
+  | { type: "asked"; input: InputMode; screenHelp: boolean; question: string | null; task: TaskStep[] }
   | { type: "askResolved"; turnId: TurnId }
   | { type: "askRejected"; message: string }
   /** User pressed stop; core will follow with `cancelled`. */

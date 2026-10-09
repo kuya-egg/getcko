@@ -1,6 +1,10 @@
+import type { TaskStep } from "../../bindings/TaskStep";
 import type { TurnEvent } from "../../bindings/TurnEvent";
 import type { TurnId } from "../../bindings/TurnId";
 import type { GeckoPose, OverlayAction, OverlayState } from "../types";
+
+/** PRD S5: a guided task keeps context for at most this many steps (core `MAX_TASK_STEPS`). */
+export const MAX_TASK_STEPS = 5;
 
 type TurnFields = Pick<OverlayState, "question" | "target" | "sentences" | "answer" | "error">;
 
@@ -21,10 +25,26 @@ export const initialOverlayState: OverlayState = {
   ...freshTurn,
   cardOpen: false,
   composerOpen: false,
+  task: [],
 };
 
 export function turnIdOf(event: TurnEvent): TurnId {
   return event.type === "finished" ? event.answer.turnId : event.turnId;
+}
+
+/**
+ * Earlier steps to send when the user asks for the next step, or `null` when this answer cannot
+ * be continued: it is not a finished screen-help answer, or the task already has MAX_TASK_STEPS.
+ */
+export function nextTaskSteps(state: OverlayState): TaskStep[] | null {
+  if (state.status !== "finished" || !state.screenHelp || state.answer === null) return null;
+  if (state.task.length + 1 >= MAX_TASK_STEPS) return null;
+  const step: TaskStep = {
+    question: state.answer.question,
+    answer: state.answer.text,
+    targetLabel: state.target?.label ?? null,
+  };
+  return [...state.task, step];
 }
 
 function nextMinTurnId(state: OverlayState): TurnId {
@@ -93,6 +113,7 @@ export function reduceOverlay(state: OverlayState, action: OverlayAction): Overl
         awaiting: true,
         cardOpen: true,
         composerOpen: false,
+        task: action.task,
       };
     }
     case "askResolved":
@@ -104,7 +125,7 @@ export function reduceOverlay(state: OverlayState, action: OverlayAction): Overl
     case "stop":
       return { ...state, status: "cancelled", awaiting: false, cardOpen: false, composerOpen: false };
     case "dismiss":
-      return { ...state, ...freshTurn, status: "idle", awaiting: false, cardOpen: false };
+      return { ...state, ...freshTurn, status: "idle", awaiting: false, cardOpen: false, task: [] };
     case "openComposer":
       return { ...state, composerOpen: true };
     case "closeComposer":
