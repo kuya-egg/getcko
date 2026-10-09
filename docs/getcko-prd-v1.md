@@ -1,5 +1,7 @@
 # GetCko PRD: Local AI Desktop Copilot
 
+Oct 9, 2026 · @Louie Miguel
+
 ## Overview
 
 GetCko is a private desktop copilot whose AI runs entirely on your own laptop. You ask it anything about what is on your screen or in your own documents. It answers out loud, points at where to click, and works the same with Wi-Fi off. For the AppBuildersPH 2026 "Local AI" challenge, it rebuilds the GetCko v1 concept around four local features: **RAG** over your documents (stored with sqlite-vector), **Customizable Agents**, **Screen Help**, and **TTS**.
@@ -123,6 +125,8 @@ macOS needs Accessibility and Screen Recording permission once, which goes in on
 The question, the screen's element list and the retrieved passages all meet in one local LLM call. Its answer drives the voice, the pointer and the citations. The internet is touched once, to download the models before the event, and never during use.
 
 ## Local models and performance budget
+
+**Locked Oct 9, 7:15 PM:** Gemma 4 E2B (thinking off) for chat, element picking and screenshots. EmbeddingGemma-300m at 256 dimensions for RAG. sqlite-vector exact search. OS voices through the Rust `tts` crate for speech. Fallbacks: Qwen3-4B, multilingual-e5-small, Kokoro-82M. Details are in `docs/MODELS.md`.
 
 One small multimodal model does both chat and the vision fallback, which keeps memory low and loading simple. Every choice below must be confirmed by the hour-1 speed test on the M4 Pro, and the measured numbers go in `MODELS.md`.
 
