@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "getcko",
+  "productName": "GetCko",
   "version": "0.1.0",
   "identifier": "com.getcko",
   "build": {
@@ -10,11 +10,32 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "getcko",
+        "label": "main",
+        "title": "GetcKo",
+        "width": 1040,
+        "height": 680,
+        "minWidth": 900,
+        "minHeight": 600
+      },
+      {
+        "label": "overlay",
+        "title": "GetCko overlay",
+        "url": "overlay.html",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "resizable": false,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "contentProtected": false
       }
     ],
     "security": {

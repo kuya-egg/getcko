@@ -1,16 +1,14 @@
 [package]
 name = "getcko"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Private desktop copilot whose AI runs entirely on your laptop"
+authors = ["GetCko team"]
+license = "Apache-2.0"
+edition = "2024"
+rust-version = "1.88"
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# The `_lib` suffix keeps the lib name distinct from the bin name (cargo#8519 on Windows).
 name = "getcko_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -18,13 +16,63 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+# ~2.7: 2.8 needs Rust 1.90 (rust-version above is 1.88). Matches @tauri-apps/plugin-dialog ~2.7.
+tauri-plugin-dialog = "~2.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.40", features = ["bundled", "load_extension"] }
+sha2 = "0.11"
+ureq = { version = "3", features = ["rustls"] }
+hex = "0.4"
+libc = "0.2"
+ts-rs = "12"
+pdf-extract = "0.12"
+# `mtmd`: Gemma 4 E2B's own audio + vision encoder (mmproj) for speech-to-text and
+# screenshots. Used instead of whisper.cpp, whose bundled ggml clashes at link time
+# with llama.cpp's (duplicate ggml symbols).
+llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["mtmd"] }
+# Text-to-speech through OS voices; same crate on both OSes.
+tts = "0.26"
+# Push-to-talk capture (engine/microphone.rs), shared by both OSes.
+cpal = "0.18"
+# Screenshot downscaling for screen tiers 2-3 (screenshot.rs).
+image = { version = "0.25", default-features = false }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
+quick-xml = "0.42"
 
+# GPU offload with automatic CPU fallback on both OSes (see engine::llama):
+# macOS → Metal (every Apple Silicon Mac); Windows → Vulkan (NVIDIA, AMD and Intel
+# GPUs; needs the Vulkan SDK at build time) plus OpenMP CPU threads.
+[target.'cfg(target_os = "macos")'.dependencies]
+llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["metal"] }
+# Screen reading (platform/macos.rs): AX API, screens and frontmost app.
+accessibility-sys = "0.2"
+core-foundation = "0.10"
+core-graphics = "0.25"
+foreign-types = "0.5"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice"] }
+block2 = "0.6"
+objc2-vision = { version = "0.3", features = ["VNRequest", "VNRecognizeTextRequest", "VNRequestHandler", "VNObservation", "VNTypes", "objc2-core-graphics", "objc2-core-foundation"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGImage", "std"] }
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[target.'cfg(target_os = "windows")'.dependencies]
+llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["vulkan", "openmp"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev.package."*"]
+# llama.cpp and sqlite are unusably slow unoptimised; our own crate stays debuggable.
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true

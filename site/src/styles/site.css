@@ -1,0 +1,253 @@
+/*
+ * Landing-page layout on top of the brand kit (src/brand/index.css). Semantic tokens only
+ * (--gc-bg, --gc-text, --gc-surface…), so light and dark follow the kit theme. Layered as
+ * components so the kit's utilities still win where both apply.
+ */
+
+@layer components {
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  html.intro-pending { overflow: hidden; }
+
+  .skip { position: absolute; left: 16px; top: -64px; z-index: 60; padding: 12px 16px; border-radius: var(--gc-r-button); background: var(--gc-inverse-bg); color: var(--gc-inverse-text); }
+  .skip:focus { top: 12px; }
+
+  /* ── Frame ─────────────────────────────────────────────── */
+  .site-wrap { width: 100%; max-width: 1312px; margin-inline: auto; padding-inline: 24px; }
+  @media (min-width: 900px) { .site-wrap { padding-inline: 64px; } }
+  .site-section { padding-block: 96px; }
+  @media (min-width: 900px) { .site-section { padding-block: 128px; } }
+  /* The canopy hangs from the top edge: content starts below the leaves. */
+  .site-section--canopy { padding-top: 208px; }
+
+  /* ── Nav ───────────────────────────────────────────────── */
+  .nav { position: fixed; inset: 0 0 auto; height: 64px; display: flex; align-items: center; gap: 32px; padding-inline: 24px; border-bottom: 1px solid transparent; transition: border-color var(--gc-dur-fast); }
+  @media (min-width: 900px) { .nav { padding-inline: 64px; } }
+  .nav-brand { display: inline-flex; border-radius: var(--gc-r-input); }
+  .nav-links { display: none; gap: 28px; margin-left: auto; }
+  @media (min-width: 900px) { .nav-links { display: flex; } }
+  .nav-cta { margin-left: auto; }
+  @media (min-width: 900px) { .nav-cta { margin-left: 0; } }
+
+  /* ── Gecko ─────────────────────────────────────────────── */
+  .gecko-canvas { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+  .gecko-slot { --cell: 5px; width: calc(var(--cols) * var(--cell)); height: calc(var(--rows) * var(--cell)); flex: none; }
+
+  /* ── Intro: logo entry (GSAP, Hero.tsx) ────────────────────
+     Rendered only while <html class="intro-pending"> (set before paint in index.html).
+     Tile and head keep the nav Wordmark's ratio (36px tile, 22px head) so the hand-off is exact. */
+  .intro { display: none; }
+  html.intro-pending .intro { display: grid; }
+  .intro { --ic: 6px; position: fixed; inset: 0; z-index: 50; place-items: center; }
+  @media (min-width: 900px) { .intro { --ic: 9px; } }
+  .intro-bg { position: absolute; inset: 0; background: var(--gc-bg); }
+  .intro-center { position: relative; display: grid; justify-items: center; gap: calc(3 * var(--ic)); }
+  .intro-tile { position: relative; width: calc(36 * var(--ic)); height: calc(36 * var(--ic)); }
+  .intro-tile-bg { position: absolute; inset: 0; background: var(--gc-ink); border-radius: 22.9%; visibility: hidden; }
+  .intro-head { position: absolute; left: calc(7 * var(--ic)); top: calc(12.5 * var(--ic)); width: calc(22 * var(--ic)); height: calc(11 * var(--ic)); }
+  .intro-cell { position: absolute; width: var(--ic); height: var(--ic); left: calc(var(--x) * var(--ic)); top: calc(var(--y) * var(--ic)); visibility: hidden; }
+  .intro-word { font: 800 calc(6 * var(--ic)) / 1 var(--gc-font-display); letter-spacing: -0.03em; color: var(--gc-text); visibility: hidden; }
+  .intro-badge { font: 400 22px / 1 var(--gc-font-pixel); padding: 8px 10px; color: var(--gc-accent-text); background: var(--gc-surface); border: 2px solid var(--gc-text); border-radius: var(--gc-r-code); visibility: hidden; }
+  .intro-skip { position: absolute; right: 24px; bottom: 24px; }
+  .px-curtain { position: absolute; inset: 0; z-index: 3; display: grid; pointer-events: none; border-radius: inherit; overflow: hidden; }
+
+  /* ── Hero (the kit's GetCkoHero) ───────────────────────── */
+  .hero-wrap { padding-top: 64px; }
+  @media (min-width: 1280px) { .hero-wrap > section { min-height: calc(100svh - 64px); display: grid; align-items: center; } }
+
+  /* ── How it works: the D3 pair over the pointer field, steps on the how band ── */
+  .how-pair { --hc: 8px; display: flex; align-items: flex-start; justify-content: center; gap: var(--hc); }
+  @media (min-width: 1024px) { .how-pair { --hc: 10px; } }
+  .slot-how { --cell: var(--hc); }
+  .how-window { position: relative; width: calc(32 * var(--hc)); max-width: 100%; margin-top: calc(-3.5 * var(--hc)); overflow: hidden; font-size: max(14px, calc(1.3 * var(--hc))); }
+  .hw-bar { position: relative; display: flex; align-items: center; height: calc(3 * var(--hc)); padding-inline: calc(1.2 * var(--hc)); }
+  .hw-title { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .hw-body { padding: calc(1.5 * var(--hc)) calc(2 * var(--hc)); }
+  .hw-row { display: grid; grid-template-columns: 1fr 1.35fr; align-items: center; min-height: calc(5 * var(--hc)); }
+  .hw-field { display: flex; align-items: center; height: calc(3.6 * var(--hc)); padding-inline: 12px; }
+  .caret { width: 2px; height: 50%; background: var(--gc-text); animation: gc-caret 1s steps(1) infinite; }
+  @keyframes gc-caret { 50% { opacity: 0; } }
+  /* The how band: its texture is drawn at exactly 2× (a 352 px ruler strip, see the unlayered rule
+     at the end) so each beat has room for icon, label and a two-line description. */
+  .how-band { min-height: 352px; margin-top: 40px; display: grid; align-items: center; }
+  /* Pinned while the band scrubs: the whole section must fit an 800 px tall screen. */
+  @media (min-width: 1100px) { .how-section { padding-top: 64px; padding-bottom: 0; } }
+  .hs-row { list-style: none; margin-block: 0; display: flex; align-items: flex-start; justify-content: center; gap: 24px; }
+  .hs-step { --on: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; flex: 1 1 0; min-width: 0; max-width: 248px; opacity: calc(0.36 + 0.64 * var(--on)); }
+  .hs-icon { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: var(--gc-r-tile); background: var(--gc-surface); border: 1px solid var(--gc-border); box-shadow: var(--gc-shadow-1); transform-origin: 50% 100%; }
+  .hs-head { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+  .hs-label { position: relative; isolation: isolate; }
+  /* The kit hero's keyword mark: gecko-wash block, square corners, a 4 px gecko foot. */
+  .hs-mark { position: absolute; inset: 0.14em -0.12em 0.02em; z-index: -1; background: var(--gc-accent-wash); transform: scaleX(0); transform-origin: 0 50%; }
+  .hs-mark::after { content: ""; position: absolute; inset: auto 0 0; height: 4px; background: var(--gc-accent-fill); }
+  /* Descriptions sit on a surface chip: text-2 on a texture is fine, but these read better on a card. */
+  .hs-line { padding: 6px 10px; margin-left: -10px; border-radius: var(--gc-r-input); background: var(--gc-surface); }
+  /* Connectors run level with the icon tiles' centres. */
+  .hs-link { display: flex; flex: 0 1 120px; min-width: 48px; justify-content: space-between; margin-top: 28px; }
+  .hs-link span { width: 8px; height: 8px; background: var(--gc-border-strong); }
+  .hs-link i { display: block; width: 100%; height: 100%; background: var(--gc-accent-fill); transform: scale(0); }
+
+  /* Compact row between 1100 and 1279 px; stacked (and unpinned) below 1100 px. */
+  @media (max-width: 1279px) {
+    .hs-row { gap: 14px; }
+    .hs-link { flex-basis: 64px; }
+  }
+  @media (max-width: 1099px) {
+    .how-band { padding-block: 40px; }
+    .hs-row { flex-direction: column; align-items: stretch; gap: 0; }
+    .hs-step { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 16px; row-gap: 6px; align-items: center; max-width: none; padding-block: 8px; }
+    .hs-icon { grid-row: span 2; }
+    .hs-head { align-self: end; }
+    .hs-line { align-self: start; justify-self: start; }
+    .hs-link { flex: none; flex-direction: column; gap: 4px; margin-top: 0; padding: 4px 0 4px 28px; }
+  }
+
+  /* ── Knowledge bases: passages grid ─────────────────────── */
+  .kb-stage { position: relative; padding-left: calc(22 * 5px + 16px); }
+  .slot-kb { position: absolute; left: 0; bottom: 40px; }
+  .passages { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 52px; gap: 8px; }
+  .pcell { display: grid; align-content: center; gap: 5px; padding-inline: 10px; border-radius: var(--gc-r-input); border: 1.5px dashed var(--gc-border-strong); transition: background-color var(--gc-dur-slow), border-color var(--gc-dur-slow); }
+  .pcell i { height: 3px; background: transparent; transition: background-color var(--gc-dur-slow); }
+  .pcell i:nth-child(2) { width: 70%; }
+  .pcell i:nth-child(3) { width: 45%; }
+  .pcell.is-filled { border: 1px solid var(--gc-border); background: var(--gc-surface-2); }
+  .pcell.is-filled i { background: var(--gc-border-strong); }
+  .pcell.is-answer.is-filled { background: var(--gc-accent-wash); border-color: var(--gc-accent-text); }
+  .pcell.is-answer.is-filled i { background: var(--gc-accent-text); }
+
+  /* ── Voice: GetcKo beside the session bar ───────────────── */
+  .voice-bar-row { display: flex; align-items: flex-start; gap: 8px; }
+  .slot-voice { --cell: 4px; }
+  /* Hand tip of pointRight (row 13) level with the bar's centre (64px bar). */
+  .voice-bar { margin-top: calc(13.5 * 4px - 32px); min-width: 0; overflow-x: auto; }
+
+  /* ── Agents ────────────────────────────────────────────── */
+  .agents-row { display: flex; align-items: flex-end; gap: 8px; }
+  .slot-agents { --cell: 5px; }
+  .agents-grid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(184px, 1fr)); gap: 16px; }
+
+  /* ── Keywords ──────────────────────────────────────────── */
+  .kw-stage { display: grid; grid-template-columns: calc(22 * 5px) minmax(0, 1fr); gap: 16px; }
+  .kw-rail { position: relative; }
+  .slot-kw { --cell: 5px; position: absolute; left: 0; top: 0; }
+  .kw-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .kw-item { display: grid; grid-template-columns: 32px auto; column-gap: 12px; align-items: baseline; padding-block: 18px; }
+  .kw-num { grid-row: span 2; }
+  .kw-word { justify-self: start; font-size: clamp(36px, 5vw, 64px); line-height: 1; letter-spacing: -0.035em; font-weight: 800; color: var(--gc-text-3); padding: 2px 6px 4px; margin-left: -6px; transition: color var(--gc-dur-fast), background-color var(--gc-dur-fast); }
+  .kw-line { padding-top: 8px; }
+  /* The kit hero's keyword mark: green wash block, square corners, a 4px gecko foot. */
+  .kw-word { position: relative; }
+  .kw-word::after { content: ""; position: absolute; inset: auto 0 0; height: 4px; background: var(--gc-accent-fill); transform: scaleX(0); transform-origin: 0 50%; transition: transform var(--gc-dur-base) var(--gc-ease-out); }
+  .kw-item.is-active .kw-word { color: var(--gc-text); background: var(--gc-accent-wash); }
+  .kw-item.is-active .kw-word::after { transform: scaleX(1); }
+
+  /* ── Offline ───────────────────────────────────────────── */
+  .offline-proof { display: flex; align-items: flex-end; gap: 16px; }
+  .slot-offline { --cell: 6px; }
+
+  /* ── Closing + footer on the footer band ────────────────── */
+  .closing { padding-block: 128px 48px; }
+  /* GetcKo left of the poster, hand tip (pointRight, row 13) level with the play button's centre. */
+  .closing-stage { --play: 56px; --pad: 20px; display: flex; align-items: flex-end; gap: 12px; }
+  .slot-closing { --cell: 6px; margin-bottom: calc(var(--pad) + var(--play) / 2 - 13.5 * var(--cell)); }
+  .demo-poster { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0; background: var(--gc-chrome-bg); border: 1px solid var(--gc-chrome-border); border-radius: var(--gc-r-panel); box-shadow: var(--gc-shadow-2); cursor: pointer; overflow: hidden; transition: translate var(--gc-dur-fast) var(--gc-ease-out); }
+  .demo-poster:hover { translate: 0 -2px; }
+  .demo-poster:active { translate: 0 1px; }
+  /* The kit's end-card plate, at its own 16:9. */
+  .demo-art { display: block; aspect-ratio: 16 / 9; }
+  /* Caption bar under the plate: play button (the halo target) and the title. */
+  .demo-poster-foot { display: flex; align-items: center; gap: 16px; padding: var(--pad); border-top: 1px solid var(--gc-chrome-border); }
+  .demo-play { flex: none; display: grid; place-items: center; width: var(--play); height: var(--play); border-radius: var(--gc-r-button); background: var(--gc-accent-fill); color: var(--gc-ink); }
+  .closing-link { font-size: 16px; font-weight: 600; color: var(--gc-accent-text); text-decoration: underline; text-underline-offset: 4px; padding: 12px 8px; }
+  .closing-foot { margin-top: 160px; }
+
+  .demo-video { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--gc-r-input); background: var(--gc-ink); }
+
+  /* ── Small screens ─────────────────────────────────────── */
+  @media (max-width: 1023px) {
+    /* Grid columns may shrink below their content (nowrap pills, long names). */
+    .site-wrap.grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 899px) {
+    .how-pair { flex-direction: column-reverse; align-items: center; }
+    .how-window { width: min(100%, 360px); margin-top: 0; font-size: 15px; }
+    .how-window .hw-body { padding: 12px 18px; }
+    .how-window .hw-row { min-height: 52px; }
+    .how-window .hw-field { height: 38px; }
+    .slot-how { --cell: 5px; }
+    .kb-stage { padding-left: 0; padding-bottom: calc(27 * 4px + 16px); }
+    .slot-kb { --cell: 4px; bottom: 0; }
+    .passages { grid-auto-rows: 40px; gap: 6px; }
+    .voice-bar-row { flex-direction: column-reverse; }
+    .voice-bar { margin-top: 0; max-width: 100%; }
+    .agents-row { flex-direction: column; align-items: flex-start; }
+    .agents-grid { width: 100%; }
+    .slot-agents { --cell: 4px; }
+    .kw-stage { grid-template-columns: calc(22 * 3px) minmax(0, 1fr); gap: 12px; }
+    .slot-kw { --cell: 3px; }
+    .kw-word { font-size: 36px; }
+    .slot-offline { --cell: 4px; }
+    .offline-proof { flex-wrap: wrap; }
+    .closing-stage { --play: 44px; --pad: 14px; }
+    .slot-closing { --cell: 3px; }
+    .closing-foot { margin-top: 120px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .caret { animation: none; }
+  }
+}
+
+/* Unlayered on purpose: these must beat the kit's utility classes on kit components. */
+@media (max-width: 599px) {
+  /* The session bar's shortcut hint means nothing on a phone. */
+  .voice-bar [aria-live]:not(.sr-only) { display: none; }
+}
+@media (max-width: 359px) {
+  /* Narrowest phones: the head-mark tile alone carries the brand in the nav. */
+  .nav-brand [data-nav-mark] > :last-child { display: none; }
+}
+
+/*
+ * Seams: no section ends on a hard line. Each textured section paints its texture on a ::before
+ * layer masked by a 4x4 Bayer dither (public/site/seam-*.svg, 4 px cells, 96 px ramp), so the
+ * texture dissolves pixel by pixel into the shared paper ground: the brand's dither fade, not a
+ * gradient. Unlayered on purpose: the kit's .surface rules are unlayered too.
+ */
+.seam, .seam-top, .seam-bottom, .hero-wrap > .surface { position: relative; isolation: isolate; background-image: none; }
+.seam::before, .seam-top::before, .seam-bottom::before, .hero-wrap > .surface::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: var(--sf-img); background-size: var(--sf-size, auto); background-repeat: var(--sf-repeat, repeat); background-position: var(--sf-pos, 0 0);
+  -webkit-mask-repeat: repeat-x, repeat-x, no-repeat; mask-repeat: repeat-x, repeat-x, no-repeat;
+}
+.seam::before {
+  -webkit-mask-image: url("/site/seam-top.svg"), url("/site/seam-bottom.svg"), url("/site/seam-fill.svg");
+  mask-image: url("/site/seam-top.svg"), url("/site/seam-bottom.svg"), url("/site/seam-fill.svg");
+  -webkit-mask-size: 16px 96px, 16px 96px, 100% calc(100% - 192px); mask-size: 16px 96px, 16px 96px, 100% calc(100% - 192px);
+  -webkit-mask-position: left top, left bottom, center; mask-position: left top, left bottom, center;
+}
+/* Top only (the closing: its pothos grow from the bottom edge, which stays crisp). */
+.seam-top::before {
+  -webkit-mask-image: url("/site/seam-top.svg"), url("/site/seam-fill.svg"); mask-image: url("/site/seam-top.svg"), url("/site/seam-fill.svg");
+  -webkit-mask-size: 16px 96px, 100% calc(100% - 96px); mask-size: 16px 96px, 100% calc(100% - 96px);
+  -webkit-mask-position: left top, left bottom; mask-position: left top, left bottom;
+}
+/* Bottom only (the canopy hangs from the top edge; the hero's corner branch sits top-right). */
+.seam-bottom::before, .hero-wrap > .surface::before {
+  -webkit-mask-image: url("/site/seam-bottom.svg"), url("/site/seam-fill.svg"); mask-image: url("/site/seam-bottom.svg"), url("/site/seam-fill.svg");
+  -webkit-mask-size: 16px 96px, 100% calc(100% - 96px); mask-size: 16px 96px, 100% calc(100% - 96px);
+  -webkit-mask-position: left bottom, left top; mask-position: left bottom, left top;
+}
+/* The ink island: the whole ground dithers into the page above and below it. */
+.seam-island {
+  -webkit-mask-image: url("/site/seam-top.svg"), url("/site/seam-bottom.svg"), url("/site/seam-fill.svg");
+  mask-image: url("/site/seam-top.svg"), url("/site/seam-bottom.svg"), url("/site/seam-fill.svg");
+  -webkit-mask-size: 16px 96px, 16px 96px, 100% calc(100% - 192px); mask-size: 16px 96px, 16px 96px, 100% calc(100% - 192px);
+  -webkit-mask-position: left top, left bottom, center; mask-position: left top, left bottom, center;
+  -webkit-mask-repeat: repeat-x, repeat-x, no-repeat; mask-repeat: repeat-x, repeat-x, no-repeat;
+}
+
+/* The how band's texture at exactly 2× (integer scale only): a 352 px ruler strip, prints doubled. */
+.how-band.surface-how { --sf-size: 1280px 352px; }
+/* Stacked steps are taller than the strip, so its rulers would cut through them: plain ground there. */
+@media (max-width: 1099px) { .how-band.surface-how { background-image: none; } }
