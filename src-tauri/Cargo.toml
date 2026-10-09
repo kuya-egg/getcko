@@ -27,13 +27,26 @@ rusqlite = { version = "0.40", features = ["bundled", "load_extension"] }
 sha2 = "0.11"
 ts-rs = "12"
 pdf-extract = "0.12"
-llama-cpp-2 = { version = "0.1.159", default-features = false }
+# `mtmd`: Gemma 4 E2B's own audio + vision encoder (mmproj) for speech-to-text and
+# screenshots. Used instead of whisper.cpp, whose bundled ggml clashes at link time
+# with llama.cpp's (duplicate ggml symbols).
+llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["mtmd"] }
+# Text-to-speech through OS voices; same crate on both OSes.
+tts = "0.26"
 
 # GPU offload with automatic CPU fallback on both OSes (see engine::llama):
 # macOS → Metal (every Apple Silicon Mac); Windows → Vulkan (NVIDIA, AMD and Intel
 # GPUs; needs the Vulkan SDK at build time) plus OpenMP CPU threads.
 [target.'cfg(target_os = "macos")'.dependencies]
 llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["metal"] }
+# Screen reading (platform/macos.rs): AX API, screens and frontmost app.
+accessibility-sys = "0.2"
+core-foundation = "0.10"
+core-graphics = "0.25"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice"] }
+block2 = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["vulkan", "openmp"] }

@@ -6,14 +6,19 @@
 //! |---------------|------------------------------|------------------|
 //! | [`ChatModel`] | `llama::LlamaChat` (Gemma 4 E2B)        | core (done)      |
 //! | [`Embedder`]  | `llama::LlamaEmbedder` (EmbeddingGemma) | core (done)      |
-//! | [`Transcriber`] | whisper.cpp via `whisper-rs`  | macOS engineer   |
-//! | [`Speaker`]   | OS voices via the `tts` crate | macOS engineer   |
+//! | [`Transcriber`] | `llama::LlamaChat`: Gemma 4 E2B's own audio encoder (mmproj) | macOS engineer |
+//! | [`Speaker`]   | `speaker::OsSpeaker`: OS voices via the `tts` crate | macOS engineer |
 //! | [`Microphone`]| `cpal`, 16 kHz mono           | Windows engineer |
+//!
+//! Speech-to-text uses Gemma rather than whisper.cpp: whisper-rs bundles its own ggml,
+//! which collides with llama.cpp's at link time (duplicate `ggml_*` symbols), and the
+//! mmproj file is needed for screenshots anyway.
 //!
 //! All methods are blocking; callers run them on worker threads, never on the
 //! async runtime.
 
 pub mod llama;
+pub mod speaker;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -29,6 +34,8 @@ pub const EMBEDDING_DIM: usize = 256;
 /// Model files, relative to the models directory (see `scripts/fetch-models.sh`).
 pub const CHAT_MODEL_FILE: &str = "gemma-4-E2B-it-Q4_0.gguf";
 pub const EMBEDDING_MODEL_FILE: &str = "embeddinggemma-300M-Q8_0.gguf";
+/// Gemma 4 E2B's audio + vision encoder ("multimodal projector"), loaded with the chat model.
+pub const PROJECTOR_FILE: &str = "mmproj-gemma-4-E2B-it-Q8_0.gguf";
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -179,8 +186,12 @@ impl Engine {
 
         let (chat, embedder) = match llama::Runtime::init() {
             Ok(rt) => {
-                let chat = llama::LlamaChat::load(&rt, &models_dir.join(CHAT_MODEL_FILE))
-                    .map(|m| Arc::new(m) as Arc<dyn ChatModel>);
+                let chat = llama::LlamaChat::load(
+                    &rt,
+                    &models_dir.join(CHAT_MODEL_FILE),
+                    &models_dir.join(PROJECTOR_FILE),
+                )
+                .map(Arc::new);
                 let embedder =
                     llama::LlamaEmbedder::load(&rt, &models_dir.join(EMBEDDING_MODEL_FILE))
                         .map(|m| Arc::new(m) as Arc<dyn Embedder>);
@@ -188,6 +199,16 @@ impl Engine {
             }
             Err(err) => (Err(EngineError::Runtime(err.to_string())), Err(err)),
         };
+        // The same loaded Gemma serves chat and, when its projector loaded, speech-to-text.
+        let transcriber: Result<Arc<dyn Transcriber>, String> = match &chat {
+            Ok(model) if model.supports_audio() => Ok(Arc::clone(model) as Arc<dyn Transcriber>),
+            Ok(_) => Err(format!(
+                "{PROJECTOR_FILE} missing or without an audio encoder"
+            )),
+            Err(err) => Err(err.to_string()),
+        };
+        let chat = chat.map(|m| m as Arc<dyn ChatModel>);
+        let speaker = speaker::OsSpeaker::new().map(|s| Arc::new(s) as Arc<dyn Speaker>);
         record(
             EngineComponent::Chat,
             chat.as_ref().map(|_| ()).map_err(ToString::to_string),
@@ -198,11 +219,11 @@ impl Engine {
         );
         record(
             EngineComponent::SpeechToText,
-            Err("speech-to-text is not built yet".into()),
+            transcriber.as_ref().map(|_| ()).map_err(Clone::clone),
         );
         record(
             EngineComponent::TextToSpeech,
-            Err("text-to-speech is not built yet".into()),
+            speaker.as_ref().map(|_| ()).map_err(ToString::to_string),
         );
         record(
             EngineComponent::Microphone,
@@ -212,8 +233,8 @@ impl Engine {
         Self {
             chat: chat.ok(),
             embedder: embedder.ok(),
-            transcriber: None,
-            speaker: None,
+            transcriber: transcriber.ok(),
+            speaker: speaker.ok(),
             microphone: None,
             status,
         }

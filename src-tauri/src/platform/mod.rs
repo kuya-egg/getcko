@@ -5,6 +5,8 @@
 //! Owners: `macos.rs` (macOS engineer, AX API), `windows.rs` (Windows engineer,
 //! UI Automation). Each implementation must pass [`conformance`] on its OS.
 
+#[cfg(target_os = "macos")]
+mod macos;
 use crate::error::{AppError, ErrorKind};
 use crate::model::{PermissionKind, PermissionStatus, ScreenSnapshot};
 
@@ -92,7 +94,7 @@ pub const ROLES: &[&str] = &[
 pub fn current() -> Box<dyn Platform> {
     // Each OS engineer swaps their arm to their implementation; the trait is the contract.
     #[cfg(target_os = "macos")]
-    return Box::new(Unbuilt("macOS"));
+    return Box::new(macos::MacPlatform::new());
     #[cfg(target_os = "windows")]
     return Box::new(Unbuilt("Windows"));
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -101,8 +103,10 @@ pub fn current() -> Box<dyn Platform> {
 
 /// Reports screen reading as unavailable; used until an OS implementation lands
 /// and on unsupported OSes.
+#[cfg(not(target_os = "macos"))]
 struct Unbuilt(&'static str);
 
+#[cfg(not(target_os = "macos"))]
 impl Platform for Unbuilt {
     fn permission(&self, kind: PermissionKind) -> PermissionStatus {
         match kind {
