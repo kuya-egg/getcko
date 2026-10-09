@@ -103,6 +103,8 @@ macOS and Windows expose identical commands and behaviour. OS code lives only in
 | `embeddinggemma-300M-Q8_0.gguf` | 0.33 GB | Local embeddings, 256 dimensions |
 | `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.56 GB | Gemma 4 E2B vision projector for screenshots (tiers 2–3); downloaded and bundled now, loaded once vision lands |
 
+Gemma 4 E2B is one multimodal model. In GGUF/llama.cpp it ships as two files that are loaded together: the language weights (`gemma-4-E2B-it-Q4_0.gguf`) and its own vision encoder + projector (`mmproj-…`). The mmproj is not a second model. EmbeddingGemma is the only separate model, because search needs a dedicated embedding model. The same Hugging Face repo also has `mtp-gemma-4-E2B-it-*.gguf` multi-token-prediction files (faster generation, unverified with llama-cpp-2); not used yet, see macOS task 6.
+
 `bun run models` fetches and SHA-256 verifies models using `scripts/fetch-models.sh`. Development uses `src-tauri/models/`; release bundles models via `bun run tauri:build` and `src-tauri/tauri.models.conf.json`. `GETCKO_MODELS_DIR` overrides model location. Nothing downloads at runtime; the only network use is explicit model setup.
 
 ## Setup and run
