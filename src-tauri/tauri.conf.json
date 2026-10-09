@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "getcko",
+  "productName": "GetCko",
   "version": "0.1.0",
   "identifier": "com.getcko",
   "build": {
@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "getcko",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "GetCko",
+        "width": 1100,
+        "height": 760
       }
     ],
     "security": {

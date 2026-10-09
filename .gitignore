@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local model weights (fetched by scripts/fetch-models.sh, bundled at build time)
+src-tauri/models/*.gguf
+src-tauri/models/*.part

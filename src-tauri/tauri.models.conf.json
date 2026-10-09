@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "models/gemma-4-E2B-it-Q4_0.gguf": "models/gemma-4-E2B-it-Q4_0.gguf",
+      "models/embeddinggemma-300M-Q8_0.gguf": "models/embeddinggemma-300M-Q8_0.gguf"
+    }
+  }
+}

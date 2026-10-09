@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "vendor/sqlite-vector/macos-arm64/vector.dylib": "sqlite-vector/vector.dylib"
+    }
+  }
+}

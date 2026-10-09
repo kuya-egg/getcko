@@ -1,49 +1,54 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect, useState } from "react";
+import { agentActive, kbList, setupStatus } from "./lib/getcko";
+import type { Agent } from "./bindings/Agent";
+import type { KnowledgeBase } from "./bindings/KnowledgeBase";
+import type { SetupStatus } from "./bindings/SetupStatus";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[] | null>(null);
+  const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    void Promise.all([setupStatus(), kbList(), agentActive()])
+      .then(([status, bases, agent]) => {
+        setSetup(status);
+        setKnowledgeBases(bases);
+        setActiveAgent(agent);
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      });
+  }, []);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+    <main>
+      <h1>GetCko developer status</h1>
+      {error !== null && <p role="alert">Error: {error}</p>}
+      <section>
+        <h2>Components</h2>
+        {setup === null ? <p>Loading…</p> : <ul>
+          {setup.components.map((component) => (
+            <li key={component.component}>
+              {component.component}: {String(component.ready)}{component.detail ? ` — ${component.detail}` : ""}
+            </li>
+          ))}
+        </ul>}
+      </section>
+      <section>
+        <h2>Permissions</h2>
+        {setup !== null && <ul>
+          {setup.permissions.map((permission) => (
+            <li key={permission.kind}>{permission.kind}: {permission.status}</li>
+          ))}
+        </ul>}
+      </section>
+      <section>
+        <h2>Workspace</h2>
+        <p>Knowledge bases: {knowledgeBases === null ? "Loading…" : knowledgeBases.length}</p>
+        <p>Active agent: {activeAgent?.name ?? "None"}</p>
+      </section>
     </main>
   );
 }

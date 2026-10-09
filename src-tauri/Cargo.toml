@@ -1,16 +1,14 @@
 [package]
 name = "getcko"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Private desktop copilot whose AI runs entirely on your laptop"
+authors = ["GetCko team"]
+license = "Apache-2.0"
+edition = "2024"
+rust-version = "1.88"
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# The `_lib` suffix keeps the lib name distinct from the bin name (cargo#8519 on Windows).
 name = "getcko_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -22,9 +20,31 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.40", features = ["bundled", "load_extension"] }
+sha2 = "0.11"
+ts-rs = "12"
+pdf-extract = "0.12"
+llama-cpp-2 = { version = "0.1.159", default-features = false }
 
+# GPU offload with automatic CPU fallback on both OSes (see engine::llama):
+# macOS → Metal (every Apple Silicon Mac); Windows → Vulkan (NVIDIA, AMD and Intel
+# GPUs; needs the Vulkan SDK at build time) plus OpenMP CPU threads.
+[target.'cfg(target_os = "macos")'.dependencies]
+llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["metal"] }
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[target.'cfg(target_os = "windows")'.dependencies]
+llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["vulkan", "openmp"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev.package."*"]
+# llama.cpp and sqlite are unusably slow unoptimised; our own crate stays debuggable.
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true
