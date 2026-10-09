@@ -9,6 +9,7 @@ import {
   isWaiting,
   lastTurn,
   momentFor,
+  stopKind,
   tryReducer,
   type TryAction,
   type TryState,
@@ -119,6 +120,20 @@ describe("tryReducer", () => {
     expect(isModelMissing("embedding model is not available")).toBe(true);
     expect(isModelMissing("models are loading")).toBe(true);
     expect(isModelMissing("engine stopped")).toBe(false);
+    // ask() throws before a turn starts (mock and backend AppError shape).
+    expect(isModelMissing({ kind: "unavailable", message: "chat model not loaded" })).toBe(true);
+    expect(isModelMissing(new Error("chat model not loaded"))).toBe(true);
+  });
+
+  it("the stop control says 'speaking' only once GetcKo has words out", () => {
+    const asked = run([{ type: "ask", key: 1, question: "Q" }]);
+    expect(stopKind(lastTurn(asked))).toBeNull(); // no turn id yet
+    const waiting = run([{ type: "started", key: 1, turnId: 4 }, ev({ type: "phase", turnId: 4, phase: "thinking" })], asked);
+    expect(stopKind(lastTurn(waiting))).toBe("waiting");
+    const speaking = run([ev({ type: "sentence", turnId: 4, text: "Click Save." })], waiting);
+    expect(stopKind(lastTurn(speaking))).toBe("speaking");
+    const done = run([ev({ type: "finished", answer: answer(4) })], speaking);
+    expect(stopKind(lastTurn(done))).toBeNull();
   });
 
   it("uses the answer text when no sentences were streamed", () => {

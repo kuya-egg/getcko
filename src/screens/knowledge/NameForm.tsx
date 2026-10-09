@@ -15,10 +15,12 @@ export interface NameFormProps {
   onCancel: () => void;
   /** Field label. Default "Name"; rename passes "Rename Records office" so the context stays. */
   label?: string;
+  /** Save is the screen's one solid action (the create card when there are no knowledge bases yet). */
+  primary?: boolean;
   className?: string;
 }
 
-export function NameForm({ initial = "", others, onSubmit, onCancel, label = KB_COPY.nameLabel, className }: NameFormProps) {
+export function NameForm({ initial = "", others, onSubmit, onCancel, label = KB_COPY.nameLabel, primary = false, className }: NameFormProps) {
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,7 +65,7 @@ export function NameForm({ initial = "", others, onSubmit, onCancel, label = KB_
         disabled={busy}
       />
       <div className="flex items-center gap-3">
-        <Button type="submit" variant="secondary" size="sm" disabled={busy}>
+        <Button type="submit" variant={primary ? "primary" : "secondary"} size="sm" disabled={busy}>
           {T.actions.save}
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>

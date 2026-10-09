@@ -21,6 +21,7 @@ import {
   SegmentedControl,
   Slider,
   Surface,
+  Tag,
   TextField,
   Toggle,
   VoicePicker,
@@ -35,7 +36,6 @@ import {
   blankDraft,
   clampSpeed,
   draftOf,
-  cardLine,
   hasProblems,
   isDirty,
   isFilipinoVoice,
@@ -52,6 +52,8 @@ export interface AgentEditorProps {
   /** null = a new agent, not saved yet. */
   agent: Agent | null;
   active: boolean;
+  /** Open scrolled to Try it with the ask box focused (from "Try this agent" on the list). */
+  focusTry?: boolean;
   knowledgeBases: KnowledgeBase[];
   voices: Voice[];
   /** Persist. Resolves with the stored agent; throws a GetckoError. */
@@ -70,6 +72,7 @@ const LENGTHS = [
 export function AgentEditor({
   agent,
   active,
+  focusTry = false,
   knowledgeBases,
   voices,
   onSave,
@@ -90,6 +93,19 @@ export function AgentEditor({
   /** Delete, or leave with unsaved changes (then = where to go once confirmed). */
   const [confirm, setConfirm] = useState<{ kind: "delete" } | { kind: "discard"; then: () => void } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const tryRef = useRef<HTMLElement>(null);
+
+  /** Bring Try it into view and put the cursor in its ask box. */
+  const goToTry = () => {
+    const el = tryRef.current;
+    if (!el) return;
+    el.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    el.querySelector<HTMLInputElement>("input:not([disabled])")?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (focusTry) goToTry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const dirty = isDirty(draft, saved);
   const set = <K extends keyof AgentDraft>(k: K, v: AgentDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -159,25 +175,32 @@ export function AgentEditor({
         className="min-h-12"
         title={<span className="line-clamp-1">{title}</span>}
         action={
-          agent &&
-          (active ? (
-            <InUse />
-          ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Icon.start}
-              disabled={busy !== null}
-              onClick={() => void runBusy("start", onStart)}
-              aria-label={T.aria.startAgent(agent.name)}
-            >
-              {T.actions.start}
-            </Button>
-          ))
+          agent && (
+            <>
+              <Button variant="ghost" size="sm" icon={Icon.tryThisAgent} onClick={goToTry}>
+                {T.actions.tryThisAgent}
+              </Button>
+              {active ? (
+                <InUse />
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Icon.start}
+                  disabled={busy !== null}
+                  onClick={() => void runBusy("start", onStart)}
+                  aria-label={T.aria.startAgent(agent.name)}
+                >
+                  {T.actions.start}
+                </Button>
+              )}
+            </>
+          )
         }
       />
 
-      <Surface texture="footprints" intensity="subtle" className="flex flex-col gap-12 rounded-panel p-6">
+      {/* Bleeds 24px into the page gutter so the panels line up with the page column (back link, title). */}
+      <Surface texture="footprints" intensity="subtle" className="-mx-6 flex flex-col gap-12 rounded-panel p-6">
         <Panel eyebrow={T.agent.sectionInstructions}>
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-2 gap-4">
@@ -197,8 +220,8 @@ export function AgentEditor({
                 label={AGENTS_COPY.descriptionLabel}
                 helper={AGENTS_COPY.descriptionHelp}
                 value={draft.description}
-                // An empty description falls back to this line on the card, so show it here too.
-                placeholder={cardLine({ description: "", instructions: draft.instructions, templateId: agent?.templateId ?? null })}
+                // A hint, not a fake value. Left empty, the card falls back to the template's line.
+                placeholder={AGENTS_COPY.descriptionPlaceholder}
                 maxLength={90}
                 autoComplete="off"
                 onChange={(e) => set("description", e.currentTarget.value)}
@@ -221,19 +244,20 @@ export function AgentEditor({
           </div>
         </Panel>
 
-        <Panel
-          eyebrow={T.agent.sectionKnowledgeBases}
-          actions={
-            knowledgeBases.length > 0 && (
-              <span
-                className="font-mono text-keys nums text-text-2"
-                aria-label={AGENTS_COPY.attachedAria(draft.knowledgeBaseIds.length, MAX_KNOWLEDGE_BASES)}
-              >
-                {AGENTS_COPY.attached(draft.knowledgeBaseIds.length, MAX_KNOWLEDGE_BASES)}
-              </span>
-            )
-          }
-        >
+        <Panel>
+          <PanelHead
+            label={T.agent.sectionKnowledgeBases}
+            aside={
+              knowledgeBases.length > 0 && (
+                <span
+                  className="font-mono text-keys nums text-text-2"
+                  aria-label={AGENTS_COPY.attachedAria(draft.knowledgeBaseIds.length, MAX_KNOWLEDGE_BASES)}
+                >
+                  {AGENTS_COPY.attached(draft.knowledgeBaseIds.length, MAX_KNOWLEDGE_BASES)}
+                </span>
+              )
+            }
+          />
           {knowledgeBases.length === 0 ? (
             <Notice
               title={T.states.agentNoKnowledgeBases.title}
@@ -308,12 +332,19 @@ export function AgentEditor({
           </div>
         </Panel>
 
-        <Panel eyebrow={T.agent.sectionTry}>
+        <Panel ref={tryRef} className="scroll-mt-8">
+          <PanelHead
+            label={T.agent.sectionTry}
+            // GetcKo answers in the saved language: say which, so Taglish reads as a choice, not a glitch.
+            aside={<Tag>{T.languages[languageWord(agent?.language ?? draft.language)]}</Tag>}
+          />
           <TryAgent
             agentId={agent?.id ?? null}
             agentName={agent?.name ?? title}
             language={agent?.language ?? draft.language}
+            templateId={agent?.templateId ?? null}
             dirty={dirty && agent !== null}
+            onOpenSettings={() => leave(() => go("settings"))}
           />
         </Panel>
       </Surface>
@@ -342,7 +373,7 @@ export function AgentEditor({
             </>
           )}
           <span className="flex-1" />
-          {dirty && <span className="text-label text-text-2">{AGENTS_COPY.unsaved}</span>}
+          {dirty && <UnsavedMark />}
           <Button variant="secondary" size="sm" disabled={busy !== null || (!dirty && agent !== null)} onClick={cancel}>
             {T.actions.cancel}
           </Button>
@@ -404,6 +435,16 @@ export function AgentEditor({
   );
 }
 
+/** Panel header with its label and an aside on one centered line (Panel's own header top-aligns them). */
+function PanelHead({ label, aside }: { label: string; aside?: ReactNode }) {
+  return (
+    <header className="mb-4 flex min-h-8 items-center justify-between gap-4">
+      <p className="eyebrow">{label}</p>
+      {aside && <div className="flex shrink-0 items-center gap-2">{aside}</div>}
+    </header>
+  );
+}
+
 /** A visible label over a control that carries its own aria-label (SegmentedControl). */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -413,6 +454,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       </span>
       {children}
     </div>
+  );
+}
+
+/** Unsaved changes: a square mark plus words, in the sticky save bar. */
+function UnsavedMark() {
+  return (
+    <span className="inline-flex items-center gap-2 text-label font-semibold text-text">
+      <span aria-hidden="true" className="size-2 shrink-0 bg-text" />
+      {AGENTS_COPY.unsaved}
+    </span>
   );
 }
 

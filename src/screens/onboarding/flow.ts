@@ -32,6 +32,8 @@ export const COMPONENT_ORDER: readonly EngineComponent[] = ["chat", "embeddings"
 export function isGated(status: SetupStatus | undefined, kind: PermissionKind, platform: Platform = "mac"): boolean {
   const s = permissionOf(status, kind);
   if (s === undefined || s === "notRequired") return false;
+  // Windows has no Accessibility or Screen Recording switch for GetcKo: never a step there.
+  if (platform === "win" && kind !== "microphone") return false;
   if (platform === "win" && kind === "microphone") return s === "denied";
   return true;
 }

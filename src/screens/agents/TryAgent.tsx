@@ -1,17 +1,20 @@
 // "Try it": an unsaved test chat with one agent (PRD A7). Streams sentences from 'turn' events into
-// a GetcKo bubble; GetcKo (3x) stands beside the latest answer. The only gecko on the agents screen.
+// a GetcKo bubble; GetcKo (3x) stands beside the latest answer, thinking, then talking, then done.
+// Empty, it teaches: GetcKo points at two questions this agent answers, in the agent's language.
+// The only gecko on the agents screen.
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { AgentId } from "../../bindings/AgentId";
 import type { Language } from "../../bindings/Language";
-import { GetCkoSprite, MOMENT_POSE, pointPoseFor, type Moment } from "../../brand";
+import type { TemplateId } from "../../bindings/TemplateId";
+import { GetCkoSprite, MOMENT_POSE, pointPoseFor, speakLoop, thinkingLoop, type Moment, type Pose } from "../../brand";
 import { Icon } from "../../brand/icons";
 import { T, linesFor } from "../../brand/lexicon";
 import { Button, ChatBubble, CitationChip, Composer, ErrorNotice } from "../../components/ui";
 import { errorCopy } from "../../app/errors";
 import { ask, onTurn, pttStart, stop } from "../../lib/getcko";
-import { AGENTS_COPY } from "./copy";
+import { AGENTS_COPY, sampleQuestions, tryGreeting } from "./copy";
 import { citationWhere, languageWord, shortSource } from "./model";
-import { TRY_INITIAL, isLive, isModelMissing, isWaiting, lastTurn, momentFor, tryReducer, type TryTurn } from "./tryChat";
+import { TRY_INITIAL, isLive, isModelMissing, isWaiting, lastTurn, momentFor, stopKind, tryReducer, type TryTurn } from "./tryChat";
 
 export interface TryAgentProps {
   /** The saved agent to try. null = not saved yet (the chat is disabled). */
@@ -19,11 +22,19 @@ export interface TryAgentProps {
   agentName: string;
   /** Saved language: GetcKo's own lines follow it. */
   language: Language;
+  /** The agent's template: picks the suggested questions. null = a custom agent. */
+  templateId?: TemplateId | null;
   /** The editor has unsaved changes: say Try it uses the saved version. */
   dirty: boolean;
+  /** Recovery when the chat model is missing: open the Settings screen (the editor guards unsaved work). */
+  onOpenSettings?: () => void;
 }
 
-export function TryAgent({ agentId, agentName, language, dirty }: TryAgentProps) {
+/** The turn failed because the chat model is missing: waiting won't fix it. */
+const modelMissing = (t: TryTurn | undefined): boolean =>
+  !!t && t.stage === "failed" && (isModelMissing(t.error) || errorCopy(t.error).body === T.errors.modelNotLoaded);
+
+export function TryAgent({ agentId, agentName, language, templateId = null, dirty, onOpenSettings }: TryAgentProps) {
   const [state, dispatch] = useReducer(tryReducer, TRY_INITIAL);
   const [text, setText] = useState("");
   const keySeq = useRef(0);
@@ -89,12 +100,19 @@ export function TryAgent({ agentId, agentName, language, dirty }: TryAgentProps)
   }, [agentId]);
 
   const disabled = agentId == null;
+  // Model missing: the ask box can't work, so it doesn't pretend to be ready (the error names the fix).
+  const blocked = modelMissing(current);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-4" aria-live="polite">
         {state.turns.length === 0 && !disabled && (
-          <EmptyTry title={T.states.try.empty.title} body={T.states.try.empty.body} />
+          <EmptyTry
+            title={tryGreeting(languageWord(language))}
+            body={T.agent.tryNotSaved}
+            questions={sampleQuestions(templateId, languageWord(language))}
+            onAsk={(q) => void run(false, q)}
+          />
         )}
         {state.turns.map((t) => (
           <TurnView
@@ -104,15 +122,18 @@ export function TryAgent({ agentId, agentName, language, dirty }: TryAgentProps)
             agentName={agentName}
             lines={lines}
             onStop={() => void stop().catch(() => undefined)}
+            onRetry={t.question ? () => void run(false, t.question) : undefined}
+            onOpenSettings={onOpenSettings}
           />
         ))}
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Ring on any focus, including the programmatic one from "Try this agent" (the Composer only rings on focus-visible). */}
+      <div className="flex items-center gap-3 rounded-panel has-[input:focus:not(:focus-visible)]:outline-2 has-[input:focus:not(:focus-visible)]:outline-offset-2 has-[input:focus:not(:focus-visible)]:outline-solid has-[input:focus:not(:focus-visible)]:outline-focus">
         <Composer
           value={text}
           onValueChange={setText}
-          disabled={disabled || busy}
+          disabled={disabled || busy || blocked}
           placeholder={disabled ? AGENTS_COPY.tryPlaceholderIdle : AGENTS_COPY.tryPlaceholder(agentName)}
           onSubmit={(q) => {
             setText("");
@@ -152,33 +173,83 @@ export function TryAgent({ agentId, agentName, language, dirty }: TryAgentProps)
   );
 }
 
-/** Before the first question: GetcKo points down at the ask box. */
-function EmptyTry({ title, body }: { title: string; body: string }) {
+/**
+ * Before the first question: GetcKo points down at two questions this agent answers (shaped like
+ * the question bubble they become) and the ask box under them. One click asks.
+ */
+function EmptyTry({
+  title,
+  body,
+  questions,
+  onAsk,
+}: {
+  title: string;
+  body: string;
+  questions: readonly string[];
+  onAsk: (q: string) => void;
+}) {
   return (
-    <div className="flex items-end gap-3">
-      <GeckoWell moment={undefined} />
-      <div className="flex flex-col gap-1 pb-3">
-        <p className="text-row text-text">{title}</p>
-        <p className="text-label text-text-2">{body}</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-end gap-3">
+        <LiveGecko moment={undefined} />
+        <div className="flex min-w-0 flex-col gap-1 pb-1">
+          <p className="text-row text-text">{title}</p>
+          <p className="text-label font-normal text-text-2">{body}</p>
+        </div>
       </div>
+      {questions.length > 0 && (
+        <div className="flex flex-col gap-2 pl-19.5">
+          <p id="try-suggest" className="text-caption text-text-2">
+            {AGENTS_COPY.trySuggest}
+          </p>
+          <ul className="flex flex-wrap gap-2" aria-labelledby="try-suggest">
+            {questions.map((q) => (
+              <li key={q}>
+                <button
+                  type="button"
+                  onClick={() => onAsk(q)}
+                  className={
+                    "inline-flex min-h-11 items-center rounded-bubble rounded-br-code border border-border-strong bg-surface px-4 py-2 text-left text-label text-text " +
+                    "transition-[background-color,border-color,translate] hover:border-text-3 hover:bg-surface-2 active:translate-y-px"
+                  }
+                >
+                  {q}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Integer 3x sprite in a small surface-2 well, the same frame Composer uses for its listening gecko. */
-function GeckoWell({ moment }: { moment: Moment | undefined }) {
-  const pose = moment ? MOMENT_POSE[moment] : pointPoseFor("downRight");
+/**
+ * GetcKo at 3x, standing on the panel (no box) beside its bubble. Thinking blinks, speaking
+ * talks (both reduced-motion aware in brand/motion), other moments hold their MOMENT_POSE.
+ * No moment = pointing down-right at what comes next.
+ */
+function LiveGecko({ moment }: { moment: Moment | undefined }) {
+  const still: Pose = moment ? MOMENT_POSE[moment] : pointPoseFor("downRight");
+  const [pose, setPose] = useState<Pose>(still);
+  useEffect(() => {
+    if (moment === "thinking") {
+      const tl = thinkingLoop(setPose);
+      return () => void tl.kill();
+    }
+    if (moment === "speaking") {
+      const tl = speakLoop(setPose, { restPose: "pointing" });
+      return () => void tl.kill();
+    }
+    setPose(still);
+  }, [moment, still]);
   const label = moment ? T.mascot.moment(T.moments[moment]) : T.mascot.pointingAtAction;
-  return (
-    <span className="shrink-0 rounded-tile bg-surface-2 p-2">
-      <GetCkoSprite pose={pose} scale={3} label={label} />
-    </span>
-  );
+  return <GetCkoSprite pose={pose} scale={3} label={label} className="shrink-0" />;
 }
 
-/** Same footprint as GeckoWell so earlier answers line up under the latest one. */
+/** Same width as GetcKo at 3x (22 cells) so earlier answers line up under the latest one. */
 function GeckoSpacer() {
-  return <span aria-hidden="true" className="w-20.5 shrink-0" />;
+  return <span aria-hidden="true" className="w-16.5 shrink-0" />;
 }
 
 function TurnView({
@@ -187,12 +258,17 @@ function TurnView({
   agentName,
   lines,
   onStop,
+  onRetry,
+  onOpenSettings,
 }: {
   turn: TryTurn;
   latest: boolean;
   agentName: string;
   lines: ReturnType<typeof linesFor>;
   onStop: () => void;
+  /** Ask the same question again (typed turns only). */
+  onRetry?: () => void;
+  onOpenSettings?: () => void;
 }) {
   const moment = momentFor(turn);
   const waiting = isWaiting(turn);
@@ -207,12 +283,14 @@ function TurnView({
   else if (noSource) words = lines.dontKnow;
 
   // A missing model arrives as a failed turn with a plain message: say which fix applies.
+  const missing = modelMissing(turn);
   const err = !failed
     ? null
-    : isModelMissing(turn.error)
-      ? errorCopy({ kind: "unavailable", message: "model not loaded" })
+    : missing
+      ? { ...errorCopy({ kind: "unavailable", message: "model not loaded" }), body: AGENTS_COPY.modelMissingBody }
       : errorCopy(turn.error);
   const stopped = turn.stage === "cancelled";
+  const stopAs = latest ? stopKind(turn) : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -222,13 +300,30 @@ function TurnView({
         </ChatBubble>
       )}
       {err ? (
-        <ErrorNotice title={err.title} mascot={latest}>
-          {err.body}
-        </ErrorNotice>
+        // Every error names its recovery. Model missing: Settings first (waiting won't fix it), then try again.
+        missing && onOpenSettings ? (
+          <ErrorNotice title={err.title} mascot={latest}>
+            {err.body}
+            <span className="flex flex-wrap items-center gap-4 pt-3">
+              <Button variant="secondary" size="sm" icon={Icon.settings} onClick={onOpenSettings}>
+                {AGENTS_COPY.openSettings}
+              </Button>
+              {onRetry && latest && (
+                <Button variant="ghost" size="sm" onClick={onRetry}>
+                  {T.actions.tryAgain}
+                </Button>
+              )}
+            </span>
+          </ErrorNotice>
+        ) : (
+          <ErrorNotice title={err.title} mascot={latest} onRetry={latest ? onRetry : undefined}>
+            {err.body}
+          </ErrorNotice>
+        )
       ) : (
         words && (
           <div className="flex items-end gap-3">
-            {latest ? <GeckoWell moment={moment} /> : <GeckoSpacer />}
+            {latest ? <LiveGecko moment={moment} /> : <GeckoSpacer />}
             <div className="flex min-w-0 flex-col gap-2">
               <ChatBubble
                 from="getcko"
@@ -246,10 +341,11 @@ function TurnView({
                   ))}
                 </ul>
               )}
-              {latest && isLive(turn) && turn.turnId !== null && (
+              {/* "Stop speaking" only once there are words; while GetcKo is still checking, a plain stop. */}
+              {stopAs && (
                 <div>
                   <Button variant="ghost" size="sm" icon={Icon.stop} onClick={onStop}>
-                    {T.actions.stopSpeaking}
+                    {stopAs === "speaking" ? T.actions.stopSpeaking : AGENTS_COPY.stop}
                   </Button>
                 </div>
               )}
@@ -259,7 +355,7 @@ function TurnView({
       )}
       {/* Stopped before or after the first sentence: say so either way. */}
       {stopped && (
-        <p className={`text-caption text-text-3${words ? " pl-23.5" : ""}`}>{AGENTS_COPY.stopped}</p>
+        <p className={`text-caption text-text-3${words ? " pl-19.5" : ""}`}>{AGENTS_COPY.stopped}</p>
       )}
     </div>
   );

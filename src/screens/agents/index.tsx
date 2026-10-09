@@ -40,7 +40,8 @@ async function loadAgents(): Promise<AgentsData> {
   return { agents, activeId: active?.id ?? null, knowledgeBases, templates, voices };
 }
 
-type View = { kind: "list" } | { kind: "edit"; id: AgentId | null };
+/** focus "try" opens the editor scrolled to Try it, the ask box focused. */
+type View = { kind: "list" } | { kind: "edit"; id: AgentId | null; focus?: "try" };
 
 /** Dev-only start view for screenshots and the browser mock: ?agent=<id>|new opens the editor. */
 function initialView(): View {
@@ -48,7 +49,8 @@ function initialView(): View {
   const q = new URLSearchParams(window.location.search).get("agent");
   if (q === "new") return { kind: "edit", id: null };
   const id = Number(q);
-  return q && Number.isInteger(id) ? { kind: "edit", id } : { kind: "list" };
+  const focus = new URLSearchParams(window.location.search).get("focus") === "try" ? "try" : undefined;
+  return q && Number.isInteger(id) ? { kind: "edit", id, focus } : { kind: "list" };
 }
 
 export function AgentsScreen() {
@@ -123,6 +125,7 @@ export function AgentsScreen() {
           key={view.id ?? "new"}
           agent={agent ?? null}
           active={agent !== undefined && agent.id === data.activeId}
+          focusTry={view.focus === "try"}
           knowledgeBases={data.knowledgeBases}
           voices={data.voices}
           onBack={() => setView({ kind: "list" })}
@@ -165,9 +168,9 @@ export function AgentsScreen() {
         className="min-h-12"
         title={T.nav.agents}
         action={
-          // The empty state's "Use template" is the one primary while there are no agents.
+          // Secondary: the one primary is "Try this agent" on the agent in use, or "Use template" when empty.
           <Button
-            variant={data.agents.length === 0 ? "secondary" : "primary"}
+            variant={data.agents.length > 0 && data.activeId === null ? "primary" : "secondary"}
             icon={Icon.newAgent}
             onClick={() => setView({ kind: "edit", id: null })}
           >
@@ -189,6 +192,7 @@ export function AgentsScreen() {
         onUseTemplate={(id) => void fromTemplate(id)}
         onNew={() => setView({ kind: "edit", id: null })}
         onEdit={(id) => setView({ kind: "edit", id })}
+        onTry={(id) => setView({ kind: "edit", id, focus: "try" })}
         onStart={(id) => void act(() => start(id))}
       />
       <Toast {...toast.props} />

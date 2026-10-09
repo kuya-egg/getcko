@@ -6,8 +6,8 @@ import { useEffect, useMemo, useReducer, useState, type ReactNode } from "react"
 import type { PermissionKind } from "../../bindings/PermissionKind";
 import { GetCkoSprite, MOMENT_POSE } from "../../brand";
 import { ICON_PROPS, Icon } from "../../brand/icons";
-import { T } from "../../brand/lexicon";
-import { Button, ErrorNotice, Keycap, MockToggle, Notice, StatusChip, Surface } from "../../components/ui";
+import { T, say } from "../../brand/lexicon";
+import { Button, ErrorNotice, Notice, StatusChip, Surface, Wordmark } from "../../components/ui";
 import { APP_COPY } from "../../app/copy";
 import { errorCopy } from "../../app/errors";
 import { PLATFORM } from "../../app/platform";
@@ -28,6 +28,7 @@ import {
   type AskState,
   type StepId,
 } from "./flow";
+import { MockSettingsWindow, ShortcutKeys, StageCard } from "./Stage";
 import { StepFrame } from "./StepFrame";
 
 const PERMISSION: Record<PermissionKind, { name: string; title: string; body: string }> = {
@@ -49,20 +50,19 @@ const PERMISSION: Record<PermissionKind, { name: string; title: string; body: st
   },
 };
 
-/** Waiting line on a permission that is still off, by OS. Windows only ever shows the microphone. */
-const waitingText = (kind: PermissionKind): string =>
-  PLATFORM === "win" && kind === "microphone" ? ONBOARDING_COPY.win.waiting : T.onboarding.waiting;
+/** Waiting line on a permission that is still off, by OS ("Waiting for macOS…" never shows on a PC). */
+const waitingText = (): string => (PLATFORM === "win" ? ONBOARDING_COPY.win.waiting : T.onboarding.waiting);
 
 /**
  * "Waiting for macOS…" or "Turned on". Nothing while idle. The waiting icon is static: nothing polls,
  * so the screen only moves when the person comes back or presses "Check again".
  */
-function AskLine({ kind, state }: { kind: PermissionKind; state: AskState }) {
+function AskLine({ state }: { state: AskState }) {
   if (state === "waiting")
     return (
       <span className="inline-flex items-center gap-2 text-text-2">
         <Icon.info {...ICON_PROPS} />
-        {waitingText(kind)}
+        {waitingText()}
       </span>
     );
   if (state === "granted")
@@ -131,8 +131,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     if (setup.error !== undefined) {
       const c = errorCopy(setup.error);
       return (
-        <Surface texture="pointer" intensity="subtle" className="flex h-full items-center p-16">
-          <div className="flex max-w-copy flex-col gap-6">
+        <Surface texture="footprints" intensity="subtle" className="flex h-full flex-col p-8">
+          <Wordmark size="md" />
+          <div className="flex max-w-copy flex-1 flex-col justify-center gap-6 px-8">
             <ErrorNotice title={c.title} mascot moment="offline" onRetry={() => void setup.refresh()}>
               {c.body}
             </ErrorNotice>
@@ -146,13 +147,17 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       );
     }
     return (
-      <Surface texture="pointer" intensity="subtle" className="flex h-full items-center px-16">
-        {waiting && (
-          <div className="flex items-center gap-4" role="status">
-            <GetCkoSprite pose={MOMENT_POSE.thinking} scale={3} label={T.mascot.moment(T.moments.thinking)} />
-            <p className="text-body text-text-2">{APP_COPY.shell.checking}</p>
-          </div>
-        )}
+      // Branded from frame 0: the wordmark shows at once, GetcKo's moment only if the read is slow.
+      <Surface texture="footprints" intensity="subtle" className="flex h-full flex-col p-8">
+        <Wordmark size="md" />
+        <div className="flex flex-1 items-center px-8">
+          {waiting && (
+            <div className="flex items-center gap-4" role="status">
+              <GetCkoSprite pose={MOMENT_POSE.thinking} scale={3} label={T.mascot.moment(T.moments.thinking)} />
+              <p className="text-body text-text-2">{APP_COPY.shell.checking}</p>
+            </div>
+          )}
+        </div>
       </Surface>
     );
   }
@@ -184,12 +189,12 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     shown !== undefined ? <ErrorNotice title={errorCopy(shown).title}>{errorCopy(shown).body}</ErrorNotice> : null;
   const backButton =
     index > 0 ? (
-      <Button variant="ghost" icon={Icon.back} onClick={back}>
+      <Button variant="ghost" size="sm" icon={Icon.back} onClick={back}>
         {T.actions.back}
       </Button>
     ) : null;
 
-  const frame = { stepKey: step, dir: flow.dir, step: index + 1, total: steps.length };
+  const frame = { stepKey: step, dir: flow.dir, step: index + 1, total: steps.length, back: backButton };
 
   // ---- Permission steps ---------------------------------------------------------------------
   if (step !== "ready") {
@@ -208,21 +213,28 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     return (
       <StepFrame
         {...frame}
+        stepLabel={p.name}
         title={p.title}
         body={p.body}
-        status={<AskLine kind={kind} state={state} />}
+        status={<AskLine state={state} />}
         notice={failureNotice ?? permissionNotice(kind, state)}
-        moment={kind === "microphone" && state === "granted" ? "listening" : "screenHelp"}
-        visual={<MockToggle on={state === "granted"} permission={p.name} />}
+        // Off: GetcKo points at the switch. On: it's done pointing (the microphone starts listening).
+        moment={state !== "granted" ? "screenHelp" : kind === "microphone" ? "listening" : "ready"}
+        visual={<MockSettingsWindow permission={p.name} on={state === "granted"} />}
         actions={
           state === "granted" ? (
-            <>
-              <Button onClick={next}>{T.actions.continue}</Button>
-              {backButton}
-            </>
+            <Button size="lg" onClick={next}>
+              {T.actions.continue}
+            </Button>
           ) : (
             <>
-              <Button onClick={() => void ask()} disabled={busy}>
+              <Button
+                size="lg"
+                icon={state === "waiting" ? Icon.retry : undefined}
+                onClick={() => void ask()}
+                disabled={busy}
+                aria-busy={busy || undefined}
+              >
                 {state === "waiting" ? T.onboarding.checkAgain : T.actions.openSystemSettings}
               </Button>
               <Button variant="ghost" onClick={next} disabled={busy}>
@@ -243,12 +255,14 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     return (
       <StepFrame
         {...frame}
+        stepLabel={T.settings.shortcut}
         title={T.onboarding.shortcutTitle}
         body={T.onboarding.shortcutBody}
         status={
           <span className="inline-flex items-center gap-2 font-semibold text-accent-text">
             <Icon.ready {...ICON_PROPS} />
-            {T.settings.modelsReady}
+            {/* "You're ready." only when nothing is off; otherwise just the fact about the models. */}
+            {off.length === 0 ? say.en.onboardingDone : T.settings.modelsReady}
           </span>
         }
         notice={
@@ -263,16 +277,14 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           ) : null
         }
         moment="screenHelp"
-        visualHeight={56}
-        visual={
-          // The real keycap, drawn big enough to point at; font size from the type scale token.
-          <Keycap hotkey className="target-halo h-14 px-5" style={{ fontSize: "var(--text-h2)" }} />
-        }
+        stageTone="ink"
+        visual={<ShortcutKeys />}
+        // The one Silkscreen badge on the screen, beside GetcKo (design system §3).
+        aside={<span className="font-pixel text-pixel text-accent-text">{T.product.tagline}</span>}
         actions={
-          <>
-            <Button onClick={onDone}>{T.actions.start}</Button>
-            {backButton}
-          </>
+          <Button size="lg" onClick={onDone}>
+            {T.actions.start}
+          </Button>
         }
       />
     );
@@ -284,26 +296,26 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   return (
     <StepFrame
       {...frame}
+      stepLabel={T.settings.models}
       title={c.title}
       body={c.body}
       notice={failureNotice}
       moment={loadingModels ? "processing" : "offline"}
-      scale={6}
-      split="visual"
+      // GetcKo stands beside the list (it isn't pointing here), so the list sits on the floor with it.
+      grounded
       visual={
-        <div className="w-96 min-w-0 max-w-full rounded-tile border border-border bg-surface-2 px-4 py-2">
+        <StageCard title={T.settings.models}>
           <ComponentList status={status} />
-        </div>
+        </StageCard>
       }
       actions={
         loadingModels ? (
-          <>
-            <Button onClick={onDone}>{T.actions.start}</Button>
-            {backButton}
-          </>
+          <Button size="lg" onClick={onDone}>
+            {T.actions.start}
+          </Button>
         ) : (
           <>
-            <Button icon={Icon.retry} onClick={() => void run(setup.refresh)} disabled={busy}>
+            <Button size="lg" icon={Icon.retry} onClick={() => void run(setup.refresh)} disabled={busy} aria-busy={busy || undefined}>
               {T.onboarding.checkAgain}
             </Button>
             <Button variant="ghost" onClick={onDone} disabled={busy}>
@@ -424,7 +436,7 @@ export function SetupPanel() {
                       </Button>
                     )}
                   </div>
-                  {hint && <p className="text-caption text-text-2">{hint}</p>}
+                  {hint && <p className="text-label text-text-2">{hint}</p>}
                 </li>
               );
             })}

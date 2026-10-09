@@ -19,7 +19,7 @@ export interface KbListProps {
 
 export function KbList({ kbs, selected, onSelect, creating, onCreate, onCancelCreate }: KbListProps) {
   return (
-    <Panel as="aside" padding="none" aria-label={KB_COPY.listLabel} className="w-48 shrink-0 p-2">
+    <Panel as="aside" padding="none" aria-label={KB_COPY.listLabel} className="w-44 shrink-0 p-2">
       {creating && (
         <NameForm
           others={kbs.map((k) => k.name)}
@@ -43,7 +43,9 @@ export function KbList({ kbs, selected, onSelect, creating, onCreate, onCancelCr
                 )}
               >
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className={cn("truncate text-label text-text", active && "font-semibold")}>{kb.name}</span>
+                  <span className={cn("truncate text-label text-text", active && "font-semibold")} title={kb.name}>
+                    {kb.name}
+                  </span>
                   <span className="nums truncate text-caption text-text-3">{T.knowledgeBase.documentsCount(kb.documentCount)}</span>
                   {/* Own line so the live status never truncates in the narrow column. */}
                   {kb.status === "processing" && <span className="text-caption text-text-2">{KB_COPY.processingSuffix}</span>}

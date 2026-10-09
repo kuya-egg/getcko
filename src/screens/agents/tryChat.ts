@@ -161,9 +161,26 @@ export const isWaiting = (t: TryTurn): boolean =>
  * (pipeline.rs: "chat model is not available", "models are loading"), not as a thrown kind.
  */
 export const isModelMissing = (error: unknown): boolean => {
-  const m = typeof error === "string" ? error : error instanceof Error ? error.message : "";
-  return /(chat|embedding) model is not available|models are loading/i.test(m);
+  const m =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : typeof error === "object" && error !== null && typeof (error as { message?: unknown }).message === "string"
+          ? (error as { message: string }).message
+          : "";
+  // ask() itself throws "chat model not loaded" (unavailable) before any turn starts.
+  return /(chat|embedding) model (is not available|not available|not loaded)|models are loading/i.test(m);
 };
+
+/**
+ * What the stop control on a live turn should say. "speaking" only once GetcKo has words out;
+ * while it is still checking documents it is a plain stop; null = no control (no turn id yet, or over).
+ */
+export function stopKind(t: TryTurn | undefined): "speaking" | "waiting" | null {
+  if (!t || !isLive(t) || t.turnId === null) return null;
+  return t.sentences.length > 0 ? "speaking" : "waiting";
+}
 
 /** GetcKo's moment for the current turn (MOMENT_POSE key). Undefined = no turn yet. */
 export function momentFor(t: TryTurn | undefined): Moment | undefined {

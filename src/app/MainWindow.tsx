@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type Component
 import { gsap } from "gsap";
 import { DUR, EASE, GetCkoSprite, MOMENT_POSE, prefersReducedMotion } from "../brand";
 import { T } from "../brand/lexicon";
-import { AppShell, ErrorNotice, OfflineBadge, StatusChip, type NavItem } from "../components/ui";
+import { AppShell, ErrorNotice, Keycap, OfflineBadge, StatusChip, type NavItem } from "../components/ui";
 import { AgentsScreen } from "../screens/agents";
 import { KnowledgeBasesScreen } from "../screens/knowledge";
 import { OnboardingScreen } from "../screens/onboarding";
@@ -20,6 +20,12 @@ const NAV: NavItem[] = [
   { id: "knowledge", label: T.nav.knowledgeBases },
   { id: "settings", label: T.nav.settings },
 ];
+
+/**
+ * Screens whose textured section runs to the bottom of the pane (the screen's last block takes
+ * `flex-1`), so a short list never leaves a bare strip of page under it.
+ */
+const FILL: ReadonlySet<Screen> = new Set(["knowledge", "settings"]);
 
 const SCREEN: Record<Screen, ComponentType> = {
   agents: AgentsScreen,
@@ -85,7 +91,7 @@ export function MainWindow() {
             {errorCopy(setup.error).body}
           </ErrorNotice>
         )}
-        <Crossfade id={screen}>
+        <Crossfade id={screen} fill={FILL.has(screen)}>
           <Current />
         </Crossfade>
       </AppShell>
@@ -93,21 +99,28 @@ export function MainWindow() {
   );
 }
 
-/** Sidebar footer: the offline proof, plus the model state only while it needs a look. */
+/**
+ * Sidebar footer: the one gesture worth remembering (the shortcut, from any app), the offline proof,
+ * and the model state only while it needs a look.
+ */
 function ShellFooter() {
   const { status } = useSetup();
   const missing = missingComponents(status).length > 0;
   return (
     <>
-      {modelsLoading(status) && <StatusChip status="processing">{T.settings.models}</StatusChip>}
-      {missing && <StatusChip status="failed">{T.settings.modelsNotLoaded}</StatusChip>}
+      <p className="flex items-center gap-2 pb-1 text-label text-text-2">
+        <Keycap hotkey />
+        <span>{T.sessionBar.shortcutHint}</span>
+      </p>
+      {modelsLoading(status) && <StatusChip status="processing" className="self-start">{T.settings.models}</StatusChip>}
+      {missing && <StatusChip status="failed" className="self-start">{T.settings.modelsNotLoaded}</StatusChip>}
       <OfflineBadge detail={place.onThis} className="self-start" />
     </>
   );
 }
 
 /** Nav switch = crossfade only, no slide (design system §5.6). */
-function Crossfade({ id, children }: { id: string; children: ReactNode }) {
+function Crossfade({ id, fill, children }: { id: string; fill?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const first = useRef(true);
   useLayoutEffect(() => {
@@ -128,7 +141,7 @@ function Crossfade({ id, children }: { id: string; children: ReactNode }) {
     };
   }, [id]);
   return (
-    <div ref={ref} key={id}>
+    <div ref={ref} key={id} className={fill ? "flex min-h-full flex-col" : undefined}>
       {children}
     </div>
   );

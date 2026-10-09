@@ -27,6 +27,25 @@ export const KB_COPY = {
   /** Summary under the knowledge base name. Counts only, never a speed. */
   processingSuffix: "Processing",
 
+  /** No knowledge bases yet: what one is for, in three words-not-sentences steps. */
+  steps: {
+    label: "How a knowledge base works",
+    name: "Name it",
+    add: "Add documents",
+    attach: "Attach to an agent",
+  },
+
+  /** Empty knowledge base: the window-wide native drop, said once under the action. */
+  dropOnWindow: "Or drop them anywhere on this window.",
+  /** Beside "Add documents" once there are documents. */
+  dropHere: "Or drop them here.",
+  /** The add strip's hint: types only (the sidebar's Offline badge already says where they stay). */
+  fileTypes: "PDF, DOCX, PPTX, TXT or MD",
+
+  /** Failed row: pick a fixed copy; the failed one goes once the new one is in. */
+  replace: "Replace",
+  replaceLabel: (name: string) => `Replace ${name}`,
+
   /** Import problems, one line per document. */
   issues: {
     title: (n: number) => (n === 1 ? "1 document wasn't added." : `${n} documents weren't added.`),

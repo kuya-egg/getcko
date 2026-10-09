@@ -10,8 +10,9 @@ export const APP_COPY = {
   },
 
   settings: {
+    /** Shortcut and theme: the two things people change. */
+    general: "General",
     setup: "Setup",
-    themeHelp: "Match system follows your computer.",
   },
 
   /** Plain names for engine components (setup panel, error copy). */

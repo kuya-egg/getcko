@@ -44,6 +44,12 @@ export const ONBOARDING_COPY = {
     waiting: "Off in Windows Settings",
   },
 
+  /** The OS settings pane drawn on the permission steps (a picture of where to go, not a link). */
+  settingsWindow: {
+    mac: { app: "System Settings", pane: "Privacy & Security" },
+    win: { app: "Settings", pane: "Privacy & security" },
+  } satisfies Record<Platform, { app: string; pane: string }>,
+
   /** Chip on a model that is still loading (Processing is the document-import word). */
   loadingTag: "Loading",
 

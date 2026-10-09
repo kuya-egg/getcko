@@ -175,6 +175,11 @@ describe("Windows (real backend shape)", () => {
     const refused = status({ accessibility: "notRequired", screenRecording: "notRequired", microphone: "denied" });
     expect(stepsFor(refused, "win")).toEqual(["microphone", "ready"]);
   });
+  it("never shows the macOS-only permissions on a PC, whatever the backend reports", () => {
+    const odd = status({ accessibility: "denied", screenRecording: "notAsked", microphone: "denied" });
+    expect(stepsFor(odd, "win")).toEqual(["microphone", "ready"]);
+    expect(stepsFor(odd, "mac")).toEqual(["accessibility", "screenRecording", "microphone", "ready"]);
+  });
   it("macOS still asks for a notAsked microphone", () => {
     expect(stepsFor(status({ microphone: "notAsked" }), "mac")).toContain("microphone");
   });

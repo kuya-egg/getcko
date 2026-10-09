@@ -9,7 +9,7 @@ import type { KnowledgeBaseId } from "../../bindings/KnowledgeBaseId";
 import { GetCkoSprite, MOMENT_POSE } from "../../brand";
 import { Icon } from "../../brand/icons";
 import { T } from "../../brand/lexicon";
-import { Button, Dialog, EmptyState, ErrorNotice, PageHeader, Panel, Surface, Toast, useToast } from "../../components/ui";
+import { Button, Dialog, EmptyState, ErrorNotice, PageHeader, Panel, Steps, Surface, Toast, useToast } from "../../components/ui";
 import { errorCopy } from "../../app/errors";
 import { PLATFORM } from "../../app/platform";
 import { componentOf, isLoadingModels, useSetup } from "../../app/setup";
@@ -179,6 +179,7 @@ export function KnowledgeBasesScreen() {
       if (added) toast.show(T.toast.added(added));
       // Keyed to kbId: if another knowledge base was opened meanwhile, the problem stays with this one.
       if (issues.length) setProblem({ kbId, title: KB_COPY.issues.title(issues.length), items: issues });
+      return added;
     },
     [patchDocs, toast.show],
   );
@@ -194,13 +195,30 @@ export function KnowledgeBasesScreen() {
     }
   };
 
-  const removeDocument = async (d: Document) => {
+  const removeDocument = async (d: Document, quiet = false) => {
     setConfirmDoc(null);
     try {
       await docDelete(d.id);
       deleted.current.add(d.id);
       patchDocs(d.knowledgeBaseId, (ds) => removeDoc(ds, d.id));
-      toast.show(T.toast.deleted);
+      if (!quiet) toast.show(T.toast.deleted);
+    } catch (e) {
+      const c = errorCopy(e);
+      setProblem({ kbId: d.knowledgeBaseId, title: c.title, body: c.body });
+    }
+  };
+
+  /**
+   * A failed row's fix: pick the fixed copy first; the failed document goes only once something new
+   * was added, so cancelling the picker (or a refused import) loses nothing. The "added" toast stays.
+   */
+  const replaceDocument = async (d: Document) => {
+    if (importing) return;
+    try {
+      const paths = await pickDocuments();
+      if (!paths.length) return;
+      const added = await importPaths(d.knowledgeBaseId, paths);
+      if (added) await removeDocument(d, true);
     } catch (e) {
       const c = errorCopy(e);
       setProblem({ kbId: d.knowledgeBaseId, title: c.title, body: c.body });
@@ -257,22 +275,39 @@ export function KnowledgeBasesScreen() {
     <>
       {header}
       {list.length === 0 || !kb ? (
-        // No knowledge bases: EmptyState sits on the page (its mascot well carries the texture).
-        creating ? (
-          <Panel title={T.actions.newKnowledgeBase} className="max-w-md">
-            <NameForm others={[]} onSubmit={create} onCancel={() => setCreating(false)} />
-          </Panel>
-        ) : (
-          <EmptyState
-            title={KB_COPY.empty.title}
-            body={KB_COPY.empty.body}
-            action={{ label: T.actions.newKnowledgeBase, icon: Icon.add, onClick: () => setCreating(true) }}
-            caption={T.offline.nothingLeaves(PLATFORM)}
-          />
-        )
+        // No knowledge bases: the same textured section. One solid card that asks for the first step,
+        // and the flow (1 → 2 → 3) on the texture under it; the texture carries the open right side.
+        <Surface texture="footprints" intensity="subtle" className="-mx-6 flex-1 rounded-panel p-6">
+          {creating ? (
+            <Panel title={T.actions.newKnowledgeBase} className="max-w-md">
+              <NameForm primary others={[]} onSubmit={create} onCancel={() => setCreating(false)} />
+            </Panel>
+          ) : (
+            <div className="flex max-w-xl flex-col gap-6">
+              <Panel padding="lg">
+                <EmptyState
+                  title={KB_COPY.empty.title}
+                  body={KB_COPY.empty.body}
+                  action={{ label: T.actions.newKnowledgeBase, icon: Icon.add, onClick: () => setCreating(true) }}
+                  caption={T.offline.nothingLeaves(PLATFORM)}
+                />
+              </Panel>
+              <Steps
+                aria-label={KB_COPY.steps.label}
+                className="px-8"
+                items={[
+                  { icon: Icon.knowledgeBase, label: KB_COPY.steps.name },
+                  { icon: Icon.addDocuments, label: KB_COPY.steps.add },
+                  { icon: Icon.agent, label: KB_COPY.steps.attach },
+                ]}
+              />
+            </div>
+          )}
+        </Surface>
       ) : (
-        <Surface texture="footprints" intensity="subtle" className="rounded-panel border border-border p-4">
-          <div className="flex items-start gap-4">
+        // pb-20: the last row can scroll clear of the toast at 900x600.
+        <Surface texture="footprints" intensity="subtle" className="-mx-6 flex-1 rounded-panel p-6 pb-20">
+          <div className="flex items-start gap-3">
             <KbList
               kbs={list}
               selected={selected}
@@ -295,6 +330,7 @@ export function KnowledgeBasesScreen() {
               onDelete={() => setConfirmDelete(kb)}
               onAdd={() => void add()}
               onRemoveDoc={setConfirmDoc}
+              onReplaceDoc={(d) => void replaceDocument(d)}
               importing={importing}
               dragging={dragging}
               problem={problem}
