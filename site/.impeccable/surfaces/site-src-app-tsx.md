@@ -7,28 +7,23 @@ related_targets: ["site/src/sections/Hero.tsx"]
 
 ## Scope
 
-The GetCko landing page in `site/` (Vite + React). Visitor mode: Persuade. Primary action: Watch the 1-min demo. Audience: people learning newly digitized desktop systems (teachers, LGU staff), privacy-bound professionals, and hackathon judges.
+The GetcKo landing page in `site/` (Vite + React, brand kit v0.4 vendored from `main`). Visitor mode: Persuade. Primary action: Watch the 1-min demo. Audience: hackathon judges first, then teachers and LGU staff.
 
-Approved hero comp: `.impeccable/mocks/hero-v3/D3-centered-stage.png`. Approved intro storyboard: `.impeccable/mocks/intro-storyboard/storyboard.png` (F1–F3; F4 replaced by D3). The earlier B2 comp is superseded.
+Visual authority: `site/DESIGN.md` (brand kit v0.4). The approved D3 mock (`mocks/hero-v3/D3-centered-stage.png`) lives on as the How it works visual; the intro storyboard (`mocks/intro-storyboard/storyboard.png`) beats 1–3 still drive the logo entry.
 
 ## Direction contract
 
-THESIS: A manual passage becomes a pixel gecko that points at the one field on your screen. This refuses the cluttered hero that shows every feature at once.
+THESIS: Ask out loud, GetcKo points. Every section is one worked example with one GetcKo and one ring. This refuses the AI-startup page (centered gradient hero, a feature-card grid, paragraphs).
 
-OWN-WORLD: The GetCko design system, unchanged. White paper, ink type, one gecko green for the helper only, and sun yellow only as the single target halo. Bricolage Grotesque 800 for display, Geist for UI, Geist Mono for values, and Silkscreen for the badge. The 22×27 sprite is drawn at an integer scale. No gradients or glows.
+OWN-WORLD: The brand kit. Textured sections from the gecko's world (footprints, pointer, how band, weave, canopy, skin, footer) with solid content cards. One green creature and one sun ring. Bricolage, Geist and Silkscreen. Kit components and lexicon words only.
 
-STORY: A logo entry (as on movara.world) hands off into the hero. The visitor sees the helper born from their own manual and pointing at their own screen, then learns Screen Help, documents, agents, voice and offline.
+STORY: The logo is born from pixels and walks into the nav. The hero shows the whole loop (ask, point, source, offline). Then: how it points, your documents, Taglish voice, templates, the seven brand keywords, the one dark offline island, and "Gets mo na."
 
-FIRST VIEWPORT: A one-line centered headline "Your manual. Your screen.", the subline, and a centered ink CTA. Below them, a pair sized from one integer cell `--hc`: the 16× gecko, and to its right a two-row "Student Record" window (Cruz, Juan; Final grade empty) with the halo on Final grade.
+FIRST VIEWPORT: The kit's GetCkoHero. On the left, "Ask out loud. GetcKo points." with the CTA, the beats, the shortcut and "Nothing leaves this Mac." On the right, an LGU e-service form (business permit renewal, step 2 of 4, Next disabled until a valid ID is added), the voxel GetcKo hopping to Upload ID, the answer card and the source.
 
-FORM: A GSAP intro. Head pixels assemble, the ink tile grows, and the tile flies into the nav logo. The headline words rise. The manual and window build in through pixel curtains. The passage pours into the gecko and the manual fades. The answer card moves to the next section.
+FORM: A GSAP logo intro hands off to the kit hero timeline. A canvas GetcKo re-forms per section from MOMENT_POSE, with a halo via haloIn.
 
-SIGNATURE: One persistent canvas gecko re-forms at each section's slot and halo target.
-
-## Stated deviations
-
-- The manual card exists only in the intro.
-- "target ≤ 3 s" is labeled as a target; nothing is measured yet.
+SIGNATURE: The brand keywords. GetcKo walks down the list and points at each word as it crosses the reading band.
 
 ## Unresolved
 

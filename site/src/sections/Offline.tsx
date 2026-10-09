@@ -1,128 +1,50 @@
 import { useRef } from "react";
+import { MOMENT_POSE } from "../brand/mascot";
+import { MEASURED, PLACE, T } from "../brand/lexicon";
+import { MockToggle, OfflineBadge, ProofLine, Stat, Surface } from "../components/ui";
+import { SectionHead } from "../components/SectionHead";
 import { GeckoSlot } from "../gecko/react";
-import { WifiOffIcon } from "../components/ui";
+import { SITE } from "../copy";
 
-// Model stack from docs/architecture.md ("Local models and runtime").
-const STACK = [
-  ["Chat, pointing, screenshots", "Gemma 4 E2B"],
-  ["Embeddings", "EmbeddingGemma-300m"],
-  ["Vector search", "sqlite-vector"],
-  ["Speech to text", "Gemma 4 E2B (audio)"],
-  ["Voice", "Your computer's built-in voices"],
-] as const;
-
-// Latency budget per question (PRD). Targets, not measurements.
-const BUDGET = [
-  { step: "Speech to text", s: 1.5 },
-  { step: "Screen read + retrieval", s: 0.3 },
-  { step: "First token", s: 0.3 },
-  { step: "Full answer", s: 1.0 },
-  { step: "Voice starts", s: 0.5 },
-] as const;
-
-const PRINCIPLES = [
-  ["It points, never clicks.", "GetCko shows the way. You stay in control of the mouse and keyboard."],
-  ["Visible, never hidden.", "It shows up in screen share. There is no stealth mode."],
-  ["Grounded or silent.", "Every answer cites its source. If nothing fits, it says \u201cI don't know.\u201d"],
-] as const;
-
+/** The page's one dark island. Wi-Fi off, nothing leaves this Mac, and only measured numbers. */
 export function Offline() {
   const section = useRef<HTMLElement>(null);
-  const chip = useRef<HTMLSpanElement>(null);
+  const c = SITE.offline;
 
   return (
-    <section ref={section} id="privacy" className="section offline" aria-labelledby="offline-title">
-      <div className="offline-head">
-        <p className="eyebrow">Local and honest</p>
-        <h2 id="offline-title" className="h-section">
-          Wi-Fi off.
-          <br />
-          Gets mo pa rin.
-        </h2>
-        <p className="lede">
-          Every model runs on your laptop. The internet is used once, to download the models, and never while you work.
-        </p>
-      </div>
-
-      <div className="monitor">
-        <div className="monitor-top">
-          <span className="monitor-wifi">
-            <WifiOffIcon /> Wi-Fi
-          </span>
-          <span className="toggle" role="img" aria-label="Wi-Fi switched off">
-            <i />
-          </span>
-          <span ref={chip} className="chip chip-offline gc-target">
-            Offline
-          </span>
+    <Surface ref={section} id="offline" texture="footprints" tone="ink" aria-labelledby="offline-title" className="site-section seam-island">
+      <div className="site-wrap grid items-center gap-12 lg:grid-cols-12">
+        <div className="flex flex-col gap-8 lg:col-span-6">
+          <SectionHead id="offline-title" eyebrow={c.eyebrow} title={c.title}>
+            {c.nothingLeaves}
+          </SectionHead>
+          <div className="offline-proof">
+            <GeckoSlot id="offline" section={section} pose={MOMENT_POSE.offline} className="slot-offline" label={T.mascot.moment(T.moments.offline)} />
+            <div className="flex flex-col gap-4">
+              <MockToggle on={false} label="Wi-Fi" halo={false} />
+              <OfflineBadge detail={PLACE.mac.onThis} />
+            </div>
+          </div>
         </div>
-        <p className="monitor-read mono" aria-label="Network traffic: zero bytes per second up and down">
-          <span>↑ 0 B/s</span>
-          <span>↓ 0 B/s</span>
-        </p>
-        <p className="caption">Illustration. In the demo, Wi-Fi is off and a network monitor stays on screen.</p>
-        <GeckoSlot id="offline" section={section} target={chip} className="slot-offline" label="GetCko pointing at the Offline chip" />
-      </div>
 
-      <div className="stack">
-        <h3 className="h2">What runs where</h3>
-        <table className="stack-table">
-          <thead>
-            <tr>
-              <th scope="col">Job</th>
-              <th scope="col">Model</th>
-              <th scope="col">Runs on</th>
-            </tr>
-          </thead>
-          <tbody>
-            {STACK.map(([job, model]) => (
-              <tr key={job}>
-                <td>{job}</td>
-                <td className="mono">{model}</td>
-                <td>
-                  <span className="chip chip-ready">
-                    <span className="live-dot" aria-hidden="true" />
-                    Your laptop
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="budget">
-        <h3 className="h2">
-          About 3 seconds, question to voice <span className="chip chip-plain">Target</span>
-        </h3>
-        <div className="budget-bar" role="img" aria-label={`Latency budget: ${BUDGET.map((b) => `${b.step} ${b.s} seconds`).join(", ")}`}>
-          {BUDGET.map((b) => (
-            <span key={b.step} className="budget-seg" style={{ flex: `${b.s} 1 0` }}>
-              <span className="mono">{b.s.toFixed(1)} s</span>
-            </span>
-          ))}
+        <div className="flex flex-col gap-6 rounded-panel border border-border bg-surface p-6 shadow-overlay lg:col-span-6">
+          <Stat label={T.stats.firstSpokenWord} value={MEASURED.firstSpokenWord} unit={T.stats.unitSeconds} digits={1} />
+          <Stat label={T.stats.tokensPerSecond} value={MEASURED.tokensPerSecond} unit={T.stats.unitTokens} />
+          <ProofLine items={[T.proof.wifiOff, MEASURED.bytesSent != null && T.proof.bytesSent(MEASURED.bytesSent), T.proof.measuredOn]} />
+          <div className="border-t border-border pt-5">
+            <p className="eyebrow pb-1 text-text-2">{c.stackTitle}</p>
+            <p className="pb-3 text-label font-normal text-text-2">{c.stackHelp}</p>
+            <ul className="flex flex-col">
+              {c.stack.map(([job, model]) => (
+                <li key={job} className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border py-2 last:border-b-0">
+                  <span className="text-label text-text">{job}</span>
+                  <span className="font-mono text-keys text-text-2">{model}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-        <ol className="budget-legend">
-          {BUDGET.map((b) => (
-            <li key={b.step}>
-              <i aria-hidden="true" />
-              {b.step} <span className="mono muted">≤ {b.s.toFixed(1)} s</span>
-            </li>
-          ))}
-        </ol>
-        <p className="caption">
-          Steps overlap: the voice starts while the answer is still streaming. Measured numbers will be published with the benchmark script.
-        </p>
       </div>
-
-      <ul className="principles">
-        {PRINCIPLES.map(([t, d]) => (
-          <li key={t}>
-            <p className="h2">{t}</p>
-            <p>{d}</p>
-          </li>
-        ))}
-      </ul>
-    </section>
+    </Surface>
   );
 }

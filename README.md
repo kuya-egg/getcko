@@ -75,7 +75,7 @@ cargo test -- --ignored
 
 ## Landing page (`site/`)
 
-The marketing site is a separate Vite + React app that follows `docs/getcko-design-system.md`. Live at https://getcko.vercel.app.
+The marketing site is a separate Vite + React app built on the GetcKo brand kit v0.4 (vendored from `main` into `site/src/brand` and `site/src/components/ui`; rules in `site/DESIGN.md`). Live at https://getcko.vercel.app.
 
 ```sh
 cd site

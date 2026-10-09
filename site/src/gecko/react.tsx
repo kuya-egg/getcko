@@ -1,8 +1,8 @@
 import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
+import { SPRITE_H, SPRITE_W, type Pose } from "../brand/mascot";
 import { director } from "./director";
-import { COLS, HEAD_ROWS, PALETTE, ROWS, type Pose } from "./sprite";
 
-/** The single fixed canvas the one-and-only GetCko is drawn on. */
+/** The single fixed canvas the page's GetcKo is drawn on. */
 export function GeckoCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -20,11 +20,16 @@ export function GeckoCanvas() {
   return <canvas ref={ref} className="gecko-canvas" aria-hidden="true" />;
 }
 
+type Target = RefObject<HTMLElement | null> | (() => HTMLElement | null | undefined);
+const read = (t?: Target) => (t ? (typeof t === "function" ? t : () => t.current) : undefined);
+
 interface SlotProps {
   id: string;
   section: RefObject<HTMLElement | null>;
-  target?: RefObject<HTMLElement | null>;
-  source?: RefObject<HTMLElement | null>;
+  /** The one element GetcKo points at (ref, or a getter for elements inside kit components). */
+  target?: Target;
+  source?: Target;
+  /** A MOMENT_POSE value. Default pointing. */
   pose?: Pose;
   flip?: boolean;
   className?: string;
@@ -32,21 +37,24 @@ interface SlotProps {
   label: string;
 }
 
-/** Reserves a COLS×ROWS box where the gecko lands while this section is active. */
+/** Reserves a 22×27-cell box where GetcKo lands while this section is active. */
 export function GeckoSlot({ id, section, target, source, pose, flip, className, style, label }: SlotProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // Latest target/source live in refs so inline getters never re-register (which would restart the morph).
+  const live = useRef({ target, source });
+  live.current = { target, source };
   useEffect(
     () =>
       director.register({
         id,
         el: ref.current!,
         section: section.current!,
-        target: target?.current,
-        source: source?.current,
+        target: () => read(live.current.target)?.(),
+        source: () => read(live.current.source)?.(),
         pose,
         flip,
       }),
-    [id, section, target, source, pose, flip],
+    [id, section, pose, flip],
   );
   return (
     <div
@@ -54,20 +62,12 @@ export function GeckoSlot({ id, section, target, source, pose, flip, className, 
       role="img"
       aria-label={label}
       className={`gecko-slot ${className ?? ""}`}
-      style={{ ...style, ["--cols" as string]: COLS, ["--rows" as string]: ROWS }}
+      style={{ ...style, ["--cols" as string]: SPRITE_W, ["--rows" as string]: SPRITE_H }}
     />
   );
 }
 
-/** Static head mark (rows 0–10) as inline SVG at a whole-number scale (design system §6). */
-export function HeadMark({ scale, title = "GetCko" }: { scale: number; title?: string }) {
-  const w = HEAD_ROWS[0].length;
-  const h = HEAD_ROWS.length;
-  return (
-    <svg width={w * scale} height={h * scale} viewBox={`0 0 ${w} ${h}`} shapeRendering="crispEdges" role="img" aria-label={title}>
-      {HEAD_ROWS.flatMap((row, y) =>
-        [...row].map((ch, x) => (PALETTE[ch] ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill={PALETTE[ch]} /> : null)),
-      )}
-    </svg>
-  );
+/** A section that draws its own GetcKo (the voxel hero): the canvas sprite scatters away there. */
+export function useVacantSlot(id: string, section: RefObject<HTMLElement | null>) {
+  useEffect(() => director.register({ id, section: section.current! }), [id, section]);
 }

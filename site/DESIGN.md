@@ -1,6 +1,6 @@
 ---
-name: GetCko
-description: A local pixel gecko that reads your files and points at the answer.
+name: GetcKo
+description: A private, offline desktop helper. A pixel gecko points at your screen and says "Gets mo na."
 colors:
   paper: "#FFFFFF"
   canvas: "#F6F7F4"
@@ -8,339 +8,415 @@ colors:
   line-strong: "#C9CCC4"
   ink: "#0E0F0C"
   ink-2: "#4A4D46"
-  ink-3: "#73776E"
-  ink-raised: "#1E201B"
-  ink-key: "#2A2C27"
+  ink-3: "#6C7067"
   gecko: "#39D86F"
   gecko-deep: "#0F7A3D"
   gecko-wash: "#EAFBEF"
   sun: "#FFC83D"
   alert: "#B3321D"
   alert-wash: "#FDECEA"
+  night: "#121410"
+  night-1: "#191B16"
+  night-2: "#21241E"
+  night-line: "#2E3229"
+  night-line-strong: "#474C41"
+  mist: "#F1F3EC"
+  mist-2: "#B8BDB0"
+  mist-3: "#8D9285"
+  gecko-tint: "#6FE598"
+  gecko-night: "#15301E"
+  alert-tint: "#FF8F78"
+  alert-night: "#3A1B14"
+  ink-raised: "#1E201B"
+  keycap-dark: "#2A2C27"
 typography:
+  hero:
+    fontFamily: "Bricolage Grotesque Variable, Bricolage Grotesque, system-ui, sans-serif"
+    fontSize: "84px"
+    fontWeight: 800
+    lineHeight: "82px"
+    letterSpacing: "-0.035em"
   display:
-    fontFamily: "'Bricolage Grotesque', system-ui, sans-serif"
+    fontFamily: "Bricolage Grotesque Variable, Bricolage Grotesque, system-ui, sans-serif"
     fontSize: "64px"
     fontWeight: 800
     lineHeight: "64px"
     letterSpacing: "-0.035em"
   headline:
-    fontFamily: "'Bricolage Grotesque', system-ui, sans-serif"
+    fontFamily: "Bricolage Grotesque Variable, Bricolage Grotesque, system-ui, sans-serif"
     fontSize: "36px"
     fontWeight: 700
     lineHeight: "40px"
     letterSpacing: "-0.02em"
-  title:
-    fontFamily: "'Bricolage Grotesque', system-ui, sans-serif"
+  h2:
+    fontFamily: "Bricolage Grotesque Variable, Bricolage Grotesque, system-ui, sans-serif"
     fontSize: "24px"
     fontWeight: 700
     lineHeight: "30px"
+  title:
+    fontFamily: "Bricolage Grotesque Variable, Bricolage Grotesque, system-ui, sans-serif"
+    fontSize: "20px"
+    fontWeight: 700
+    lineHeight: "26px"
+  row:
+    fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
+    fontSize: "15px"
+    fontWeight: 600
+    lineHeight: "20px"
   body:
-    fontFamily: "'Geist Sans', system-ui, sans-serif"
+    fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 400
     lineHeight: "24px"
-  lede:
-    fontFamily: "'Geist Sans', system-ui, sans-serif"
-    fontSize: "18px"
+  answer:
+    fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
+    fontSize: "16px"
     fontWeight: 400
-    lineHeight: "28px"
+    lineHeight: 1.55
   label:
-    fontFamily: "'Geist Sans', system-ui, sans-serif"
+    fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 500
+    lineHeight: "20px"
+  eyebrow:
+    fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
     fontSize: "13px"
     fontWeight: 600
     lineHeight: "16px"
     letterSpacing: "0.08em"
   caption:
-    fontFamily: "'Geist Sans', system-ui, sans-serif"
+    fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
     fontSize: "12px"
     fontWeight: 400
     lineHeight: "16px"
-  mono:
-    fontFamily: "'Geist Mono', ui-monospace, monospace"
+  keys:
+    fontFamily: "Geist Mono Variable, Geist Mono, ui-monospace, monospace"
     fontSize: "13px"
     fontWeight: 500
-    lineHeight: 1
+    lineHeight: "16px"
+    fontFeature: "tnum"
   pixel:
-    fontFamily: "'Silkscreen', ui-monospace, monospace"
+    fontFamily: "Silkscreen, ui-monospace, monospace"
     fontSize: "22px"
     fontWeight: 400
-    lineHeight: 1
+    lineHeight: "24px"
 rounded:
   input: "8px"
-  key: "7px"
+  keycap: "7px"
   window: "10px"
   button: "14px"
+  bubble: "18px"
   panel: "20px"
+  icon: "22px"
   pill: "999px"
 spacing:
-  s-1: "4px"
-  s-2: "8px"
-  s-3: "12px"
-  s-4: "16px"
-  s-6: "24px"
-  s-8: "32px"
-  s-12: "48px"
-  s-16: "64px"
+  "1": "4px"
+  "2": "8px"
+  "3": "12px"
+  "4": "16px"
+  "5": "24px"
+  "6": "32px"
+  "7": "48px"
+  "8": "64px"
+  target-min: "44px"
 components:
   button-primary:
     backgroundColor: "{colors.ink}"
     textColor: "{colors.paper}"
+    typography: "{typography.label}"
     rounded: "{rounded.button}"
     padding: "0 20px"
     height: "48px"
-  button-primary-hero:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.paper}"
+  button-primary-dark:
+    backgroundColor: "{colors.mist}"
+    textColor: "{colors.ink}"
     rounded: "{rounded.button}"
-    height: "52px"
+    padding: "0 20px"
+    height: "48px"
   button-secondary:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
     rounded: "{rounded.button}"
     padding: "0 20px"
     height: "48px"
-  button-small:
+  button-accent-icon:
+    backgroundColor: "{colors.gecko}"
+    textColor: "{colors.ink}"
     rounded: "{rounded.button}"
-    padding: "0 16px"
-    height: "44px"
-  button-disabled:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink-3}"
-  keycap:
+    size: "48px"
+  input:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    typography: "{typography.mono}"
-    rounded: "{rounded.key}"
-    padding: "0 8px"
-    height: "28px"
+    typography: "{typography.body}"
+    rounded: "{rounded.input}"
+    height: "44px"
+    padding: "0 12px"
   chip-ready:
     backgroundColor: "{colors.gecko-wash}"
     textColor: "{colors.gecko-deep}"
     rounded: "{rounded.pill}"
-    padding: "0 12px"
-    height: "28px"
-  chip-processing:
-    backgroundColor: "{colors.canvas}"
-    textColor: "{colors.ink-2}"
+    padding: "4px 10px"
+  chip-failed:
+    backgroundColor: "{colors.alert-wash}"
+    textColor: "{colors.alert}"
     rounded: "{rounded.pill}"
-    padding: "0 12px"
-    height: "28px"
-  chip-queued:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink-3}"
-    rounded: "{rounded.pill}"
-    padding: "0 12px"
-    height: "28px"
+    padding: "4px 10px"
   chip-offline:
     backgroundColor: "{colors.ink}"
     textColor: "{colors.paper}"
     rounded: "{rounded.pill}"
-    padding: "0 12px"
-    height: "28px"
-  chip-cite:
+    padding: "4px 10px"
+  chip-citation:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.gecko-deep}"
     rounded: "{rounded.pill}"
-    padding: "0 12px"
-    height: "28px"
-  chip-cite-lit:
-    backgroundColor: "{colors.gecko-wash}"
-    textColor: "{colors.gecko-deep}"
-  speech-bubble:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.paper}"
-    rounded: "18px 18px 18px 4px"
+    padding: "4px 10px"
   answer-card:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.panel}"
-  agent-card:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
+    typography: "{typography.answer}"
     rounded: "{rounded.panel}"
     padding: "20px"
+    width: "380px"
   session-bar:
     backgroundColor: "{colors.ink}"
     textColor: "{colors.paper}"
     rounded: "{rounded.pill}"
     padding: "10px"
-  session-agent:
-    backgroundColor: "{colors.ink-raised}"
+  chat-bubble-getcko:
+    backgroundColor: "{colors.ink}"
     textColor: "{colors.paper}"
-    rounded: "{rounded.pill}"
-    padding: "0 16px"
-    height: "44px"
-  kb-row:
+    rounded: "{rounded.bubble}"
+    padding: "12px 16px"
+  keycap:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    padding: "14px 16px"
-  passage-cell:
-    rounded: "{rounded.input}"
-    padding: "0 10px"
-    height: "56px"
-  passage-cell-answer:
-    backgroundColor: "{colors.gecko-wash}"
-    rounded: "{rounded.input}"
-  app-window:
-    backgroundColor: "{colors.paper}"
-    rounded: "{rounded.window}"
-  nav:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    height: "64px"
+    typography: "{typography.keys}"
+    rounded: "{rounded.keycap}"
+    padding: "2px 8px"
 ---
 
-# Design System: GetCko
 
-Governing law: `../docs/getcko-design-system.md` is binding. This file records how this landing page (`src/`) applies it; where they disagree, the brand doc wins and this file is stale. Token source: `src/styles/tokens.css` (primitive `--gc-*` → semantic → component layers). Primitives are copied verbatim from brand doc §2.
+> **Copied from `main` at d63f829 (brand kit v0.4) for the landing page in `site/`.** Paths under `docs/` live at the repo root; `src/brand/` and `src/components/ui/` are vendored here unchanged except where the Landing page section below says so. Update both copies together.
+
+# Design System: GetcKo
+
+| Summary for agents | |
+|---|---|
+| Source of truth | **`docs/getcko-design-system.md` (v0.4)**: contrast, motion, textures, component-first recipes, mascot, logo, voice, anti-slop |
+| Code | `src/brand/` (tokens, theme, surfaces, motion, lexicon, icons, mascot), `src/components/ui/` (primitives) |
+| Detail docs | `docs/brand/textures.md`, `lexicon.md`, `icons.md`, `mascot-poses.md`, `video.md`, `image-prompts.md` |
+| Agents | The `getcko-brand` skill handles "use brand"; snippets in its `references/recipes.md` |
 
 ## Overview
 
-**Creative North Star: "The Pointing Gecko"**
+- **Creative North Star: "The helper at your elbow."**
 
-A calm, paper-white product world where one pixel gecko is the only animated, colorful character. Everything else is ink on paper: real app chrome (spreadsheet window, PDF manual, session bar, agent cards) drawn flat and legible, so the gecko can travel between them and point at the exact cell, button, or citation that answers the question. Color is spent on meaning: green means "the gecko / ready / cited", sun yellow means "this exact thing, right now".
-
-Density is product-like, not marketing-like: real UI at real sizes, integer pixel art, no decoration. Depth comes from 1px lines and two ambient shadows; motion comes almost entirely from the gecko's single canvas.
+- **What it is:** a private, offline desktop helper. Textured sections from the gecko's world, solid content cards, one small green pixel gecko, one yellow ring around the thing to click. A plain white page is slop.
+- **Where personality lives:** the sprite (crisp, integer-scaled, a little cheeky) and the voice (a patient officemate, plain English or Taglish). Everything else is calm desktop UI for people new to computers.
+- **Dark theme:** ink ground `#121410`, never pure black or navy; same rules.
+- **Eye path:** ask → GetcKo → target → source. The gecko faces into the layout toward the next thing.
+- **Show, don't tell:** headline ≤ 6 words, body ≤ 1 line; the rest becomes keyword chips, steps, a diagram or motion.
 
 **Key Characteristics:**
-- One persistent canvas gecko per screen, moving between registered slots by dissolving and re-forming.
-- Sun halo lights only the single target the gecko is pointing at.
-- Ink-black primary buttons, 14px corners, 2px ink border.
-- Flat paper surfaces, hairline `line` borders, no gradients or glows.
-- Integer sprite cell sizes (3–7px) snapped to device pixels.
+- Textured sections (`<Surface>`, `docs/brand/textures.md`) with solid content cards; light theme on paper/canvas, ink-based dark theme driven by `data-theme` and the OS setting.
+- One vocabulary (`T` / `say` in `src/brand/lexicon.ts`), one icon per concept (`Icon` in `src/brand/icons.ts`), one pose per moment (`MOMENT_POSE`), one component per job (`src/components/ui`).
+- One green (fills) with a deep/tint partner for text; sun yellow reserved for a single target halo.
+- Bricolage Grotesque display, Geist UI, Geist Mono for keys and measured numbers, Silkscreen as a pixel seasoning.
+- Flat surfaces, 1px borders, two soft shadow levels. No gradients, glows, glass, purple or emoji.
+- Pixel mascot scaled by integers with `image-rendering: pixelated`. It points; it never clicks.
 
 ## Colors
 
-A near-monochrome ink-and-paper palette with one living green and one pointing yellow.
+- Paper and ink with a single green creature and a single yellow ring.
 
 ### Primary
-- **Gecko Green** (gecko): the sprite body, live dot, accent icon button, morph/trail pixels. Never text on white.
-- **Deep Gecko** (gecko-deep): links, citation chip text and stroke, ready-chip text, answer passage cell border, focus border.
-- **Gecko Wash** (gecko-wash): ready-chip fill, lit citation, highlighted manual passage, agent tile, focus ring fill.
+- **Gecko Green** (#39D86F): the mascot's body, the live dot, the mic button, accent icon-button fills. Fill only; it is 1.87:1 on paper, so it is never text on light.
+- **Deep Gecko** (#0F7A3D): green text on light (links, citations, focus border). 5.42:1 on paper. Never on dark (3.42:1).
+- **Gecko Tint** (#6FE598): green text on dark. 11.77:1 on night.
+- **Gecko Wash / Gecko Night** (#EAFBEF / #15301E): Ready chips, tints and focus wash, light and dark.
 
-### Tertiary
-- **Sun** (sun): the target halo (`--halo: 0 0 0 3px`) only. Never a fill, never text.
+### Secondary
+- **Target Sun** (#FFC83D): the target halo, on exactly one element at a time. Never decorative, never text.
 
 ### Neutral
-- **Paper** (paper): page, cards, windows, nav.
-- **Canvas** (canvas): wells: Files panel, processing chip, sheet row/column headers, answer question block, disabled button.
-- **Line / Line Strong** (line, line-strong): hairline borders and dividers / keycap stroke, dashed placeholders, spinner track, window lights.
-- **Ink, Ink 2, Ink 3** (ink, ink-2, ink-3): primary text and primary-button fill / secondary text / tertiary, captions, muted.
-- **Ink Raised** (ink-raised): agent chip inside the dark session bar; dark icon-button hover.
-- **Ink Key** (ink-key): keycap inside a primary button.
-- **Alert / Alert Wash** (alert, alert-wash): error states only; not used on the landing page.
-
-The budget bar is the one place the neutral ramp is shown as data: ink → ink-2 → ink-3 → line-strong → line.
+- **Paper** (#FFFFFF), **Canvas** (#F6F7F4): light surfaces and wells.
+- **Line / Line Strong** (#E6E8E3 / #C9CCC4): dividers and input borders.
+- **Ink** (#0E0F0C), **Ink 2** (#4A4D46), **Ink 3** (#6C7067): text levels. Ink also fills the primary button, GetcKo's chat bubble and the session bar.
+- **Night** (#121410), **Night 1** (#191B16), **Night 2** (#21241E): dark ground, raised surface, wells.
+- **Mist** (#F1F3EC), **Mist 2** (#B8BDB0), **Mist 3** (#8D9285): text levels on dark. Lowest dark pairing is Mist 3 on Night 2 at 4.93:1.
+- **Alert / Alert Tint** (#B3321D / #FF8F78) on **Alert Wash / Alert Night** (#FDECEA / #3A1B14): errors only.
 
 ### Named Rules
-**The Sun Is A Pointer Rule.** Sun yellow appears on at most one element per screen: the target the gecko points at, via `data-gc-target="on"`.
-**The Green Means Gecko Rule.** Green is reserved for the gecko, readiness, and citations. It is never decoration.
+**The One Green Rule.** Green covers at most about 3% of any screen: the mascot, one live dot, one accent button. Green text uses Deep Gecko on light, Gecko Tint on dark.
+
+**The One Ring Rule.** Sun yellow appears on exactly one element, the target GetcKo points at, or not at all.
+
+**The Caption Floor Rule.** Ink 3 is the lightest text allowed: 5.06:1 on Paper, 4.70:1 on Canvas. Nothing lighter carries text.
+
+**The Dither, Not Gradient Rule.** No gradients anywhere. Where a fade is needed, use the `dither-fade` texture (`src/brand/textures.ts`, files in `public/brand/textures/`).
 
 ## Typography
 
-**Display Font:** Bricolage Grotesque (system-ui fallback)
-**Body Font:** Geist Sans (system-ui fallback)
-**Label/Mono Font:** Geist Mono (keycaps, file tags, cell refs); Silkscreen for the single pixel badge.
-
-**Character:** A heavy, tightly tracked grotesque for headlines against a quiet, neutral UI sans; mono only where a user would type or read a reference.
+- **Display:** Bricolage Grotesque (bundled, variable)
+- **Body:** Geist (bundled, variable)
+- **Mono / pixel:** Geist Mono for keys and measured numbers; Silkscreen for the pixel badge only
+- **Character:** a warm, slightly quirky grotesque over a precise, neutral UI sans. The pixel face only beside the mascot, like a name tag.
 
 ### Hierarchy
-- **Display** (800, 64px/64px, -0.035em): section headings (`.h-section`). Hero title is one line at `min(8.2vw, 12.5svh, 136px)`, line-height 1; closing `clamp(48px, 6.2vw, 96px)`.
-- **Headline** (700, 36px/40px, -0.02em): `.h1`.
-- **Title** (700, 24px/30px): card and principle titles (`.h2`).
-- **Body** (400, 16px/24px): default. **Lede** 18px/28px, ink-2, max 34em.
-- **Label** (600, 13px/16px, 0.08em, uppercase): eyebrows and table headers.
-- **Caption** (400, 12px/16px, ink-3).
-- **Mono** (500, 13px): keycaps; 10px in PDF tags, 14px inline kbd.
-- **Pixel** (Silkscreen 400, 22px): the "Gets mo na." badge only (closing section, intro).
+- **Hero** (800, 84px, 82px, -0.035em): marketing hero and video title card.
+- **Display** (800, 64px, 64px, -0.035em): onboarding step titles, slides. Never on app screens.
+- **Headline / H1** (700, 36px, 40px, -0.02em): page titles; the biggest headline in the app.
+- **H2** (700, 24px, 30px): section and empty-state titles.
+- **Title** (700, 20px, 26px): card titles (agents, templates).
+- **Row** (Geist 600, 15px, 20px): list-row names.
+- **Body / Answer** (400, 16px, 24px / 1.55): settings text and GetcKo's answers; answers max 60–72ch.
+- **Label** (500, 14px, 20px): buttons, tabs, chips.
+- **Eyebrow** (600, 13px, 0.08em, uppercase): section labels in Ink 2.
+- **Caption** (400, 12px, 16px): sources and timestamps.
+- **Keys** (Geist Mono 500, 13px, tabular): shortcuts and real latency figures.
 
 ### Named Rules
-**The Weight Carries Display Rule.** Headlines get size and 700–800 weight with negative tracking; never color or gradient text.
+**The Seasoning Rule.** Silkscreen appears at most once per screen, at most four words, always next to the mascot or another pixel element.
+
+**The Sentence Case Rule.** Every heading and button is sentence case and left-aligned. Centered type only on the video title card.
 
 ## Layout
 
-- **Container:** sections max 1312px, padding 128px 48px (80px 20px below 900px). Files panel max 1248px, canvas well, 64px padding, 20px radius.
-- **Spacing scale:** 4/8/12/16/24/32/48/64 (`--gc-s-*`); grid gaps 20 (agents), 48–64 (two-column sections).
-- **Nav:** fixed 64px, paper, border appears only after scroll; links hidden below 900px.
-- **Hero (D3 centered stage):** min-height 100svh, centered one-line title, subline, CTA, then a pair: the hero gecko slot and a two-row "Student Record" window. Both size from one integer cell `--hc` (8px base; 10 ≥900w; 12 ≥1100w & ≥760h; 14 ≥1280w & ≥860h; 16 ≥1400w & ≥980h). The window is 32 cells wide, its "Final grade" field sits at the gecko's hand height (window `margin-top: -3.5 cells`), and the field is the halo target. Below 900px the pair stacks with the window on top.
-- **Intro (GSAP, once per session, `?intro` forces it, skipped under reduced motion):** `<html class="intro-pending">` is set before first paint. Beats: (1) the head mark's cells assemble from a scattered pixel field; (2) an ink tile with a 29% radius grows behind it, and the "GetCko" chars and pixel badge print in; (3) the tile flies into the 48px nav tile and the white overlay lifts; (4) the headline words rise from masks, then the subline and CTA; (5) the windows enter through a pixel-raster curtain: the manual card springs up and de-rasters top-left first, while the Student Record window unfolds from its left edge and de-rasters at random; (6) the director releases its `intro` hold and the manual passage pours into the gecko; the manual card then fades (it exists only in the intro). Click, any key, wheel or touch skips it.
-- **Sprite cell sizes (integer px, per breakpoint):** the sprite is 22×27 cells. Hero slot uses `--hc` (above). Section slots are 5px (4px ≤1099). Closing slot is 7px (5px ≤1099).
-- **Breakpoints:** 359px (hide wordmark), 899px (flat stack), 1099px, 1399px.
+| | |
+|---|---|
+| Scale | 4px base: 4, 8, 12, 16, 24, 32, 48, 64 |
+| Rhythm | 8–16 inside a component, 24 between components, 48 between sections; gutters 32 (app), 64 (marketing) |
+| App window | Design at 1040×680, min 900×600; no `lg:`/`xl:` breakpoints; `AppShell` + `PageHeader` |
+| Grids | Text column + visual column, 12 cols, 24px gaps (onboarding 5 + 7, marketing hero 7 + 5) |
+| Overlay | Answer card `max-w-answer` (380), 24px from the corner, flips rather than cover the target |
+| Layers | `z-base` < `z-raised` < `z-sticky` < `z-scrim` < `z-dialog` < `z-toast` < `z-overlay` |
+| Targets | ≥ 44px |
+
+Recipes: `docs/getcko-design-system.md` §9.
+
+**The Eye Path Rule.** Every composition reads ask → GetcKo → target → source. The gecko faces into the layout toward the target or the primary action, which then wears the halo.
 
 ## Elevation & Depth
 
-Flat by default, hairlines first. Surfaces sit on paper with 1px `line` borders; wells use canvas instead of shadow. Two ambient shadows exist:
+- Mostly flat: depth from 1px borders and two soft ambient shadows.
+- Dark theme keeps the border on every elevated surface and uses deeper black shadows.
 
 ### Shadow Vocabulary
-- **Lift** (`--gc-shadow-1`): agent-card hover only (with translateY(-2px)).
-- **Window** (`--gc-shadow-2`): floating app windows (hero Student Record, intro manual card, answer card) and the demo dialog.
-- **Keycap bevel** (`inset 0 -2px 0 line`): keycaps and inline kbd.
-- **Halo stack:** `--halo` (3px sun) on light; `--halo-on-dark` (6px paper gap + 4px sun) on dark targets.
+- **Card** (`0 1px 2px rgba(14,15,12,.06), 0 4px 12px rgba(14,15,12,.06)`; dark `0 1px 2px rgba(0,0,0,.4), 0 4px 12px rgba(0,0,0,.28)`): agent cards, wells that lift.
+- **Overlay** (`0 2px 4px rgba(14,15,12,.06), 0 16px 40px rgba(14,15,12,.12)`; dark `... rgba(0,0,0,.5)`): overlay panels, answer card, popovers.
+- **Keycap** (`inset 0 -2px 0 #E6E8E3`): keycaps only.
+- **Halo** (`0 0 0 3px #FFC83D, 0 0 0 4px #0E0F0C`; dark `0 0 0 3px #121410, 0 0 0 6px #FFC83D`; on ink chrome `0 0 0 6px #fff, 0 0 0 10px #FFC83D`): the single target.
 
 ### Named Rules
-**The No Glow Rule.** No gradients, blurred glows, or colored shadows anywhere. Emphasis is a solid ring, never a bloom.
+**The Two Levels Rule.** Level 1 for cards, level 2 for floating panels. Nothing higher, no glows, no blur, no glass.
 
 ## Shapes
 
-Soft rectangles with a fixed radius ladder: 4px tags/passages, 7px keycaps, 8px inputs/tiles/passage cells, 10px windows, 14px buttons and icon buttons, 20px cards/panels, pill for chips and the session bar. The speech bubble is 18/18/18/4 (tail bottom-left); user chat bubbles mirror it (18/18/4/18). Dashed 1.5px line-strong borders mark empty or "new" slots (passage cells, New agent card). The gecko itself is hard-edged pixel squares; never round or smooth it.
+| Shape | Radius |
+|---|---|
+| Input · keycap · button | 8 · 7 · 14 |
+| Chat bubble | 18, 4px tail corner toward the mascot |
+| Panel, card | 20 |
+| Chip, `Kw` | pill |
+| App icon | 22 at 96 |
+| Window | OS (10 macOS, 8 Windows) |
+
+- Nested corners shrink by the padding. No icon tiles; icons sit bare.
+- The only hard edge is the pixel: sprite, pixel icons, `StepSquares`, pixel trail, dither.
 
 ## Components
 
 ### Buttons
-- **Shape:** gently rounded (14px), 2px ink border, Geist 600 16px/20px, gap 10px.
-- **Primary:** ink fill, paper text, 48px tall, 20px side padding; hero variant 52px (scales to `max(52px, 64u)`) at 17px. Keycap inside uses ink-key.
-- **Secondary:** paper fill, ink text, same ink border.
-- **Small / Nav:** 44px, 16px padding, 14px text.
-- **Hover / Active:** translateY(-1px) / 0, 150ms ease-out. Disabled: canvas fill, line border, ink-3 text, no motion.
-- **Icon buttons:** 48px square transparent, canvas on hover; accent 44px gecko fill; dark 44px paper glyph, ink-raised hover.
-
-### Keycap
-Paper, 1px line-strong stroke, 7px radius, inset 2px bottom bevel, mono 500 13px, min 28×28. Hero keycaps grow to `max(32px, 38u)`.
+- **Shape:** gently rounded (14px), 48px tall (52px in heroes), 20px horizontal padding, 2px border matching the fill.
+- **Primary:** solid Ink with Paper text; on dark it inverts to Mist with Ink text. Can hold a keycap.
+- **Secondary:** surface fill, text-colored 2px border.
+- **Ghost:** underlined text, 4px offset.
+- **Accent icon:** 48px Gecko Green square with an Ink icon; only for the mic or the single main action.
+- **Hover / Focus:** 140ms ease-out; focus is a 2px `focus` outline with 2px offset.
 
 ### Chips
-- **Style:** pill, 28px, 0 12px, Geist 500 13px/16px, gap 6px.
-- **States:** ready (wash/deep), processing (canvas/ink-2 + 12px spinner), queued (paper/ink-3 + 1px inset line), offline (ink/paper), plain (canvas/ink-2). Live dot is 8px gecko.
-- **Citation chip:** paper with 1.5px inset gecko-deep stroke and deep text; fills with wash when lit (`.is-lit`, 300ms). Rides under the speech bubble at 26px/12px.
+- **Status:** Processing (Canvas / Ink 2, pixel processing icon), Ready (Gecko Wash / Deep Gecko), Failed (Alert Wash / Alert, with the reason), Offline (Ink / Paper).
+- **Keyword (`Kw`):** Gecko Wash / Deep Gecko pill, max 3 per block; replaces explanatory sentences.
+- **Citation:** pill with a 1.5px green-text border and the pixel source icon, e.g. `Manual · p. 4`. Every grounded answer carries one.
 
 ### Cards / Containers
-- **Answer card:** paper, 20px radius, 1px line, window shadow, padding `18u + 4px`, gap 12. Head with agent name and chip; question in a canvas 8px well; body line-height 1.55. Docks up from below with `--dock`.
-- **Agent card:** paper, 1px line, 20px radius, 20px padding, gap 10; 44px wash tile with deep icon; mono code top-right; chips row; Start button bottom-right. Hover: shadow-1 + lift 2px (250ms). "New agent" variant: dashed border, transparent.
-- **Knowledge-base list:** paper, 1px line, 20px radius; rows 14px 16px, gap 14, hairline dividers, 40px canvas icon tile, 600 15px name with ellipsis, 12px caption meta, status chip at end.
-- **Passages grid:** 6 columns, 56px rows (44px mobile), gap 10 (6 mobile). Empty cells: dashed 1.5px line-strong, 8px radius. Filled: paper + 1px line with three 3px line-strong bars (100/70/45%). The answer cell fills wash with deep border and bars.
-- **Sheet mock:** paper window, 10px radius, window shadow; traffic lights are neutral line-strong dots (never colored); pill canvas toolbar; formula row with name box; grid of hairline cells with canvas row/column headers, active row/column in line. The target cell sits raised (z-index 2) on paper.
-- **Manual card:** PDF window, 10px radius; ink mono PDF tag; highlighted passage in wash that fades to transparent/ink-3 while it dissolves into the gecko.
+- **Corner Style:** 20px.
+- **Background:** `surface`; wells use `surface-2`.
+- **Shadow Strategy:** Card level at most; the overlay answer card uses Overlay.
+- **Border:** 1px `border`, always on dark.
+- **Internal Padding:** 20px.
 
-### Session bar
-Ink pill, padding 10px, gap 8; agent chip 44px ink-raised pill; line-strong hint text 13px; 3px waveform bars (ink-3 idle, paper animated 900ms when live). Wraps with 28px radius on mobile.
+### Inputs / Fields
+- **Style:** 44px tall, 8px radius, 1.5px `border-strong`, visible label above, caption helper below.
+- **Focus:** border turns `focus` plus a 3px `focus-wash` outline.
+- **Error / Disabled:** Alert text below the field; disabled uses Canvas / Line / Ink 3 (dark: Night 2 / Night Line / Mist 3).
 
 ### Navigation
-Fixed 64px paper bar, 3.6vw side padding; 48px ink brand tile + Bricolage 800 26px wordmark; Geist 500 15px links, underline on hover; border-bottom line appears on scroll.
+- `NavLink` in `AppShell`: the active item is `surface` with a `GeckoDot` after the label. No side stripe, no icon on every row. Tabs are Label weight with a 2px Ink underline when active.
 
-### Signature: The canvas gecko (`site/src/gecko/director.ts`)
-- **One canvas:** a single fixed, full-viewport, pointer-events-none canvas (z 30) draws the only gecko. Sections never render their own sprite; they register **slots** (`GeckoSlot`: a box sized `22×27 × --cell`, the owning section, an optional **target**, optional **source**, pose, flip).
-- **Slot choice:** the active slot is the one whose section contains (or is nearest to) the viewport midline. The sprite is bottom-centered in its slot and snapped to device pixels; cell size is read as an integer from `--cell`.
-- **Morph:** changing slots dissolves the sprite into its cells and re-forms it at the new slot. Each cell eases (cubic in-out) along a quadratic arc, delay `row/27 × 420ms + ≤260ms`, duration 760–1180ms, size interpolating to the new cell size. Interrupted morphs re-target from the in-flight pixels.
-- **Passage pour:** on first arrival with a source, the source passage (`data-gc-dissolving`) breaks into 3–7px pixels in a narrow descent corridor, tinted gecko/light/pale/ink, settling into the sprite. A stepped trail then streams 2 squares every 45ms from the passage to the target, snapped to a 6px lattice (occasional 12px), 1300–1800ms each, fading in/out at the ends, tracking the live target.
-- **Flow:** `flow(from, targets)` sends 7 pixels per target (6–10px, 650–1000ms, 45ms stagger) to fill passage cells.
-- **Sun halo moves with the gecko:** 80ms after landing, the slot's target gets `data-gc-target="on"`; the previous target is cleared before every morph, so only one halo ever exists. Halo transition 250ms ease-out.
-- **Idle:** pointing pose blinks for 140ms every 2.6–5.8s. Idle frames skip redraw. Director starts 450ms after fonts are ready.
-- **Reduced motion:** no particles, trail, flows, or blink; the gecko appears settled in the active slot, halo lands immediately, flows complete instantly, CSS transitions/animations on targets, passages, chips, spinner, and waveform are removed.
+### Signature: GetcKo sprite and target halo
+- 22 × 27 cell pixel gecko (`src/brand/mascot/`), integer scales (2× overlay, 3× inline, 6× empty states, 8× onboarding, 12–16× hero and video).
+- 31 poses, chosen by moment with `MOMENT_POSE` (failed = confused, processing = reading, idle = sleeping).
+- Flies beside the target (`flyTo`, `placeBeside`) in a 520ms shallow arc with a small landing hop; the halo draws and pulses twice; the answer card rises in. Reduced motion: teleport, static halo.
+
+### Signature: Logo
+- Head mark = sprite rows 0–10 (arm stub removed); lockup = head mark + "GetcKo" in Bricolage 800. Clearspace 4 head-mark cells; head mark min 24px. Files: `public/brand/logo/`, `public/brand/favicon.svg`, `docs/brand/app-icon-1024.png`.
+
+### Signature: Session bar
+An Ink pill that stays dark in both themes: agent chip, green mic, Screen Help, stop, and the shortcut hint (`⌥ Space` / `Ctrl Space`).
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** render the gecko only through the director canvas; add a new appearance by registering a `GeckoSlot` with an integer `--cell`.
-- **Do** give every slot at most one target, and let the director own `data-gc-target`.
-- **Do** keep sprite cells integer (3, 4, 5, 6, 7px) and size layout around `22 × cell` by `27 × cell`.
-- **Do** keep the focus ring visible over a lit halo: 2px gecko-deep border then sun (`0 0 0 2px focus-border, 0 0 0 5px sun`; dark adds a 5px paper gap before a 9px sun ring). Default focus: 3px wash outline, 2px offset, 2px deep shadow.
-- **Do** collapse to the flat stack below 900px and under reduced motion; the gecko still points, it just doesn't travel.
-- **Do** use ink primary buttons with 2px ink borders and 14px corners.
+- **Do** give every page section a `<Surface>` texture chosen by meaning; in light mode prefer footprints, canopy, pointer, how and footer; keep weave, skin, lamellae and dither to narrow bands or ink tone (`docs/brand/textures.md`).
+- **Do** take every visible string from `T` / `say` (`src/brand/lexicon.ts`) and every icon from `Icon` (`src/brand/icons.ts`); pick mascot poses with `MOMENT_POSE`.
+- **Do** use semantic tokens (`bg-surface`, `text-text-2`, `text-accent-text`) so both themes work without `dark:`.
+- **Do** put the sun halo on exactly one element and have the gecko face it from 12px away.
+- **Do** left-align copy and pair it with an asymmetric visual: a real screenshot, the gecko, and one halo.
+- **Do** show only `MEASURED` numbers, in Geist Mono with "on this Mac"; a TBD number renders nothing.
+- **Do** show, don't tell: headline ≤ 6 words, body ≤ 1 line in the app (2 in marketing); longer becomes `Kw` chips, `Steps`, a diagram or motion.
+- **Do** build screens from `AppShell`, `PageHeader` and the primitives in `src/components/ui`; loading is GetcKo's thinking or processing moment, never a shimmer.
+- **Do** use the pixel icons from `Icon` (24 grid, 2-unit strokes, 24 / 48px), bare and only where they add meaning; see `docs/brand/icons.md`.
+- **Don't** use smooth line-icon packages, icon tiles or tinted icon circles, or an icon on every row or heading.
+- **Do** use one texture per surface; working screens flat or `subtle`; never texture the overlay or behind answer text. Light hero = `footprints` + `canopy-corner`.
+- **Do** write action → reason → source, in sentence case, with Taglish when the agent's language is Taglish.
 
 ### Don't:
-- **Don't** show more than one gecko on screen, or a second static gecko image beside the canvas.
-- **Don't** use sun yellow anywhere except the single pointed target's halo.
-- **Don't** use gradients, glows, blur, or colored shadows.
-- **Don't** scale the sprite by fractional factors or smooth it.
-- **Don't** color window traffic lights; chrome stays neutral.
-- **Don't** set green text on white; use gecko-deep for text and strokes.
+- **Don't** ship a plain white page: untextured sections read as generic AI slop.
+- **Don't** use banned synonyms (assistant, library, response, reply, citation, Retry, Send, Upload, push to talk, read aloud, TTS, hotkey, local, on-device and the rest of the list) in visible text; see `docs/brand/lexicon.md`. The privacy line is always "Nothing leaves this Mac."
+- **Don't** use gradients, glows, glassmorphism, backdrop blur, purple or blue.
+- **Don't** build centered gradient heroes or three-card feature grids with icons in circles.
+- **Don't** use sparkles, wands, robots, brains or stars as "AI" iconography; the gecko is the only AI signifier.
+- **Don't** use emoji, Title Case, "AI-powered", "magic", "supercharge" or "Oops!".
+- **Don't** use Gecko Green as text or Deep Gecko on dark.
+- **Don't** scale, rotate, recolor, blur or redraw the sprite; integer scales and flips only, one gecko per screen, still while the user types.
+- **Don't** use arbitrary values (`text-[…]`, `rounded-[…]`, `w-[…]`, `z-[…]`) or `text-display` on app screens.
+- **Don't** add CRT scanlines, glitch or VHS filters; the pixel world is clean.
+
+## Landing page (`site/`)
+
+Built only from the kit: `Surface`, `GetCkoHero`, `AgentCard`, `KnowledgeBaseRow`, `ImportProgress`, `SessionBar`, `ChatBubble`, `Stat`, `ProofLine`, `MockToggle`, `Kw`, `Steps`, `Wordmark`, `Dialog`; words from `T` / `say`, with PROPOSED marketing keys in `src/copy.ts`.
+
+**Section rhythm (one texture each, loud and quiet alternate):**
+
+| Section | Surface | GetcKo (`MOMENT_POSE` / `pointPoseFor`) | Halo |
+|---|---|---|---|
+| Hero | kit `GetCkoHero` (canopy-corner; light only) with an e-service form instead of the grade sheet | voxel GetcKo from the kit timeline | the form's Upload ID button |
+| How it works | `pointer` subtle, paper; `how` band under the `Steps` | `screenHelp` | Student Record "Final" field |
+| Knowledge bases | `footprints` subtle | `processing` while importing, then `screenHelp` | the passage behind "Manual · p. 4" |
+| Taglish | `weave` subtle | `listening` held, `speakLoop` while speaking, else `pointRight` | session bar mic (dark two-ring halo) |
+| Templates | `canopy`, paper | `pointDownRight` | Office Helper's Start |
+| Brand keywords | `skin` subtle, paper | `walk1`/`walk2` while moving, then `pointRight` | none (the active word wears the green mark) |
+| Offline | `footprints`, tone `ink` (the one dark island) | `offline` | none |
+| Closing + footer | `footer` | `pointRight` | the demo poster's play button (poster = the kit `headmark` end-card plate + an ink caption bar; the whole poster is the button) |
+
+**One GetcKo per screen.** `src/gecko/director.ts` draws the page's canvas GetcKo from `buildPose` at integer scale; sections register a slot (`GeckoSlot`), and moving between sections dissolves the sprite into its cells and re-forms it. The hero registers a vacant slot, so the canvas sprite scatters away and the kit's voxel GetcKo is the only one on screen. Halos use the kit's `haloIn` / `haloOut` (140 ms draw, two pulses, hold), with the two-ring dark variant on ink chrome.
+
+**Intro (GSAP, once per session, `?intro` replays, skipped under reduced motion):** `<html class="intro-pending">` is set before first paint. (1) The head mark's cells (`buildHeadMark`) assemble from a scattered pixel field; (2) the ink tile pops in and "GetcKo" and the "Gets mo na." badge print; (3) the tile flies into the nav `Wordmark` tile, kept at the same 22:36 head-to-tile ratio; (4) the hero's text column rises; (5) the e-service form window springs up and de-rasters through a pixel curtain; (6) the kit hero timeline starts. Click, scroll or any key skips it.
+
+**How it works band (GSAP ScrollTrigger):** on desktop the section pins when its bottom meets the viewport and scrubs for 140% of a screen. The `how` texture's prints walk one 640 px stop. The band's `how` texture is drawn at exactly 2× (a 352 px ruler strip, prints doubled; integer scale only) and the section above it is tightened so the beats get the room. Each beat (pixel icon in a 64 px tile, mono number, `text-h2` label, and its line from `T.board.how.steps` on a surface chip) sits in one row inside the strip with ~90 px of air, and they light up in turn: opacity 0.36 → 1, the kit's keyword mark (wash block + 4 px `gecko` foot) scales in, the icon pops with `steps(2)`, and six pixel-square connectors fill green toward the next beat. Layout tiers: one row at 1100 px and up (tighter gaps under 1280 px); below 1100 px the beats stack, unpinned, on plain ground (the strip would cut through the stack). Reduced motion shows every beat lit. The pinned section fits an 800 px screen.
+
+**Seams (no hard section edges):** every light section uses the `paper` ground, and its texture is painted on a `::before` masked by a 4×4 Bayer dither (`public/site/seam-*.svg`, 4 px cells, 96 px ramp), so the texture dissolves pixel by pixel at its top and bottom: the brand's dither fade, never a gradient. `seam-top` / `seam-bottom` keep the canopy's top edge and the footer's bottom edge crisp. The ink island masks its whole ground, so it dithers out into the page.
+
+**Site edits to vendored kit code:** `GetCkoHero` gains an `actions` prop (the CTA row) and `data-hero="copy" | "window"` hooks for the intro, and its grade sheet is replaced by `EServiceForm`: an LGU business permit renewal at step 2 of 4, with name and TIN filled, no valid ID, and Next disabled. The question is "Bakit hindi ko ma-click ang Next?", GetcKo points at Upload ID, and the source is "Permit guide · p. 2" (sample data in `hero/copy.ts`); `lexicon.ts` `MEASURED.firstSpokenWord` is filled from `docs/MODELS.md`.

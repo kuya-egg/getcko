@@ -1,121 +1,108 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MOMENT_POSE, pointPoseFor } from "../brand/mascot";
+import { speakLoop } from "../brand/motion";
+import { T } from "../brand/lexicon";
+import { Icon } from "../brand/icons";
+import { Button, ChatBubble, CitationChip, Kw, SessionBar, Surface } from "../components/ui";
+import { SectionHead } from "../components/SectionHead";
 import { director } from "../gecko/director";
 import { GeckoSlot } from "../gecko/react";
-import { CitationChip, Keycap, MicIcon, PointerIcon, SpeakerIcon, StopIcon } from "../components/ui";
+import { SITE } from "../copy";
 
-const QUESTION = "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta?";
-const ANSWER = "Ilagay sa F12. Final grade is 40% written work plus 60% performance tasks. For Juan, that's 86.";
-
+/** Hold to talk, let go, GetcKo answers out loud in Taglish. On the banig weave: the language band. */
 export function Voice() {
   const section = useRef<HTMLElement>(null);
-  const mic = useRef<HTMLButtonElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const loop = useRef<gsap.core.Timeline | null>(null);
+  const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
+  const c = SITE.voice;
 
-  const stop = () => {
+  const stop = useCallback(() => {
     if (canSpeak) window.speechSynthesis.cancel();
     setSpeaking(false);
-  };
+  }, [canSpeak]);
 
-  const speak = () => {
+  const speak = useCallback(() => {
     if (!canSpeak) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(ANSWER);
-    u.rate = 1;
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(c.answer);
+    const fil = synth.getVoices().find((v) => /^(fil|tl)/i.test(v.lang));
+    if (fil) u.voice = fil;
+    u.onend = u.onerror = () => setSpeaking(false);
     setSpeaking(true);
-    window.speechSynthesis.speak(u);
-  };
+    synth.speak(u);
+  }, [canSpeak, c.answer]);
 
-  // Mouth alternates while speech plays; Esc always stops it (design system §9).
+  // Poses: listening while held, speaking ↔ pointing while the voice plays (speakLoop), else pointing.
   useEffect(() => {
-    if (!speaking) {
-      director.setPose("voice", "pointing");
-      return;
-    }
-    // Reduced motion: hold the open-mouth pose instead of flapping it.
-    let open = true;
-    director.setPose("voice", "speaking");
-    const t = director.reducedMotion
-      ? 0
-      : window.setInterval(() => {
-          open = !open;
-          director.setPose("voice", open ? "speaking" : "pointing");
-        }, 170);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") stop();
-    };
+    loop.current?.kill();
+    if (listening) director.setPose("voice", MOMENT_POSE.listening);
+    else if (speaking) loop.current = speakLoop((p) => director.setPose("voice", p));
+    else director.setPose("voice", pointPoseFor("right"));
+    if (!speaking) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && stop();
     window.addEventListener("keydown", onKey);
-    return () => {
-      clearInterval(t);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [speaking]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [listening, speaking, stop]);
 
   useEffect(() => () => void (canSpeak && window.speechSynthesis.cancel()), [canSpeak]);
 
   return (
-    <section ref={section} id="voice" className="section voice" aria-labelledby="voice-title">
-      <div className="voice-copy">
-        <p className="eyebrow">Voice in, voice out</p>
-        <h2 id="voice-title" className="h-section">Ask out loud.</h2>
-        <p className="lede">
-          Hold <Keycap>⌥</Keycap> <Keycap>Space</Keycap> and ask in English, Filipino or Taglish. GetCko transcribes on-device, answers
-          with the source, and says it out loud.
-        </p>
-        <div className="session-row">
-          <GeckoSlot id="voice" section={section} target={mic} className="slot-voice" label="GetCko pointing at the mic button" />
-          <div className="session-bar" role="group" aria-label="GetCko session bar">
-            <span className="session-agent">Office Helper</span>
-            <button
-              ref={mic}
-              type="button"
-              className="icon-btn icon-btn-accent gc-target gc-target-dark"
-              aria-label={speaking ? "Stop the example answer" : "Play the example answer"}
-              aria-pressed={speaking}
-              onClick={speaking ? stop : speak}
-              disabled={!canSpeak}
-            >
-              <MicIcon />
-            </button>
-            <span className={`wave${speaking ? " is-on" : ""}`} aria-hidden="true">
-              {Array.from({ length: 14 }, (_, i) => (
-                <i key={i} style={{ ["--i" as string]: i }} />
-              ))}
-            </span>
-            <span className="icon-btn icon-btn-dark" aria-hidden="true">
-              <PointerIcon />
-            </span>
-            <button type="button" className="icon-btn icon-btn-dark" aria-label="Stop speaking" onClick={stop}>
-              <StopIcon />
-            </button>
-            <span className="session-hint mono">⌥ Space</span>
+    <Surface ref={section} id="voice" texture="weave" intensity="subtle" tone="paper" aria-labelledby="voice-title" className="site-section seam">
+      <div className="site-wrap grid items-center gap-12 lg:grid-cols-12">
+        <div className="flex flex-col gap-8 lg:col-span-6">
+          <SectionHead id="voice-title" eyebrow={c.eyebrow} title={c.title}>
+            <Kw>{T.actions.holdToTalk}</Kw>, ask in English, Filipino or <Kw>Taglish</Kw>. GetcKo answers out loud.
+          </SectionHead>
+          <div className="voice-bar-row">
+            <GeckoSlot
+              id="voice"
+              section={section}
+              target={() => bar.current?.querySelector<HTMLElement>('[role="toolbar"] button[aria-pressed]')}
+              className="slot-voice"
+              label={T.mascot.pointingAt(T.aria.holdToTalk)}
+            />
+            <div ref={bar} className="voice-bar">
+              <SessionBar
+                agent={T.templates.taglishExplainer.name}
+                listening={listening}
+                speaking={speaking}
+                onTalkStart={() => {
+                  stop();
+                  setListening(true);
+                }}
+                onTalkEnd={() => {
+                  setListening(false);
+                  speak();
+                }}
+                onStop={stop}
+                platform="mac"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="chat" aria-label="Example conversation">
-        <p className="msg msg-user" lang="fil">
-          {QUESTION}
-        </p>
-        <div className="msg msg-gecko">
-          <p>
-            <strong>Ilagay sa F12.</strong> Final grade is 40% written work + 60% performance tasks. For Juan: 0.4 × 84 + 0.6 × 88 = 86.4,
-            rounded to <strong>86</strong>.
-          </p>
+        <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-5 shadow-overlay lg:col-span-6">
+          <ChatBubble from="user" lang="fil">
+            “{c.question}”
+          </ChatBubble>
+          <ChatBubble from="getcko" lang="fil">
+            {c.answer}
+          </ChatBubble>
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <CitationChip source="Manual" page={4} />
+            {canSpeak && (
+              <Button variant="secondary" size="sm" icon={speaking ? Icon.stop : Icon.readAloud} onClick={speaking ? stop : speak}>
+                {speaking ? c.stop : c.answerOutLoud}
+              </Button>
+            )}
+          </div>
+          <p className="text-caption text-text-3">{c.voiceNote}</p>
         </div>
-        <div className="chat-foot">
-          <CitationChip>Manual · p. 4</CitationChip>
-          {canSpeak && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={speaking ? stop : speak}>
-              {speaking ? <StopIcon /> : <SpeakerIcon />}
-              {speaking ? "Stop" : "Hear the answer"}
-            </button>
-          )}
-        </div>
-        <p className="caption">Plays in your browser's voice. The app speaks with your computer's built-in voices. Esc stops it.</p>
       </div>
-    </section>
+    </Surface>
   );
 }

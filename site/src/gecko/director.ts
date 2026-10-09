@@ -1,26 +1,30 @@
-import { cellsOf, COLS, PALETTE, ROWS, poseRows, type Cell, type Pose } from "./sprite";
+import { BLINK_OF, PALETTE, SPRITE_H, SPRITE_W, buildPose, type Pose } from "../brand/mascot";
+import { haloIn, haloOut } from "../brand/motion";
 
 /**
- * One GetCko per screen (design system §6). The director owns the only gecko:
- * sections register slots, the active slot is picked from scroll position, and
- * moving between slots dissolves the sprite into its cells and re-forms it.
+ * One GetcKo per screen (brand rule 7). The director owns the page's canvas GetcKo: sections
+ * register slots, the active slot is picked from scroll position, and moving between slots
+ * dissolves the sprite into its cells and re-forms it with the slot's pose from MOMENT_POSE.
+ * A `vacant` slot (the hero, which draws its own voxel GetcKo) scatters the canvas sprite away.
  *
- * Drawing happens in device pixels so every sprite cell covers whole device
- * pixels (no smoothing seams at fractional DPR). Idle frames skip the redraw.
+ * Drawing happens in device pixels so every sprite cell covers whole device pixels (no smoothing
+ * seams at fractional DPR). Idle frames skip the redraw.
  */
+
+type ElGetter = () => HTMLElement | null | undefined;
 
 export interface Slot {
   id: string;
-  /** Element sized to COLS×ROWS cells via the CSS var --cell (integer px). */
-  el: HTMLElement;
+  /** Element sized to 22×27 cells via the CSS var --cell (integer px). Omit for a vacant slot. */
+  el?: HTMLElement;
   /** Section whose box decides when this slot is active. */
   section: HTMLElement;
-  /** Element that receives the sun halo while the gecko points at it. */
-  target?: HTMLElement | null;
+  /** The one element that wears the sun halo while GetcKo points at it. Read lazily. */
+  target?: ElGetter;
   pose?: Pose;
   flip?: boolean;
-  /** First arrival dissolves this element into the gecko instead of flying in. */
-  source?: HTMLElement | null;
+  /** First arrival dissolves this element into GetcKo instead of flying in. Read lazily. */
+  source?: ElGetter;
 }
 
 interface Particle {
@@ -30,6 +34,10 @@ interface Particle {
   color: string; toColor: string;
   delay: number; dur: number;
   x: number; y: number; s: number;    // last drawn position, CSS px
+}
+
+interface Spark {
+  x: number; y: number; s: number; vx: number; vy: number; color: string; born: number; life: number;
 }
 
 interface FlowParticle {
@@ -45,7 +53,7 @@ interface Flow {
   onArrive?: (i: number) => void;
 }
 
-const MORPH_COLORS = ["#39D86F", "#9BF2B6", "#D6F8E0", "#0E0F0C"];
+const MORPH_COLORS = [PALETTE.G, PALETTE.L, PALETTE.B, PALETTE.K];
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -55,17 +63,36 @@ function bez(a: number, c: number, b: number, t: number) {
   return u * u * a + 2 * u * t * c + t * t * b;
 }
 
+function cellsOf(rows: readonly string[]) {
+  const out: { x: number; y: number; color: string }[] = [];
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x] as keyof typeof PALETTE;
+      if (ch !== "." && PALETTE[ch]) out.push({ x, y, color: PALETTE[ch] });
+    }
+  });
+  return out;
+}
+
+/** Targets on ink chrome (session bar, ink surfaces) wear the dark two-ring halo. */
+function haloOpts(el: HTMLElement) {
+  // The page is light only: light halo (gap 0) unless the target sits on ink chrome.
+  return el.closest('[role="toolbar"], .surface--ink, [data-halo="dark"]') ? { gap: 6, width: 4 } : { gap: 0 };
+}
+
 class Director {
   private slots = new Map<string, Slot>();
   private cells = new Map<string, number>();
   private active: Slot | null = null;
   private visited = new Set<string>();
   private particles: Particle[] = [];
+  private sparks: Spark[] = [];
   private morphStart = 0;
   private morphing = false;
   private dissolving: HTMLElement | null = null;
   private landedAt = 0;
   private lastRect: { x: number; y: number; cell: number } | null = null;
+  private lastRows: readonly string[] | null = null;
   private flows: Flow[] = [];
   /** The first morph waits until every hold is released (fonts, hero intro, …). */
   private holds = new Set<string>();
@@ -76,6 +103,7 @@ class Director {
   private raf = 0;
   private ready = false;
   private litTarget: HTMLElement | null = null;
+  private haloTl: { kill(): void } | null = null;
   private poses = new Map<string, Pose>();
   private reduced = false;
   private nextBlink = 0;
@@ -107,7 +135,7 @@ class Director {
     };
   }
 
-  /** Block the first morph until `release(key)`; the intro owns when the gecko is born. */
+  /** Block the first morph until `release(key)`; the intro owns when GetcKo is born. */
   hold(key: string) {
     this.holds.add(key);
     this.ready = false;
@@ -130,10 +158,10 @@ class Director {
     };
   }
 
+  /** Swap a slot's pose (speaking loop, processing → ready). Instant frame swap, never tweened. */
   setPose(id: string, pose: Pose) {
     this.poses.set(id, pose);
   }
-
 
   /** Dissolve `from` into pixels that settle into each of `targets`. */
   flow(from: HTMLElement, targets: HTMLElement[], onArrive?: (i: number) => void) {
@@ -168,6 +196,7 @@ class Director {
   /** Land everything immediately (reduced motion turned on, or the intro was skipped). */
   settle() {
     this.particles = [];
+    this.sparks = [];
     this.morphing = false;
     this.landedAt = performance.now();
     this.dissolving?.removeAttribute("data-gc-dissolving");
@@ -192,7 +221,7 @@ class Director {
   private cellOf(s: Slot): number {
     let v = this.cells.get(s.id);
     if (v === undefined) {
-      v = parseInt(getComputedStyle(s.el).getPropertyValue("--cell"), 10);
+      v = s.el ? parseInt(getComputedStyle(s.el).getPropertyValue("--cell"), 10) : 0;
       if (!Number.isFinite(v) || v <= 0) v = 4;
       this.cells.set(s.id, v);
     }
@@ -216,33 +245,65 @@ class Director {
   }
 
   private slotGeom(s: Slot) {
-    const r = s.el.getBoundingClientRect();
+    const r = s.el!.getBoundingClientRect();
     const cell = this.cellOf(s);
     // Bottom-center the integer-scaled sprite inside the slot box; snap to device px.
     const d = this.dpr;
-    const x = Math.round((r.left + (r.width - COLS * cell) / 2) * d) / d;
-    const y = Math.round((r.bottom - ROWS * cell) * d) / d;
+    const x = Math.round((r.left + (r.width - SPRITE_W * cell) / 2) * d) / d;
+    const y = Math.round((r.bottom - SPRITE_H * cell) * d) / d;
     return { x, y, cell };
   }
 
+  private basePose(s: Slot): Pose {
+    return this.poses.get(s.id) ?? s.pose ?? "pointing";
+  }
+
+  /** The slot's pose, with the kit's blink frame for ~140 ms every 3–6 s (motion.md). */
   private poseFor(s: Slot, now: number): Pose {
-    const pose = this.poses.get(s.id) ?? s.pose ?? "pointing";
-    if (pose !== "pointing" || this.reduced) return pose;
-    if (now < this.nextBlink) return pose;
+    const pose = this.basePose(s);
+    const blink = BLINK_OF[pose];
+    if (!blink || this.reduced || now < this.nextBlink) return pose;
     if (now > this.nextBlink + 140) {
-      this.nextBlink = now + 2600 + Math.random() * 3200;
+      this.nextBlink = now + 3000 + Math.random() * 3000;
       return pose;
     }
-    return "blink";
+    return blink;
+  }
+
+  /** The outgoing sprite bursts into its cells, which drift up and fade (leaving for a vacant slot). */
+  private scatter(now: number) {
+    const g = this.lastRect;
+    const rows = this.lastRows;
+    if (!g || !rows || this.reduced) return;
+    const from = this.morphing ? this.particles.map((p) => ({ x: p.x, y: p.y, s: p.s, color: p.toColor })) : cellsOf(rows).map((c) => ({ x: g.x + c.x * g.cell, y: g.y + c.y * g.cell, s: g.cell, color: c.color }));
+    for (const c of from) {
+      this.sparks.push({
+        x: c.x, y: c.y, s: c.s, color: c.color,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: -0.15 - Math.random() * 0.45,
+        born: now + Math.random() * 180,
+        life: 520 + Math.random() * 380,
+      });
+    }
   }
 
   private beginMorph(to: Slot, now: number) {
-    const targetCells: Cell[] = cellsOf(poseRows(to.pose ?? "pointing", to.flip));
-    const first = !this.visited.has(to.id);
-    this.visited.add(to.id);
     this.setHalo(null);
     this.dissolving?.removeAttribute("data-gc-dissolving");
     this.dissolving = null;
+
+    if (!to.el) {
+      this.scatter(now);
+      this.particles = [];
+      this.morphing = false;
+      this.lastRect = null;
+      this.lastRows = null;
+      return;
+    }
+
+    const targetCells = cellsOf(buildPose(this.basePose(to), { flip: to.flip }));
+    const first = !this.visited.has(to.id);
+    this.visited.add(to.id);
 
     if (this.reduced || this.instantNext) {
       this.instantNext = false;
@@ -253,7 +314,7 @@ class Director {
     }
 
     const vh = window.innerHeight;
-    const src = first && to.source ? to.source : null;
+    const src = first && to.source ? to.source() : null;
     const sr = src?.getBoundingClientRect() ?? null;
     // An interrupted morph re-targets from where its pixels are right now.
     const inFlight = this.morphing ? this.particles : null;
@@ -276,19 +337,20 @@ class Director {
         fy = Math.max(-prev.cell * 2, Math.min(vh + prev.cell, prev.y + c.y * prev.cell));
         fs = prev.cell;
       } else {
-        fx = window.innerWidth * (0.3 + Math.random() * 0.4);
-        fy = -20;
+        // Arriving from the hero: the cells rain in from above the viewport.
+        fx = window.innerWidth * (0.25 + Math.random() * 0.5);
+        fy = -20 - Math.random() * 120;
         fs = 4;
       }
       return {
         fx, fy, fs,
-        // The passage pour stays in a narrow descent corridor; section hops arc.
+        // A dissolving source pours in a narrow corridor; section hops arc.
         cx: (Math.random() - 0.5) * (sr ? 60 : 160),
         cy: sr ? Math.random() * 40 : -60 - Math.random() * 90,
         tx: c.x, ty: c.y,
-        color: sr ? MORPH_COLORS[i % MORPH_COLORS.length] : c.color,
+        color: sr || !prev ? MORPH_COLORS[i % MORPH_COLORS.length] : c.color,
         toColor: c.color,
-        delay: (c.y / ROWS) * 420 + Math.random() * 260,
+        delay: (c.y / SPRITE_H) * 420 + Math.random() * 260,
         dur: 760 + Math.random() * 420,
         x: fx, y: fy, s: fs,
       };
@@ -297,11 +359,20 @@ class Director {
     this.morphing = true;
   }
 
+  /** The kit halo: draw 140 ms, two pulses, hold (motion.md). On ink chrome: paper gap + sun ring. */
   private setHalo(el: HTMLElement | null) {
     if (this.litTarget === el) return;
-    this.litTarget?.removeAttribute("data-gc-target");
+    const prev = this.litTarget;
+    if (prev) {
+      this.haloTl?.kill();
+      prev.removeAttribute("data-gc-target");
+      haloOut(prev, haloOpts(prev));
+    }
     this.litTarget = el;
-    el?.setAttribute("data-gc-target", "on");
+    if (el) {
+      el.setAttribute("data-gc-target", "on");
+      this.haloTl = haloIn(el, haloOpts(el));
+    }
   }
 
   private frame = (now: number) => {
@@ -314,14 +385,14 @@ class Director {
       this.active = next;
       this.beginMorph(next, now);
     }
-    const s = this.active;
+    const s = this.active?.el ? this.active : null;
     const g = s ? this.slotGeom(s) : null;
     const pose = s && !this.morphing ? this.poseFor(s, now) : null;
 
-    const animating = this.morphing || this.flows.length > 0;
-    const key = s && g ? `${s.id}|${g.x}|${g.y}|${g.cell}|${pose}|${s.flip}` : "";
+    const animating = this.morphing || this.flows.length > 0 || this.sparks.length > 0;
+    const key = s && g ? `${s.id}|${g.x}|${g.y}|${g.cell}|${pose}|${s.flip}` : "vacant";
     if (!animating && key === this.sceneKey) {
-      if (s && now - this.landedAt > 80) this.setHalo(s.target ?? null);
+      if (s && now - this.landedAt > 80) this.setHalo(s.target?.() ?? null);
       return;
     }
     this.sceneKey = animating ? "" : key;
@@ -352,26 +423,45 @@ class Director {
           this.dissolving = null;
         }
       } else {
-        const rows = poseRows(pose ?? "pointing", s.flip);
+        const rows = buildPose(pose ?? "pointing", { flip: s.flip });
         const x0 = Math.round(g.x * d);
         const y0 = Math.round(g.y * d);
         const c = Math.round(g.cell * d);
         for (let y = 0; y < rows.length; y++) {
           const row = rows[y];
           for (let x = 0; x < row.length; x++) {
-            const ch = row[x];
+            const ch = row[x] as keyof typeof PALETTE;
             if (ch === ".") continue;
             ctx.fillStyle = PALETTE[ch];
             ctx.fillRect(x0 + x * c, y0 + y * c, c, c);
           }
         }
-        if (now - this.landedAt > 80) this.setHalo(s.target ?? null);
+        this.lastRows = rows;
+        if (now - this.landedAt > 80) this.setHalo(s.target?.() ?? null);
       }
       this.lastRect = g;
+      if (this.morphing) this.lastRows = buildPose(this.basePose(s), { flip: s.flip });
     }
 
+    this.drawSparks(ctx, now);
     this.drawFlows(ctx, now);
   };
+
+  private drawSparks(ctx: CanvasRenderingContext2D, now: number) {
+    const d = this.dpr;
+    this.sparks = this.sparks.filter((p) => {
+      const t = (now - p.born) / p.life;
+      if (t >= 1) return false;
+      const k = Math.max(0, t);
+      const dt = Math.max(0, now - p.born);
+      ctx.globalAlpha = 1 - k * k;
+      ctx.fillStyle = p.color;
+      const s = Math.max(1, p.s * (1 - k * 0.6));
+      ctx.fillRect(Math.round((p.x + p.vx * dt) * d), Math.round((p.y + p.vy * dt) * d), Math.ceil(s * d), Math.ceil(s * d));
+      ctx.globalAlpha = 1;
+      return true;
+    });
+  }
 
   private drawFlows(ctx: CanvasRenderingContext2D, now: number) {
     const d = this.dpr;

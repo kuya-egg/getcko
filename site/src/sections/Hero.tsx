@@ -1,18 +1,24 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
-import { director } from "../gecko/director";
-import { GeckoSlot } from "../gecko/react";
-import { HEAD_ROWS, PALETTE } from "../gecko/sprite";
-import { PlayIcon } from "../components/ui";
+import { GetCkoHero } from "../brand/hero";
+import { buildHeadMark, PALETTE } from "../brand/mascot";
+import { DUR, EASE } from "../brand/motion";
+import { T } from "../brand/lexicon";
+import { Icon } from "../brand/icons";
+import { Button } from "../components/ui";
+import { useVacantSlot } from "../gecko/react";
+import { SITE } from "../copy";
 
 gsap.registerPlugin(SplitText);
 
-/** Head-mark cells for the logo intro; ink outline cells merge into the ink tile once it grows. */
-const HEAD_CELLS = HEAD_ROWS.flatMap((row, y) => [...row].flatMap((ch, x) => (PALETTE[ch] ? [{ x, y, color: PALETTE[ch] }] : [])));
+/** Head-mark cells (rows 0–10 of the real sprite) for the logo entry. */
+const HEAD_CELLS = buildHeadMark().flatMap((row, y) =>
+  [...row].flatMap((ch, x) => (ch !== "." ? [{ x, y, color: PALETTE[ch as keyof typeof PALETTE] }] : [])),
+);
 
-/** Raster colours a window "prints" through before it snaps crisp: mostly wash, a few helper pixels. */
-const CURTAIN = ["#EAFBEF", "#EAFBEF", "#F6F7F4", "#F6F7F4", "#9BF2B6", "#39D86F", "#0E0F0C"];
+/** Raster colours a window prints through before it snaps crisp: washes plus a few creature pixels. */
+const CURTAIN = ["var(--gc-accent-wash)", "var(--gc-accent-wash)", "var(--gc-surface-2)", "var(--gc-surface-2)", PALETTE.L, PALETTE.G, PALETTE.K];
 
 function addCurtain(el: HTMLElement, size: number) {
   const cols = Math.ceil(el.offsetWidth / size);
@@ -32,29 +38,22 @@ function addCurtain(el: HTMLElement, size: number) {
 
 export function Hero({ onWatch }: { onWatch: () => void }) {
   const [playIntro] = useState(() => document.documentElement.classList.contains("intro-pending"));
-  const section = useRef<HTMLElement>(null);
+  // While the intro runs, the kit hero is frozen at t=0 (everything hidden but the sheet); then it plays.
+  const [storyOn, setStoryOn] = useState(!playIntro);
+  const section = useRef<HTMLDivElement>(null);
   const intro = useRef<HTMLDivElement>(null);
-  const field = useRef<HTMLDivElement>(null);
-  const passage = useRef<HTMLParagraphElement>(null);
+  useVacantSlot("hero", section);
 
   useLayoutEffect(() => {
     if (!playIntro) return;
     const html = document.documentElement;
     const root = section.current!;
     const ov = intro.current!;
-    director.hold("intro");
-
     let disposed = false;
-    let released = false;
     let tl: gsap.core.Timeline | null = null;
     const curtains: HTMLElement[] = [];
     const ctx = gsap.context(() => {}, root);
 
-    const release = (instant = false) => {
-      if (released) return;
-      released = true;
-      director.release("intro", { instant });
-    };
     const finish = () => {
       html.classList.remove("intro-pending");
       try {
@@ -67,8 +66,6 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
     };
     const skip = () => {
       if (!tl || tl.progress() === 1) return;
-      if (released) director.settle();
-      else release(true);
       tl.progress(1);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -85,88 +82,73 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
       if (disposed) return;
       ctx.add(() => {
         const q = gsap.utils.selector(ov);
-        const nav = document.querySelector<HTMLElement>(".nav")!;
-        const navTile = nav.querySelector<HTMLElement>(".brand-tile")!;
-        const navRest = nav.querySelectorAll<HTMLElement>(".brand-word, .nav-links a, .btn-nav");
+        const navMark = document.querySelector<HTMLElement>("[data-nav-mark] > :first-child")!;
+        const navRest = document.querySelectorAll<HTMLElement>("[data-nav-mark] > :last-child, .nav-links a, .nav-cta");
         const tile = q(".intro-tile")[0] as HTMLElement;
-        const cells = q(".intro-cell");
         const word = SplitText.create(q(".intro-word"), { type: "chars", mask: "chars" });
-        const title = SplitText.create(root.querySelector(".hero-title"), { type: "words", mask: "words" });
-        const sub = root.querySelector(".hero-sub");
-        const cta = root.querySelector(".hero-actions");
-        const manual = root.querySelector<HTMLElement>(".hero-manual")!;
-        const win = root.querySelector<HTMLElement>(".hero-window")!;
-        const manCurtain = addCurtain(manual, 18);
-        const winCurtain = addCurtain(win, 20);
-        curtains.push(manCurtain.wrap, winCurtain.wrap);
+        const copy = root.querySelectorAll<HTMLElement>('[data-hero="copy"] > *');
+        const sheet = root.querySelector<HTMLElement>('[data-hero="window"]')!;
+        const sheetCurtain = addCurtain(sheet, 18);
+        curtains.push(sheetCurtain.wrap);
 
-        gsap.set([navTile, ...navRest, sub, cta, win], { autoAlpha: 0 });
+        gsap.set([navMark, ...navRest], { autoAlpha: 0 });
         gsap.set(q(".intro-word"), { autoAlpha: 1 });
-        gsap.set(title.words, { yPercent: 110 });
 
-        tl = gsap.timeline({ defaults: { ease: "expo.out" }, onComplete: finish });
+        tl = gsap.timeline({ defaults: { ease: EASE.out }, onComplete: finish });
         tl
-          // F1: the head assembles cell by cell out of a scattered pixel field.
+          // 1. The head mark assembles cell by cell out of a scattered pixel field.
           .fromTo(
-            cells,
+            q(".intro-cell"),
             {
               autoAlpha: 0,
               x: () => gsap.utils.random(-0.55, 0.55) * innerWidth,
               y: () => gsap.utils.random(-0.45, 0.45) * innerHeight,
               scale: () => gsap.utils.random(0.5, 2.4),
             },
-            { autoAlpha: 1, x: 0, y: 0, scale: 1, duration: 0.95, stagger: { amount: 0.5, from: "random" } },
+            { autoAlpha: 1, x: 0, y: 0, scale: 1, duration: 0.95, ease: "expo.out", stagger: { amount: 0.5, from: "random" } },
             0,
           )
-          // F2: the ink app-icon tile grows around it; wordmark and badge print in.
-          .fromTo(q(".intro-tile-bg"), { autoAlpha: 0, scale: 0.3 }, { autoAlpha: 1, scale: 1, duration: 0.7, ease: "back.out(1.7)" }, 1.0)
-          .fromTo(word.chars, { yPercent: 110 }, { yPercent: 0, duration: 0.55, stagger: 0.035 }, 1.2)
-          .fromTo(q(".intro-badge"), { autoAlpha: 0, scale: 0.4 }, { autoAlpha: 1, scale: 1, duration: 0.45, ease: "back.out(2.6)" }, 1.5)
-          .fromTo(q(".intro-skip"), { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3 }, 0.4)
-          // F3: the tile flies into the nav; the white curtain lifts off the page.
-          .to([q(".intro-word"), q(".intro-badge"), q(".intro-skip")], { autoAlpha: 0, y: -14, duration: 0.3, ease: "power2.in" }, 2.0)
+          // 2. The ink tile grows behind it (two-step pixel pop), wordmark and badge print in.
+          .fromTo(q(".intro-tile-bg"), { autoAlpha: 0, scale: 0.3 }, { autoAlpha: 1, scale: 1, duration: DUR.slow * 2, ease: EASE.point }, 1.0)
+          .fromTo(word.chars, { yPercent: 110 }, { yPercent: 0, duration: 0.55, stagger: 0.035, ease: "expo.out" }, 1.2)
+          .fromTo(q(".intro-badge"), { autoAlpha: 0, scale: 0 }, { autoAlpha: 1, scale: 1, duration: DUR.base, ease: EASE.step }, 1.55)
+          .fromTo(q(".intro-skip"), { autoAlpha: 0 }, { autoAlpha: 1, duration: DUR.slow }, 0.4)
+          // 3. The tile flies into the nav wordmark; the paper lifts off the page.
+          .to([q(".intro-word"), q(".intro-badge"), q(".intro-skip")], { autoAlpha: 0, y: -14, duration: 0.3, ease: "power2.in" }, 2.05)
           .to(
             tile,
             {
               x: () => {
                 const a = tile.getBoundingClientRect();
-                const b = navTile.getBoundingClientRect();
+                const b = navMark.getBoundingClientRect();
                 return b.left + b.width / 2 - (a.left + a.width / 2);
               },
               y: () => {
                 const a = tile.getBoundingClientRect();
-                const b = navTile.getBoundingClientRect();
+                const b = navMark.getBoundingClientRect();
                 return b.top + b.height / 2 - (a.top + a.height / 2);
               },
-              scale: () => navTile.getBoundingClientRect().width / tile.getBoundingClientRect().width,
+              scale: () => navMark.getBoundingClientRect().width / tile.getBoundingClientRect().width,
               duration: 0.9,
               ease: "expo.inOut",
             },
-            2.1,
+            2.15,
           )
-          .to(q(".intro-bg"), { autoAlpha: 0, duration: 0.6, ease: "power2.out" }, 2.35)
-          .set(navTile, { autoAlpha: 1 }, 3.0)
-          .set(tile, { autoAlpha: 0 }, 3.0)
-          .fromTo(navRest, { autoAlpha: 0, y: -10 }, { autoAlpha: 1, y: 0, duration: 0.6, stagger: 0.06 }, 2.7)
-          // F4 copy: headline words rise out of their masks.
-          .to(title.words, { yPercent: 0, duration: 1, stagger: 0.08 }, 2.5)
-          .fromTo(sub, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.7 }, 2.85)
-          .fromTo(cta, { autoAlpha: 0, scale: 0.9 }, { autoAlpha: 1, scale: 1, duration: 0.6, ease: "back.out(2)" }, 3.0)
-          // Window entries: the manual springs up and prints in top-left to bottom-right…
-          .fromTo(manual, { autoAlpha: 1, y: 90, scale: 0.88 }, { y: 0, scale: 1, duration: 1, ease: "back.out(1.5)" }, 2.6)
-          .to(manCurtain.cells, { scale: 0, duration: 0.3, ease: "power2.in", stagger: { amount: 0.45, grid: [manCurtain.rows, manCurtain.cols], from: "start" } }, 2.75)
-          // …the Student Record window unfolds from where the gecko's hand will be, then de-rasterizes.
-          .set(win, { autoAlpha: 1 }, 2.9)
-          .fromTo(
-            win,
-            { clipPath: "inset(46% 100% 46% 0% round 10px)" },
-            { clipPath: "inset(0% 0% 0% 0% round 10px)", duration: 0.8, ease: "expo.inOut" },
-            2.9,
+          .to(q(".intro-bg"), { autoAlpha: 0, duration: 0.6, ease: "power2.out" }, 2.4)
+          .set(navMark, { autoAlpha: 1 }, 3.05)
+          .set(tile, { autoAlpha: 0 }, 3.05)
+          .fromTo(navRest, { autoAlpha: 0, y: -10 }, { autoAlpha: 1, y: 0, duration: 0.6, stagger: 0.06, ease: "expo.out" }, 2.75)
+          // 4. Words rise (headline, support, CTA, beats, shortcut), 40 ms stagger per brand motion.
+          .fromTo(copy, { autoAlpha: 0, y: 28 }, { autoAlpha: 1, y: 0, duration: 0.8, stagger: 0.09, ease: "expo.out" }, 2.55)
+          // 5. The grade sheet springs up and prints in through a pixel curtain, top-left first.
+          .fromTo(sheet, { y: 70, scale: 0.92 }, { y: 0, scale: 1, duration: 0.9, ease: EASE.point }, 2.7)
+          .to(
+            sheetCurtain.cells,
+            { scale: 0, duration: 0.3, ease: "power2.in", stagger: { amount: 0.55, grid: [sheetCurtain.rows, sheetCurtain.cols], from: "start" } },
+            2.85,
           )
-          .to(winCurtain.cells, { scale: 0, duration: 0.3, ease: "power2.in", stagger: { amount: 0.5, from: "random" } }, 3.35)
-          // The passage pours into the gecko; once it has, the manual is used up.
-          .call(() => release(), [], 3.45)
-          .to(manual, { autoAlpha: 0, y: 24, scale: 0.94, duration: 0.5, ease: "power2.in" }, 4.6);
+          // 6. Hand off: the kit hero's story (ask → GetcKo hops → halo → answer → source) takes over.
+          .call(() => setStoryOn(true), [], 3.7);
 
         window.addEventListener("pointerdown", skip);
         window.addEventListener("wheel", skip, { passive: true });
@@ -180,12 +162,11 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
       removeSkip();
       ctx.revert();
       curtains.forEach((c) => c.remove());
-      release();
     };
   }, [playIntro]);
 
   return (
-    <section ref={section} className="hero" aria-labelledby="hero-title">
+    <div ref={section} id="top" className="hero-wrap">
       {playIntro && (
         <div ref={intro} className="intro" aria-hidden="true">
           <div className="intro-bg" />
@@ -198,74 +179,25 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
                 ))}
               </div>
             </div>
-            <p className="intro-word">GetCko</p>
-            <p className="intro-badge">Gets mo na.</p>
+            <p className="intro-word">{T.product.name}</p>
+            <p className="intro-badge">{T.product.tagline}</p>
           </div>
-          <button type="button" className="btn btn-secondary btn-sm intro-skip" tabIndex={-1}>
+          <Button variant="secondary" size="sm" className="intro-skip" tabIndex={-1}>
             Skip intro
-          </button>
+          </Button>
         </div>
       )}
-
-      <h1 id="hero-title" className="hero-title">
-        Your manual. Your screen.
-      </h1>
-      <p className="hero-sub">One gecko in between. Every model runs on your laptop.</p>
-      <div className="hero-actions">
-        <button type="button" className="btn btn-primary btn-hero" onClick={onWatch}>
-          <PlayIcon /> Watch the 1-min demo
-        </button>
-      </div>
-
-      <div className="hero-pair">
-        {playIntro && (
-          <article className="hero-manual" aria-hidden="true">
-            <header className="manual-bar">
-              <span className="pdf-tag">PDF</span>
-              <span className="manual-name">
-                Office Grading Manual <span className="muted">· p. 4</span>
-              </span>
-              <span className="sample-tag">Sample</span>
-            </header>
-            <div className="manual-body">
-              <h3 className="manual-h">
-                <span className="mono">2.3</span> Computing the Final Grade
-              </h3>
-              <p ref={passage} className="passage">
-                Final grade = 40% written work + 60% performance tasks.
-              </p>
-            </div>
-          </article>
-        )}
-        <GeckoSlot
-          id="hero"
-          section={section}
-          target={field}
-          source={playIntro ? passage : undefined}
-          className="slot-hero"
-          label="GetCko pointing at the empty Final grade field"
-        />
-        <div className="hero-window" role="img" aria-label="A Student Record window for Cruz, Juan. The Final grade field is empty, and GetCko points at it.">
-          <div className="hw-bar">
-            <span className="lights" aria-hidden="true">
-              <i /> <i /> <i />
-            </span>
-            <span className="hw-title">Student Record</span>
-          </div>
-          <div className="hw-body">
-            <div className="hw-row">
-              <span className="hw-label">Student</span>
-              <span className="hw-value">Cruz, Juan</span>
-            </div>
-            <div className="hw-row">
-              <span className="hw-label">Final grade</span>
-              <div ref={field} className="hw-field gc-target">
-                <span className="caret" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+      <GetCkoHero
+        theme="light"
+        autoplay={storyOn}
+        // 0.01 s, not 0: a fresh paused timeline does not render its t=0 set() calls on time(0).
+        at={storyOn ? undefined : 0.01}
+        actions={
+          <Button size="lg" icon={Icon.start} onClick={onWatch} className="hero-cta">
+            {SITE.watchDemo}
+          </Button>
+        }
+      />
+    </div>
   );
 }
