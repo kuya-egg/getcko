@@ -7,7 +7,7 @@ use std::{
 
 use super::{
     ChatModel, ChatRequest, EMBEDDING_DIM, Embedder, EngineError, EngineResult, Flow,
-    GenerationStats, Transcriber,
+    GenerationStats, RgbImage, Transcriber,
 };
 use crate::model::Language;
 use llama_cpp_2::{
@@ -19,7 +19,10 @@ use llama_cpp_2::{
     llama_backend::LlamaBackend,
     llama_batch::LlamaBatch,
     model::{LlamaModel, params::LlamaModelParams},
-    mtmd::{MtmdBitmap, MtmdContext, MtmdContextParams, MtmdInputText, mtmd_default_marker},
+    mtmd::{
+        MtmdBitmap, MtmdContext, MtmdContextParams, MtmdInputChunks, MtmdInputText,
+        mtmd_default_marker,
+    },
     sampling::LlamaSampler,
     send_logs_to_tracing,
     token::LlamaToken,
@@ -128,27 +131,51 @@ pub struct LlamaChat {
     device: &'static str,
 }
 
-/// The long-lived chat context and the tokens its KV cache currently holds.
+/// The long-lived chat context and what its KV cache currently holds, one slot per
+/// position.
 struct Session {
     ctx: LlamaContext<'static>,
-    cached: Vec<LlamaToken>,
+    cached: Vec<Slot>,
+}
+
+/// One KV-cache position: a text token, or part of an image (identified by a hash
+/// of its pixels, so the same screenshot in a later prompt is reused).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    Token(LlamaToken),
+    Image(u64),
+}
+
+/// An evaluated prompt: its slots and, when it contains an image, the multimodal
+/// chunks that fill the `Slot::Image` span starting at `start`.
+struct Plan {
+    slots: Vec<Slot>,
+    image: Option<(MtmdInputChunks, usize)>,
 }
 
 /// Prompt tokens evaluated per `decode` call (llama.cpp's default `n_batch` is larger).
 const PREFILL_CHUNK: usize = 512;
 
 impl Session {
-    /// Makes the KV cache hold exactly `tokens`, re-evaluating only the part after
-    /// the prefix shared with what is cached. Always evaluates at least the last
-    /// token so fresh logits are available. Returns how many tokens were reused.
-    fn evaluate(&mut self, tokens: &[LlamaToken]) -> EngineResult<usize> {
-        let shared = self
+    /// Makes the KV cache hold exactly `plan`, re-evaluating only the part after the
+    /// prefix shared with what is cached (never splitting an image). Always evaluates
+    /// at least the last slot so fresh logits are available. Returns slots reused.
+    fn evaluate(&mut self, plan: &Plan, mtmd: Option<&mut MtmdContext>) -> EngineResult<usize> {
+        let slots = &plan.slots;
+        let mut keep = self
             .cached
             .iter()
-            .zip(tokens)
+            .zip(slots)
             .take_while(|(cached, new)| cached == new)
-            .count();
-        let mut keep = shared.min(tokens.len().saturating_sub(1));
+            .count()
+            .min(slots.len().saturating_sub(1));
+        // A partly matching image span is re-evaluated from its start.
+        while keep > 0
+            && matches!(slots.get(keep), Some(Slot::Image(_)))
+            && slots[keep - 1] == slots[keep]
+        {
+            keep -= 1;
+        }
         if keep < self.cached.len() {
             let from = u32::try_from(keep).map_err(runtime_error)?;
             if !self
@@ -161,15 +188,76 @@ impl Session {
             }
             self.cached.truncate(keep);
         }
-        let result = self.decode_tokens(&tokens[keep..]);
+        let result = self.append(plan, keep, mtmd);
         if result.is_err() {
             self.reset();
         }
         result.map(|()| keep)
     }
 
-    /// Appends `tokens` after the cached ones; logits only for the final token.
-    fn decode_tokens(&mut self, tokens: &[LlamaToken]) -> EngineResult<()> {
+    /// Evaluates `plan.slots[from..]` after the cached slots.
+    fn append(
+        &mut self,
+        plan: &Plan,
+        from: usize,
+        mut mtmd: Option<&mut MtmdContext>,
+    ) -> EngineResult<()> {
+        let slots = &plan.slots;
+        let mut index = from;
+        while index < slots.len() {
+            match slots[index] {
+                Slot::Token(_) => {
+                    let end = slots[index..]
+                        .iter()
+                        .position(|slot| matches!(slot, Slot::Image(_)))
+                        .map_or(slots.len(), |offset| index + offset);
+                    let tokens: Vec<LlamaToken> = slots[index..end]
+                        .iter()
+                        .filter_map(|slot| match slot {
+                            Slot::Token(token) => Some(*token),
+                            Slot::Image(_) => None,
+                        })
+                        .collect();
+                    self.decode_tokens(&tokens, end == slots.len())?;
+                    index = end;
+                }
+                Slot::Image(_) => {
+                    let (chunks, start) = plan
+                        .image
+                        .as_ref()
+                        .ok_or_else(|| runtime_error("image slots without image chunks"))?;
+                    if index != *start {
+                        return Err(runtime_error("image span reused only in part"));
+                    }
+                    let context = mtmd
+                        .as_deref_mut()
+                        .ok_or_else(|| runtime_error("image projector is unavailable"))?;
+                    let n_past = i32::try_from(self.cached.len()).map_err(runtime_error)?;
+                    let batch = i32::try_from(PREFILL_CHUNK).map_err(runtime_error)?;
+                    let end = chunks
+                        .eval_chunks(context, &mut self.ctx, n_past, 0, batch, false)
+                        .map_err(runtime_error)?;
+                    let span = usize::try_from(end - n_past).map_err(runtime_error)?;
+                    let expected = slots[index..]
+                        .iter()
+                        .take_while(|slot| matches!(slot, Slot::Image(_)))
+                        .count();
+                    if span != expected {
+                        return Err(runtime_error(format!(
+                            "image used {span} positions, expected {expected}"
+                        )));
+                    }
+                    self.cached.extend_from_slice(&slots[index..index + span]);
+                    index += span;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Appends `tokens` after the cached slots; logits only for the final token,
+    /// and only when `logits_last`.
+    fn decode_tokens(&mut self, tokens: &[LlamaToken], logits_last: bool) -> EngineResult<()> {
         let chunks = tokens.chunks(PREFILL_CHUNK);
         let last_chunk = chunks.len().saturating_sub(1);
         for (index, chunk) in chunks.enumerate() {
@@ -177,13 +265,13 @@ impl Session {
             let base = i32::try_from(self.cached.len()).map_err(runtime_error)?;
             for (offset, token) in chunk.iter().enumerate() {
                 let position = base + i32::try_from(offset).map_err(runtime_error)?;
-                let logits = index == last_chunk && offset + 1 == chunk.len();
+                let logits = logits_last && index == last_chunk && offset + 1 == chunk.len();
                 batch
                     .add(*token, position, &[0], logits)
                     .map_err(runtime_error)?;
             }
             self.ctx.decode(&mut batch).map_err(runtime_error)?;
-            self.cached.extend_from_slice(chunk);
+            self.cached.extend(chunk.iter().copied().map(Slot::Token));
         }
         Ok(())
     }
@@ -286,33 +374,106 @@ impl LlamaChat {
             })
         })
     }
+    /// Reports whether the loaded projector can read images.
+    pub fn supports_vision(&self) -> bool {
+        self.mtmd
+            .as_ref()
+            .is_some_and(|mtmd| mtmd.lock().is_ok_and(|mtmd| mtmd.support_vision()))
+    }
 
-    /// Formats the request as Gemma 4 turns and tokenizes, checking the context budget.
-    fn prompt_tokens(&self, request: &ChatRequest<'_>) -> EngineResult<Vec<LlamaToken>> {
-        let prompt = gemma4_prompt(Some(request.system), request.user);
-        let tokens = self.model.vocab().tokenize(prompt.as_bytes(), true, true);
-        let total = tokens.len().saturating_add(request.max_tokens as usize);
+    /// Formats the request as Gemma 4 turns and tokenizes it (and its image),
+    /// checking the context budget.
+    fn plan(&self, request: &ChatRequest<'_>) -> EngineResult<Plan> {
+        let vocab = self.model.vocab();
+        let plan = match request.image {
+            None => {
+                let prompt = gemma4_prompt(Some(request.system), request.user);
+                let slots = vocab
+                    .tokenize(prompt.as_bytes(), true, true)
+                    .into_iter()
+                    .map(Slot::Token)
+                    .collect();
+                Plan { slots, image: None }
+            }
+            Some(part) => {
+                let mtmd = self
+                    .mtmd
+                    .as_ref()
+                    .ok_or_else(|| runtime_error("image projector is unavailable"))?
+                    .lock()
+                    .map_err(runtime_error)?;
+                let prefix = gemma4_prefix(Some(request.system), request.user);
+                let mut slots: Vec<Slot> = vocab
+                    .tokenize(prefix.as_bytes(), true, true)
+                    .into_iter()
+                    .map(Slot::Token)
+                    .collect();
+                let bitmap = MtmdBitmap::from_image_data(
+                    part.image.width,
+                    part.image.height,
+                    &part.image.rgb,
+                )
+                .map_err(runtime_error)?;
+                let chunks = mtmd
+                    .tokenize(
+                        MtmdInputText {
+                            text: mtmd_default_marker().to_owned(),
+                            add_special: false,
+                            parse_special: true,
+                        },
+                        &[&bitmap],
+                    )
+                    .map_err(runtime_error)?;
+                let positions = usize::try_from(chunks.total_positions()).map_err(runtime_error)?;
+                let start = slots.len();
+                slots.extend(std::iter::repeat_n(
+                    Slot::Image(image_key(part.image)),
+                    positions,
+                ));
+                let suffix = format!("{}{GEMMA4_REPLY}", part.text_after);
+                slots.extend(
+                    vocab
+                        .tokenize(suffix.as_bytes(), false, true)
+                        .into_iter()
+                        .map(Slot::Token),
+                );
+                Plan {
+                    slots,
+                    image: Some((chunks, start)),
+                }
+            }
+        };
+        let total = plan.slots.len().saturating_add(request.max_tokens as usize);
         if total > CHAT_CONTEXT as usize {
             return Err(EngineError::TooLong {
                 tokens: total,
                 limit: CHAT_CONTEXT as usize,
             });
         }
-        if tokens.is_empty() {
+        if plan.slots.is_empty() {
             return Err(runtime_error("chat prompt tokenized to empty input"));
         }
-        Ok(tokens)
+        Ok(plan)
     }
 
-    fn sampler(&self, choices: &[String]) -> EngineResult<LlamaSampler> {
-        if choices.is_empty() {
+    /// Evaluates `plan` into the session (locking the projector only when the
+    /// image is not already cached).
+    fn evaluate(&self, session: &mut Session, plan: &Plan) -> EngineResult<usize> {
+        let mut guard = match (&plan.image, &self.mtmd) {
+            (Some(_), Some(mtmd)) => Some(mtmd.lock().map_err(runtime_error)?),
+            _ => None,
+        };
+        session.evaluate(plan, guard.as_deref_mut())
+    }
+
+    fn sampler(&self, grammar: Option<&str>) -> EngineResult<LlamaSampler> {
+        let Some(grammar) = grammar else {
             return Ok(LlamaSampler::chain_simple([
                 LlamaSampler::temp(0.2),
                 LlamaSampler::dist(0),
             ]));
-        }
-        let grammar = LlamaSampler::grammar(&self.model, &choices_grammar(choices), "root")
-            .map_err(runtime_error)?;
+        };
+        let grammar = LlamaSampler::grammar(&self.model, grammar, "root").map_err(runtime_error)?;
         Ok(LlamaSampler::chain_simple([
             grammar,
             LlamaSampler::greedy(),
@@ -320,10 +481,22 @@ impl LlamaChat {
     }
 }
 
+/// Hash of an image's size and pixels; equal screenshots share KV-cache slots.
+fn image_key(image: &RgbImage) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (image.width, image.height).hash(&mut hasher);
+    image.rgb.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// End of the user turn and start of the model's reply.
+const GEMMA4_REPLY: &str = "<turn|>\n<|turn>model\n";
+
 /// Gemma 4's turn format (the GGUF's Jinja template, which llama.cpp's built-in
-/// template detection does not recognise), without thinking, ending where the
-/// model's reply starts. BOS is added by the tokenizer.
-fn gemma4_prompt(system: Option<&str>, user: &str) -> String {
+/// template detection does not recognise) up to the end of the user's text.
+/// BOS is added by the tokenizer; no thinking.
+fn gemma4_prefix(system: Option<&str>, user: &str) -> String {
     let mut prompt = String::with_capacity(system.map_or(0, str::len) + user.len() + 64);
     if let Some(system) = system {
         prompt.push_str("<|turn>system\n");
@@ -332,18 +505,12 @@ fn gemma4_prompt(system: Option<&str>, user: &str) -> String {
     }
     prompt.push_str("<|turn>user\n");
     prompt.push_str(user);
-    prompt.push_str("<turn|>\n<|turn>model\n");
     prompt
 }
 
-/// GBNF accepting exactly one of `choices`.
-fn choices_grammar(choices: &[String]) -> String {
-    let alternatives = choices
-        .iter()
-        .map(|choice| format!("\"{}\"", choice.replace('\\', "\\\\").replace('"', "\\\"")))
-        .collect::<Vec<_>>()
-        .join(" | ");
-    format!("root ::= {alternatives}")
+/// A whole Gemma 4 prompt, ending where the model's reply starts.
+fn gemma4_prompt(system: Option<&str>, user: &str) -> String {
+    gemma4_prefix(system, user) + GEMMA4_REPLY
 }
 
 impl ChatModel for LlamaChat {
@@ -353,15 +520,20 @@ impl ChatModel for LlamaChat {
         on_text: &mut dyn FnMut(&str) -> Flow,
     ) -> EngineResult<GenerationStats> {
         let start = Instant::now();
-        let tokens = self.prompt_tokens(request)?;
-        let mut sampler = self.sampler(request.choices)?;
+        let plan = self.plan(request)?;
+        let mut sampler = self.sampler(request.grammar)?;
         let mut session = self.session.lock().map_err(runtime_error)?;
-        let reused = session.evaluate(&tokens)?;
+        let reused = self.evaluate(&mut session, &plan)?;
         // Decoding is asynchronous on the GPU; its time shows up in `first_token_ms`.
-        tracing::debug!(prompt_tokens = tokens.len(), reused, "chat prompt queued");
+        tracing::debug!(
+            prompt_slots = plan.slots.len(),
+            reused,
+            image = plan.image.is_some(),
+            "chat prompt queued"
+        );
         let vocab = self.model.vocab();
         let mut stats = GenerationStats {
-            prompt_tokens: u32::try_from(tokens.len()).unwrap_or(u32::MAX),
+            prompt_tokens: u32::try_from(plan.slots.len()).unwrap_or(u32::MAX),
             ..GenerationStats::default()
         };
         let mut raw = Vec::with_capacity(8);
@@ -387,7 +559,7 @@ impl ChatModel for LlamaChat {
                 }
             }
             if index + 1 < request.max_tokens {
-                let decoded = session.decode_tokens(&[token]);
+                let decoded = session.decode_tokens(&[token], true);
                 if decoded.is_err() {
                     session.reset();
                 }
@@ -410,14 +582,14 @@ impl ChatModel for LlamaChat {
 
     fn prefill(&self, request: &ChatRequest<'_>) -> EngineResult<()> {
         let start = Instant::now();
-        let tokens = self.prompt_tokens(request)?;
+        let plan = self.plan(request)?;
         let mut session = self.session.lock().map_err(runtime_error)?;
-        let reused = session.evaluate(&tokens)?;
+        let reused = self.evaluate(&mut session, &plan)?;
         // Wait for the GPU so the time below is real and the work is done before the
         // question arrives.
         session.ctx.synchronize();
         tracing::debug!(
-            prompt_tokens = tokens.len(),
+            prompt_slots = plan.slots.len(),
             reused,
             prefill_ms = start.elapsed().as_millis(),
             "chat prompt prefilled"
@@ -644,6 +816,7 @@ impl Embedder for LlamaEmbedder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::ImagePart;
     use std::path::PathBuf;
     fn model_path(file: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -664,7 +837,8 @@ mod tests {
             system: "Reply with exactly the word OK",
             user: "Reply with exactly the word OK",
             max_tokens: 32,
-            choices: &[],
+            grammar: None,
+            image: None,
         };
         let mut answer = String::new();
         let stats = model
@@ -689,13 +863,15 @@ mod tests {
         .expect("chat model loads");
         let screen = "Screen:\ne1 | button | Save\ne2 | cell | Q1, Juan Dela Cruz\ne3 | cell | Q1, Ana Santos\n\n";
         let choices = ["e1", "e2", "e3", "none"].map(String::from);
+        let grammar = crate::prompt::choices_grammar(&choices);
         let pick = |user: &str| {
             let mut reply = String::new();
             let request = ChatRequest {
                 system: "Pick the element id where the user should act.",
                 user,
                 max_tokens: 8,
-                choices: &choices,
+                grammar: Some(&grammar),
+                image: None,
             };
             model
                 .generate(&request, &mut |piece| {
@@ -717,6 +893,98 @@ mod tests {
         );
         assert_eq!(cold, warm);
         assert_eq!(cold, "e2");
+    }
+    /// 640x400 white "screen" with a red square (x 400..480, y 240..320) and a
+    /// blue square (x 80..160, y 60..140).
+    fn two_squares() -> RgbImage {
+        let (width, height) = (640u32, 400u32);
+        let mut rgb = Vec::with_capacity((width * height * 3) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = if (400..480).contains(&x) && (240..320).contains(&y) {
+                    [220, 20, 20]
+                } else if (80..160).contains(&x) && (60..140).contains(&y) {
+                    [20, 40, 220]
+                } else {
+                    [255, 255, 255]
+                };
+                rgb.extend_from_slice(&pixel);
+            }
+        }
+        RgbImage { width, height, rgb }
+    }
+    #[test]
+    #[ignore = "needs model files"]
+    fn vision_points_at_the_asked_object_and_reuses_the_image_prefix() {
+        let rt = Runtime::init().expect("runtime initializes");
+        let model = LlamaChat::load(
+            &rt,
+            &model_path("gemma-4-E2B-it-Q4_0.gguf"),
+            &model_path("mmproj-gemma-4-E2B-it-Q8_0.gguf"),
+        )
+        .expect("chat model loads");
+        assert!(model.supports_vision());
+        let shot = crate::screenshot::Prepared {
+            image: two_squares(),
+            monitor: crate::model::MonitorFrame {
+                x: 0,
+                y: 0,
+                width: 640,
+                height: 400,
+                scale_factor: 1.0,
+            },
+            origin: (0, 0),
+            scale: 1.0,
+        };
+        let ask = |question: &str, task: &str, grammar: &str| {
+            let mut reply = String::new();
+            model
+                .generate(
+                    &ChatRequest {
+                        system: "You locate things on a screenshot.",
+                        user: &format!("Question: {question}\n\n"),
+                        max_tokens: 12,
+                        grammar: Some(grammar),
+                        image: Some(ImagePart {
+                            image: &shot.image,
+                            text_after: task,
+                        }),
+                    },
+                    &mut |piece| {
+                        reply.push_str(piece);
+                        Flow::Continue
+                    },
+                )
+                .expect("image generation succeeds");
+            reply
+        };
+        let point_task =
+            crate::prompt::TurnPrompt::target_task(crate::model::ScreenMode::ImageOnly);
+        // Square bounds (x, y ranges) widened by a 40 px margin. The blue question comes
+        // first so the red one below is encoded from scratch.
+        let mut cold_ms = 0;
+        for (question, xs, ys) in [
+            ("Where is the blue square?", 40.0..200.0, 20.0..180.0),
+            ("Where is the red square?", 360.0..520.0, 200.0..360.0),
+        ] {
+            let started = std::time::Instant::now();
+            let reply = ask(question, &point_task, crate::screenshot::POINT_GRAMMAR);
+            cold_ms = started.elapsed().as_millis();
+            let (x, y) = crate::screenshot::parse_point(&shot, &reply).expect("point reply");
+            eprintln!("{question} {reply:?} -> ({x:.0}, {y:.0}) in {cold_ms} ms");
+            assert!(xs.contains(&x) && ys.contains(&y), "{question} {reply}");
+        }
+        // Same question and image, different task: the image is not encoded again.
+        let started = std::time::Instant::now();
+        let pick = ask(
+            "Where is the red square?",
+            "Reply with left if the red square is on the left half of the screenshot, else right.",
+            &crate::prompt::choices_grammar(&["left".into(), "right".into()]),
+        );
+        let warm_ms = started.elapsed().as_millis();
+        eprintln!("pick {pick:?} in {warm_ms} ms");
+        assert_eq!(pick, "right");
+        assert!(warm_ms < cold_ms, "warm {warm_ms} ms vs cold {cold_ms} ms");
     }
     #[test]
     #[ignore = "needs model files"]

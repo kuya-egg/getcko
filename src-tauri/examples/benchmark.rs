@@ -7,9 +7,9 @@ use std::{
 use getcko_lib::{
     engine::{self, ChatRequest, Flow},
     ingest,
-    model::{DocumentKind, Language, Rect, ScreenElement, ScreenSnapshot, TemplateId},
+    model::{DocumentKind, Language, Rect, ScreenElement, ScreenMode, ScreenSnapshot, TemplateId},
     platform,
-    prompt::{self, AnswerParser, RetrievedPassage, TurnPrompt},
+    prompt::{self, AnswerParser, Pointed, RetrievedPassage, TurnPrompt},
     store::{NewPassage, Store},
     templates,
 };
@@ -154,14 +154,16 @@ fn main() {
                 text: &hit.text,
             })
             .collect();
-        let choices = prompt::target_choices(snapshot);
+        let grammar = prompt::target_grammar(snapshot);
+        let body = prompts.body(question, &retrieved);
         let mut reply = String::new();
         chat.generate(
             &ChatRequest {
                 system: &prompts.system,
-                user: &prompts.target_user(question, &retrieved),
+                user: &format!("{body}{}", TurnPrompt::target_task(ScreenMode::Elements)),
                 max_tokens: 8,
-                choices: &choices,
+                grammar: Some(&grammar),
+                image: None,
             },
             &mut |piece| {
                 reply.push_str(piece);
@@ -169,7 +171,8 @@ fn main() {
             },
         )
         .expect("target pass");
-        let pointed = prompt::target_element(&reply, snapshot);
+        let element = prompt::target_element(&reply, snapshot);
+        let pointed = element.map_or(Pointed::Nothing, Pointed::Element);
         let target_ms = millis(started.elapsed());
         let mut parser =
             AnswerParser::new(u32::try_from(retrieved.len()).expect("passage count fits u32"));
@@ -178,9 +181,10 @@ fn main() {
         chat.generate(
             &ChatRequest {
                 system: &prompts.system,
-                user: &prompts.answer_user(question, &retrieved, pointed),
+                user: &format!("{body}{}", TurnPrompt::answer_task(pointed)),
                 max_tokens: prompts.max_tokens,
-                choices: &[],
+                grammar: None,
+                image: None,
             },
             &mut |piece| {
                 first_token_ms.get_or_insert_with(|| millis(started.elapsed()));
@@ -194,7 +198,7 @@ fn main() {
         let (_, parsed) = parser.finish();
         let total_ms = millis(started.elapsed());
         Turn {
-            target: pointed.map(|e| e.id.clone()),
+            target: element.map(|e| e.id.clone()),
             target_ms,
             retrieval_ms,
             first_token_ms: first_token_ms.unwrap_or(total_ms),
@@ -231,7 +235,8 @@ fn main() {
             system: &prompts.system,
             user: prompts.warm_user(),
             max_tokens: prompts.max_tokens,
-            choices: &[],
+            grammar: None,
+            image: None,
         })
         .expect("prefill screen");
         let prepare_ms = millis(prepare_start.elapsed());

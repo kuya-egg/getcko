@@ -92,3 +92,19 @@ Before this design the typed English question pointed correctly 0/10 times.
 5. **Names: English pronunciation of "Juan" is heard as "one's".** With Filipino pronunciation (Taglish clip) Gemma transcribes "Juan" and points correctly 10/10. Telling the transcriber the on-screen names did not help: Gemma echoed the list into the transcript and still wrote "one's"; the Taglish/Filipino language hints did not change the English clip either. Retest with a real Filipino speaker.
 6. **One `tts` instance per process on macOS.** The AVFoundation backend registers a process-wide delegate class, so a second `Tts::new` fails with "Operation failed". The engine's `OsSpeaker` owns the only one; the benchmark takes it before loading the engine.
 7. **Fixed earlier:** the prompt's output-protocol example contained a literal `\n`, which the model copied, so no target or citation parsed.
+
+## Screen tiers 2–3 (vision)
+
+Measured Oct 9 on the M4 Pro, Metal, Gemma 4 E2B Q4_0 + `mmproj-gemma-4-E2B-it-Q8_0.gguf`. Single runs, not the tier protocol (10 tasks × 3 apps per forced tier, still to do).
+
+| Check | Result |
+|---|---|
+| Synthetic 640×400 image, "where is the blue/red square?" (`cargo test --release --lib vision_points -- --ignored`) | both points inside the square (±40 px); cold turn with image 547–579 ms |
+| Same image and question, different task (image cached in the KV prefix) | 82 ms vs 547 ms cold |
+| Calculator, tier 2 (element list + marked screenshot): "Where is the button for seven?" / "Which button gives me the result?" | `7` / `Equals`, target pass 1.1 s |
+| Calculator, tier 3 (screenshot only), full display 3600×2338 | pointed at the menu bar (wrong) |
+| Calculator, tier 3, cropped to the window (460×816) | "seven": one key right of 7; "result": on Equals |
+| In-app, forced tier 3 (`GETCKO_SCREEN_MODE=imageOnly`), "Which button gives me the result?" | BestGuess pointer on Equals; capture 140 ms; turn 1.57 s (answer pass reused 671 of 712 prompt slots) |
+
+8. **Gemma points as `[y, x]` normalized to 0–1000**, not image pixels: asked for `x,y` pixels it replied `398,677` for a 640×400 image. Tier 3 asks for and parses its native format.
+9. **Crop to the target window.** The image is downscaled to a 1024 px long side; a whole Retina display leaves app controls a few pixels wide. Cropping to the window fixed the menu-bar miss above.

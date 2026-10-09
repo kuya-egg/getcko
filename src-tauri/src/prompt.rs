@@ -8,7 +8,8 @@
 //! The screen part can be evaluated while the user is still speaking
 //! ([`TurnPrompt::warm_user`]), before the question is known.
 use crate::model::{
-    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenSnapshot, TaskStep,
+    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenMode, ScreenSnapshot,
+    TaskStep,
 };
 
 /// General grounding and answer-quality rules (BR-6).
@@ -19,6 +20,8 @@ pub const GUARANTEES: &str = "Never claim a source that is not among the numbere
 pub const NO_TARGET: &str = "none";
 
 const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. Reply with the element id only, or none if nothing on the screen fits.";
+const MARKS_NOTE: &str = "The screenshot shows the same screen; each listed element has a box with its id written at its top-left corner. ";
+const POINT_TASK: &str = "Task: the screenshot shows the user's screen. Point to the one place where the user should act to do what the question asks. Reply with the point as [y, x] normalized to 0-1000, or none if nothing on the screen fits.";
 const ANSWER_TASK: &str = "Task: answer the question. Cite the passages you use inline as [n].";
 
 /// One retrieved passage and its display location.
@@ -121,43 +124,46 @@ impl TurnPrompt {
         &self.context
     }
 
-    /// User prompt for the target pass; pair it with the element ids plus
-    /// [`NO_TARGET`] as the allowed replies. Passages are included because a manual
-    /// often says which field to use.
-    pub fn target_user(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
-        let mut user = self.body(question, passages);
-        user.push_str(TARGET_TASK);
-        user
-    }
-
-    /// User prompt for the answer pass. `pointed` is the element the pointer shows.
-    /// Shares everything before the task with [`TurnPrompt::target_user`].
-    pub fn answer_user(
-        &self,
-        question: &str,
-        passages: &[RetrievedPassage<'_>],
-        pointed: Option<&ScreenElement>,
-    ) -> String {
-        use std::fmt::Write;
-        let mut user = self.body(question, passages);
-        if let Some(element) = pointed {
-            let _ = write!(
-                user,
-                "The pointer is showing the user this {}: \"{}\"",
-                element.role,
-                truncate_chars(&element.label, 60)
-            );
-            if let Some(value) = &element.value {
-                let _ = write!(user, " (value: {})", truncate_chars(value, 60));
-            }
-            user.push_str(". Refer to it by what it shows.\n\n");
+    /// The last part of the target-pass prompt for `mode`. Reply grammar:
+    /// [`target_grammar`] for element modes, [`crate::screenshot::POINT_GRAMMAR`]
+    /// for [`ScreenMode::ImageOnly`].
+    pub fn target_task(mode: ScreenMode) -> String {
+        match mode {
+            ScreenMode::Elements => TARGET_TASK.to_owned(),
+            ScreenMode::ElementsWithImage => format!("{MARKS_NOTE}{TARGET_TASK}"),
+            ScreenMode::ImageOnly => POINT_TASK.to_owned(),
         }
-        user.push_str(ANSWER_TASK);
-        user
     }
 
-    /// Screen, task steps, question and passages: the part both passes share.
-    fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
+    /// The last part of the answer-pass prompt: what the pointer shows, then the task.
+    pub fn answer_task(pointed: Pointed<'_>) -> String {
+        use std::fmt::Write;
+        let mut task = String::new();
+        match pointed {
+            Pointed::Element(element) => {
+                let _ = write!(
+                    task,
+                    "The pointer is showing the user this {}: \"{}\"",
+                    element.role,
+                    truncate_chars(&element.label, 60)
+                );
+                if let Some(value) = &element.value {
+                    let _ = write!(task, " (value: {})", truncate_chars(value, 60));
+                }
+                task.push_str(". Refer to it by what it shows.\n\n");
+            }
+            Pointed::Guess => task.push_str(
+                "The pointer is showing a best guess read from the screenshot; say it is a best guess.\n\n",
+            ),
+            Pointed::Nothing => {}
+        }
+        task.push_str(ANSWER_TASK);
+        task
+    }
+
+    /// Screen, task steps, question and passages: the part both passes share. A
+    /// screenshot, when used, goes right after it.
+    pub fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
         use std::fmt::Write;
         let mut user = format!("{}{}Question: {question}\n\n", self.context, self.task);
         if passages.is_empty() {
@@ -180,14 +186,34 @@ impl TurnPrompt {
     }
 }
 
-/// Allowed replies for the target pass: every element id plus [`NO_TARGET`].
-pub fn target_choices(snapshot: &ScreenSnapshot) -> Vec<String> {
-    snapshot
+/// What the answer pass is told the pointer shows.
+#[derive(Debug, Clone, Copy)]
+pub enum Pointed<'a> {
+    Element(&'a ScreenElement),
+    /// A tier-3 point read from the screenshot.
+    Guess,
+    Nothing,
+}
+
+/// Grammar for the target-pass reply: one of the element ids, or [`NO_TARGET`].
+pub fn target_grammar(snapshot: &ScreenSnapshot) -> String {
+    let choices: Vec<String> = snapshot
         .elements
         .iter()
         .map(|element| element.id.clone())
         .chain(std::iter::once(NO_TARGET.to_owned()))
-        .collect()
+        .collect();
+    choices_grammar(&choices)
+}
+
+/// GBNF (root rule `root`) accepting exactly one of `choices`.
+pub fn choices_grammar(choices: &[String]) -> String {
+    let alternatives = choices
+        .iter()
+        .map(|choice| format!("\"{}\"", choice.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    format!("root ::= {alternatives}")
 }
 
 /// The element named by a target-pass reply, if it is on the screen.
@@ -434,17 +460,18 @@ mod tests {
             text: "Enter grades in the Q1 column.",
         }];
         let question = "Where do I put Juan's grade?";
-        let target = turn.target_user(question, &passages);
-        let answer = turn.answer_user(question, &passages, Some(&screen.elements[1]));
-        assert!(target.starts_with(turn.warm_user()));
-        // Everything up to the target task, passages included, is reused by the answer.
-        let shared = &target[..target.find("Task:").expect("target task")];
-        assert!(shared.contains("[1] Manual, p. 4: Enter grades"));
-        assert!(answer.starts_with(shared));
+        let body = turn.body(question, &passages);
+        assert!(body.starts_with(turn.warm_user()));
+        assert!(body.contains("[1] Manual, p. 4: Enter grades"));
         assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
-        assert!(answer.contains("[1] Manual, p. 4: Enter grades"));
-        assert!(answer.contains("\"Q1, Juan Dela Cruz\""));
-        assert!(!answer[turn.warm_user().len()..].contains("e2"));
+        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]));
+        assert!(answer_task.contains("\"Q1, Juan Dela Cruz\""));
+        assert!(!answer_task.contains("e2"));
+        assert!(TurnPrompt::answer_task(Pointed::Guess).contains("best guess"));
+        assert!(!TurnPrompt::answer_task(Pointed::Nothing).contains("pointer"));
+        // Tier 2 explains the drawn ids; tier 3 asks for a point, not an id.
+        assert!(TurnPrompt::target_task(ScreenMode::ElementsWithImage).contains("id written"));
+        assert!(TurnPrompt::target_task(ScreenMode::ImageOnly).contains("[y, x]"));
     }
     #[test]
     fn replace_mode_keeps_guarantees_and_drops_base_rules() {
@@ -456,9 +483,16 @@ mod tests {
         assert_eq!(turn.warm_user(), "(no screen)\n\n");
     }
     #[test]
-    fn target_choices_and_reply_mapping() {
+    fn target_grammar_and_reply_mapping() {
         let screen = snapshot();
-        assert_eq!(target_choices(&screen), vec!["e1", "e2", "e3", NO_TARGET]);
+        assert_eq!(
+            target_grammar(&screen),
+            r#"root ::= "e1" | "e2" | "e3" | "none""#
+        );
+        assert_eq!(
+            choices_grammar(&[r#"say "hi" \o/"#.to_owned()]),
+            r#"root ::= "say \"hi\" \\o/""#
+        );
         assert_eq!(
             target_element(" e2", &screen).map(|e| e.id.as_str()),
             Some("e2")
@@ -483,7 +517,7 @@ mod tests {
                 step("Then?", "Click Save.", None),
             ],
         );
-        let user = turn.target_user("Next?", &[]);
+        let user = turn.body("Next?", &[]);
         assert!(user.starts_with(turn.warm_user()));
         let first = user
             .find("Step 1: Q: Open file? A: Click File. (pointed at: File)")
@@ -496,7 +530,7 @@ mod tests {
         assert!(user.contains("continuing this task"));
         assert!(
             !TurnPrompt::new(&templates_draft(), None, &[])
-                .target_user("Next?", &[])
+                .body("Next?", &[])
                 .contains("Earlier steps")
         );
     }
@@ -507,7 +541,7 @@ mod tests {
             None,
             &[step("q", &"x".repeat(1000), None)],
         );
-        let user = turn.answer_user("Next?", &[], None);
+        let user = turn.body("Next?", &[]);
         assert!(user.contains(&format!("A: {}…", "x".repeat(300))));
         assert!(!user.contains(&"x".repeat(301)));
     }

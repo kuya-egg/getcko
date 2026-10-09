@@ -429,10 +429,24 @@ pub struct MonitorFrame {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PointerTarget {
-    pub element_id: String,
+    /// `None` for a tier-3 best-guess point read from a screenshot.
+    pub element_id: Option<String>,
     pub label: String,
     pub monitor: MonitorFrame,
     pub rect: Rect,
+}
+
+/// How the screen was given to the model for one answer (architecture: three tiers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ScreenMode {
+    /// Accessibility element list only.
+    Elements,
+    /// Element list plus a screenshot with each element's id drawn on it.
+    ElementsWithImage,
+    /// Screenshot only; the pointer is a best guess.
+    ImageOnly,
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +521,8 @@ pub enum Confidence {
 pub struct Latency {
     pub transcribe_ms: Option<u32>,
     pub screen_ms: Option<u32>,
+    /// Screenshot capture and preparation (tiers 2 and 3).
+    pub capture_ms: Option<u32>,
     pub retrieval_ms: u32,
     pub first_token_ms: Option<u32>,
     pub total_ms: u32,
@@ -522,6 +538,8 @@ pub struct Answer {
     pub citations: Vec<Citation>,
     pub target: Option<PointerTarget>,
     pub confidence: Confidence,
+    /// `None` when screen help was off.
+    pub screen_mode: Option<ScreenMode>,
     pub latency: Latency,
 }
 

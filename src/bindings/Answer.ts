@@ -3,6 +3,11 @@ import type { Citation } from "./Citation";
 import type { Confidence } from "./Confidence";
 import type { Latency } from "./Latency";
 import type { PointerTarget } from "./PointerTarget";
+import type { ScreenMode } from "./ScreenMode";
 import type { TurnId } from "./TurnId";
 
-export type Answer = { turnId: TurnId, question: string, text: string, citations: Array<Citation>, target: PointerTarget | null, confidence: Confidence, latency: Latency, };
+export type Answer = { turnId: TurnId, question: string, text: string, citations: Array<Citation>, target: PointerTarget | null, confidence: Confidence, 
+/**
+ * `None` when screen help was off.
+ */
+screenMode: ScreenMode | null, latency: Latency, };

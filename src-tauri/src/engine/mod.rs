@@ -84,14 +84,38 @@ pub enum Flow {
     Stop,
 }
 
+/// One chat turn: `system`, then `user`, then (if set) an image and the text after it.
 #[derive(Debug, Clone, Copy)]
 pub struct ChatRequest<'a> {
     pub system: &'a str,
     pub user: &'a str,
     pub max_tokens: u32,
-    /// When non-empty, the reply is constrained to exactly one of these strings
-    /// (greedy). Used to pick a screen element id.
-    pub choices: &'a [String],
+    /// GBNF grammar (root rule `root`) the reply must match, decoded greedily.
+    /// `None` is free text.
+    pub grammar: Option<&'a str>,
+    /// A screenshot placed after `user`, followed by `text_after`.
+    pub image: Option<ImagePart<'a>>,
+}
+
+/// An image inside a [`ChatRequest`] and the user text that follows it.
+#[derive(Debug, Clone, Copy)]
+pub struct ImagePart<'a> {
+    pub image: &'a RgbImage,
+    pub text_after: &'a str,
+}
+
+/// 8-bit RGB pixels, top row first, no row padding (`rgb.len() == width * height * 3`).
+#[derive(Clone, PartialEq, Eq)]
+pub struct RgbImage {
+    pub width: u32,
+    pub height: u32,
+    pub rgb: Vec<u8>,
+}
+
+impl std::fmt::Debug for RgbImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RgbImage({}x{})", self.width, self.height)
+    }
 }
 
 /// Measured during generation (BR-24).

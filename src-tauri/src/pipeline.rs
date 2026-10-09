@@ -1,9 +1,9 @@
 use crate::{
-    engine::{ChatRequest, Engine, Flow},
+    engine::{ChatRequest, Engine, Flow, ImagePart},
     error::{AppError, AppResult},
     model::*,
     platform::Platform,
-    prompt::{self, AnswerParser, RetrievedPassage, TurnPrompt},
+    prompt::{self, AnswerParser, Pointed, RetrievedPassage, TurnPrompt},
     store::{NewPassage, Store},
 };
 use std::sync::{
@@ -59,6 +59,8 @@ pub struct PreparedScreen {
 const PREPARED_MAX_AGE: Duration = Duration::from_secs(60);
 /// Element ids are a few tokens; the grammar ends the reply after one.
 const TARGET_MAX_TOKENS: u32 = 8;
+/// `[yyyy, xxxx]` can take one token per character; the grammar ends it sooner.
+const POINT_MAX_TOKENS: u32 = 16;
 
 /// Reads the screen and evaluates the active agent's prompt prefix for it, so a
 /// voice turn only evaluates the question and passages. Runs while the user speaks;
@@ -99,7 +101,8 @@ pub fn prepare_turn(state: &AppState) {
             system: &turn.system,
             user: turn.warm_user(),
             max_tokens: turn.max_tokens,
-            choices: &[],
+            grammar: None,
+            image: None,
         })
         .map_err(AppError::from)
     })();
@@ -222,6 +225,26 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     } else {
         None
     };
+    // Tiers 2-3: a screenshot when the element list is weak or empty.
+    let mut capture_ms = None;
+    let mut mode = snapshot.as_ref().map(screen_mode);
+    let mut screenshot = None;
+    if let (Some(wanted), Some(snap)) = (mode, snapshot.as_ref())
+        && wanted != ScreenMode::Elements
+    {
+        let t = Instant::now();
+        match capture_screen(app, state.platform.as_ref()) {
+            Ok(capture) => {
+                let marks = (wanted == ScreenMode::ElementsWithImage).then_some(&snap.elements[..]);
+                screenshot = Some(crate::screenshot::prepare(capture, marks));
+                capture_ms = Some(ms(t));
+            }
+            Err(error) => {
+                tracing::info!(%error, "no screenshot; using the element list only");
+                mode = Some(ScreenMode::Elements);
+            }
+        }
+    }
     let mut transcribe_ms = None;
     let question = match request.input {
         AskInput::Text { text } => {
@@ -305,34 +328,72 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         })
         .collect();
 
-    // Pass 1: which element to point at, constrained to the ids on screen.
-    let pointed = match snapshot.as_ref().filter(|s| !s.elements.is_empty()) {
-        Some(screen) => {
-            let choices = prompt::target_choices(screen);
-            let mut reply = String::new();
-            chat.generate(
-                &ChatRequest {
-                    system: &turn.system,
-                    user: &turn.target_user(&question, &passages),
-                    max_tokens: TARGET_MAX_TOKENS,
-                    choices: &choices,
-                },
-                &mut |piece| {
-                    reply.push_str(piece);
-                    if check() { Flow::Continue } else { Flow::Stop }
-                },
-            )
-            .map_err(AppError::from)?;
-            prompt::target_element(&reply, screen)
-        }
-        None => None,
+    let body = turn.body(&question, &passages);
+    // Without an image the task ends the user text; with one it follows the image.
+    let user_text = |task: &str| match &screenshot {
+        Some(_) => body.clone(),
+        None => format!("{body}{task}"),
     };
+
+    // Pass 1: where to point. Element ids (tiers 1-2) or a screenshot point (tier 3),
+    // constrained by a grammar.
+    let mut pointed = Pointed::Nothing;
+    let mut target = None;
+    let mut confidence = Confidence::Normal;
+    if let (Some(mode), Some(screen)) = (mode, snapshot.as_ref())
+        && (mode == ScreenMode::ImageOnly || !screen.elements.is_empty())
+    {
+        let task = TurnPrompt::target_task(mode);
+        let grammar = match mode {
+            ScreenMode::ImageOnly => crate::screenshot::POINT_GRAMMAR.to_owned(),
+            _ => prompt::target_grammar(screen),
+        };
+        let user = user_text(&task);
+        let mut reply = String::new();
+        chat.generate(
+            &ChatRequest {
+                system: &turn.system,
+                user: &user,
+                max_tokens: if mode == ScreenMode::ImageOnly {
+                    POINT_MAX_TOKENS
+                } else {
+                    TARGET_MAX_TOKENS
+                },
+                grammar: Some(&grammar),
+                image: screenshot.as_ref().map(|s| ImagePart {
+                    image: &s.image,
+                    text_after: &task,
+                }),
+            },
+            &mut |piece| {
+                reply.push_str(piece);
+                if check() { Flow::Continue } else { Flow::Stop }
+            },
+        )
+        .map_err(AppError::from)?;
+        // An element id, `[y, x]` or `none`: never user text.
+        tracing::debug!(?mode, reply = %reply, "target pass");
+        match (mode, screenshot.as_ref()) {
+            (ScreenMode::ImageOnly, Some(shot)) => {
+                if let Some((x, y)) = crate::screenshot::parse_point(shot, &reply) {
+                    let (px, py) = crate::screenshot::to_physical(shot, x, y);
+                    target = Some(crate::pointer::locate_point(px, py, shot.monitor));
+                    pointed = Pointed::Guess;
+                    confidence = Confidence::BestGuess;
+                }
+            }
+            _ => {
+                if let Some(element) = prompt::target_element(&reply, screen) {
+                    target = crate::pointer::locate(element, &crate::pointer::monitors(app));
+                    pointed = Pointed::Element(element);
+                }
+            }
+        }
+    }
     if !check() {
         emit(app, TurnEvent::Cancelled { turn_id: id });
         return Ok(());
     }
-    let target =
-        pointed.and_then(|element| crate::pointer::locate(element, &crate::pointer::monitors(app)));
     emit(
         app,
         TurnEvent::Target {
@@ -374,12 +435,18 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         }
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
+    let answer_task = TurnPrompt::answer_task(pointed);
+    let answer_user = user_text(&answer_task);
     chat.generate(
         &ChatRequest {
             system: &turn.system,
-            user: &turn.answer_user(&question, &passages, pointed),
+            user: &answer_user,
             max_tokens: turn.max_tokens,
-            choices: &[],
+            grammar: None,
+            image: screenshot.as_ref().map(|s| ImagePart {
+                image: &s.image,
+                text_after: &answer_task,
+            }),
         },
         &mut |piece| {
             if !check() {
@@ -418,6 +485,14 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             })
         })
         .collect();
+    tracing::debug!(
+        screen_mode = ?mode,
+        ?confidence,
+        pointed = target.is_some(),
+        capture_ms,
+        total_ms = ms(started),
+        "turn finished"
+    );
     emit(
         app,
         TurnEvent::Finished {
@@ -427,10 +502,12 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                 text: answer_text,
                 citations,
                 target,
-                confidence: Confidence::Normal,
+                confidence,
+                screen_mode: mode,
                 latency: Latency {
                     transcribe_ms,
                     screen_ms,
+                    capture_ms,
                     retrieval_ms,
                     first_token_ms,
                     total_ms: ms(started),
@@ -443,6 +520,71 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
 fn ms(t: Instant) -> u32 {
     u32::try_from(t.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
+
+/// Labelled elements needed before the element list alone is trusted.
+const MIN_LABELLED: usize = 5;
+/// More elements than this sharing one label (look-alike cells, icons) makes the
+/// list ambiguous without a picture.
+const MAX_SAME_LABEL: usize = 3;
+
+/// Tier for a snapshot (architecture: three tiers). `GETCKO_SCREEN_MODE` =
+/// `elements` | `elementsWithImage` | `imageOnly` forces one, for measurement.
+fn screen_mode(snapshot: &ScreenSnapshot) -> ScreenMode {
+    match std::env::var("GETCKO_SCREEN_MODE").as_deref() {
+        Ok("elements") => ScreenMode::Elements,
+        Ok("elementsWithImage") => ScreenMode::ElementsWithImage,
+        Ok("imageOnly") => ScreenMode::ImageOnly,
+        _ => tier_for(snapshot),
+    }
+}
+
+fn tier_for(snapshot: &ScreenSnapshot) -> ScreenMode {
+    if snapshot.elements.is_empty() {
+        return ScreenMode::ImageOnly;
+    }
+    let mut counts = std::collections::HashMap::new();
+    for element in snapshot
+        .elements
+        .iter()
+        .filter(|e| !e.label.trim().is_empty())
+    {
+        *counts.entry(element.label.trim()).or_insert(0usize) += 1;
+    }
+    let labelled: usize = counts.values().sum();
+    if labelled >= MIN_LABELLED && counts.values().all(|&n| n <= MAX_SAME_LABEL) {
+        ScreenMode::Elements
+    } else {
+        ScreenMode::ElementsWithImage
+    }
+}
+
+/// Captures the screen with GetCko's overlay hidden, so the gecko and answer card
+/// never appear in what the model sees (same code on every OS).
+fn capture_screen(
+    app: &tauri::AppHandle,
+    platform: &dyn Platform,
+) -> Result<crate::platform::ScreenCapture, crate::platform::PlatformError> {
+    use tauri::Manager;
+    let overlay = app
+        .get_webview_window("overlay")
+        .filter(|w| w.is_visible().unwrap_or(false));
+    if let Some(window) = &overlay {
+        if let Err(error) = window.hide() {
+            tracing::warn!(%error, "could not hide the overlay for capture");
+        }
+        // Let the window server remove it from the next frame.
+        std::thread::sleep(OVERLAY_HIDE_DELAY);
+    }
+    let result = platform.capture();
+    if let Some(window) = &overlay
+        && let Err(error) = window.show()
+    {
+        tracing::warn!(%error, "could not show the overlay after capture");
+    }
+    result
+}
+
+const OVERLAY_HIDE_DELAY: Duration = Duration::from_millis(60);
 
 pub fn import_document(
     app: tauri::AppHandle,
@@ -556,5 +698,49 @@ mod tests {
         };
         assert!(validate_task(&vec![step.clone(); MAX_TASK_STEPS - 1]).is_ok());
         assert!(validate_task(&vec![step; MAX_TASK_STEPS]).is_err());
+    }
+    fn screen(labels: &[&str]) -> ScreenSnapshot {
+        ScreenSnapshot {
+            app_name: "App".into(),
+            window_title: None,
+            elements: labels
+                .iter()
+                .enumerate()
+                .map(|(i, label)| ScreenElement {
+                    id: format!("e{i}"),
+                    role: "button".into(),
+                    label: (*label).into(),
+                    value: None,
+                    bounds: Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1.0,
+                        height: 1.0,
+                    },
+                })
+                .collect(),
+        }
+    }
+    #[test]
+    fn tier_follows_element_list_quality() {
+        assert_eq!(tier_for(&screen(&[])), ScreenMode::ImageOnly);
+        assert_eq!(
+            tier_for(&screen(&["a", "b", "c", "d", "e"])),
+            ScreenMode::Elements
+        );
+        // Four labelled elements (blank labels don't count) are too few.
+        assert_eq!(
+            tier_for(&screen(&["a", "b", "c", "d", " "])),
+            ScreenMode::ElementsWithImage
+        );
+        // Three look-alikes are fine; four are ambiguous without a picture.
+        assert_eq!(
+            tier_for(&screen(&["a", "b", "x", "x", "x"])),
+            ScreenMode::Elements
+        );
+        assert_eq!(
+            tier_for(&screen(&["a", "x", "x", "x", "x"])),
+            ScreenMode::ElementsWithImage
+        );
     }
 }

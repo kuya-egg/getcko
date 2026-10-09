@@ -21,7 +21,8 @@ function answer(turnId: number, t: PointerTarget | null): Answer {
     citations: [],
     target: t,
     confidence: "normal",
-    latency: { transcribeMs: null, screenMs: null, retrievalMs: 1, firstTokenMs: 2, totalMs: 3 },
+    screenMode: "elements",
+    latency: { transcribeMs: null, screenMs: null, captureMs: null, retrievalMs: 1, firstTokenMs: 2, totalMs: 3 },
   };
 }
 

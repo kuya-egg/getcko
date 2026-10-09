@@ -20,19 +20,19 @@ describe("formatLatency", () => {
 describe("latencyBreakdown", () => {
   it("lists every measured stage in order", () => {
     expect(
-      latencyBreakdown({ transcribeMs: 210, screenMs: 120, retrievalMs: 40, firstTokenMs: 610, totalMs: 900 }),
-    ).toBe("speech-to-text 210 ms · screen 120 ms · search 40 ms · first word 610 ms · total 900 ms");
+      latencyBreakdown({ transcribeMs: 210, screenMs: 120, captureMs: 70, retrievalMs: 40, firstTokenMs: 610, totalMs: 900 }),
+    ).toBe("speech-to-text 210 ms · screen 120 ms · screenshot 70 ms · search 40 ms · first word 610 ms · total 900 ms");
   });
 
   it("omits stages that were not measured", () => {
     expect(
-      latencyBreakdown({ transcribeMs: null, screenMs: null, retrievalMs: 40, firstTokenMs: null, totalMs: 300 }),
+      latencyBreakdown({ transcribeMs: null, screenMs: null, captureMs: null, retrievalMs: 40, firstTokenMs: null, totalMs: 300 }),
     ).toBe("search 40 ms · total 300 ms");
   });
 
   it("shows zero retrieval as a measured value", () => {
     expect(
-      latencyBreakdown({ transcribeMs: null, screenMs: 5, retrievalMs: 0, firstTokenMs: null, totalMs: 80 }),
+      latencyBreakdown({ transcribeMs: null, screenMs: 5, captureMs: null, retrievalMs: 0, firstTokenMs: null, totalMs: 80 }),
     ).toBe("screen 5 ms · search 0 ms · total 80 ms");
   });
 });

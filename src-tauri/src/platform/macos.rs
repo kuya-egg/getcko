@@ -24,12 +24,16 @@ use core_foundation::string::CFString;
 use core_graphics::display::CGDisplay;
 use core_graphics::geometry::{CGPoint, CGRect, CGSize};
 use core_graphics::window::{
-    copy_window_info, kCGNullWindowID, kCGWindowLayer, kCGWindowListExcludeDesktopElements,
-    kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName, kCGWindowOwnerPID,
+    copy_window_info, kCGNullWindowID, kCGWindowBounds, kCGWindowLayer,
+    kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName,
+    kCGWindowOwnerPID,
 };
+use foreign_types::ForeignType;
 
-use super::{Platform, PlatformError};
-use crate::model::{PermissionKind, PermissionStatus, Rect, ScreenElement, ScreenSnapshot};
+use super::{Platform, PlatformError, ScreenCapture};
+use crate::model::{
+    MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenElement, ScreenSnapshot,
+};
 
 /// AX calls to a hung app give up after this long.
 const AX_TIMEOUT_SECS: f32 = 0.25;
@@ -102,6 +106,12 @@ impl Platform for MacPlatform {
         let target = topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid))?;
         snapshot_app(target, max_elements)
     }
+
+    fn capture(&self) -> Result<ScreenCapture, PlatformError> {
+        let own_pid = std::process::id();
+        let target = topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid))?;
+        capture_display(target.bounds)
+    }
 }
 
 fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot, PlatformError> {
@@ -170,6 +180,8 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
 struct TargetApp {
     pid: i32,
     name: String,
+    /// Window frame in global points, when CoreGraphics reports it.
+    bounds: Option<CGRect>,
 }
 
 /// Topmost normal-layer on-screen window whose owner passes `accept(pid, app name)`.
@@ -180,11 +192,12 @@ fn topmost_window_owner(accept: impl Fn(i32, &str) -> bool) -> Result<TargetApp,
     )
     .ok_or(PlatformError::NoFocusedApp)?;
     // SAFETY: the window-info keys are static CFStrings exported by CoreGraphics.
-    let (layer_key, pid_key, name_key) = unsafe {
+    let (layer_key, pid_key, name_key, bounds_key) = unsafe {
         (
             CFString::wrap_under_get_rule(kCGWindowLayer),
             CFString::wrap_under_get_rule(kCGWindowOwnerPID),
             CFString::wrap_under_get_rule(kCGWindowOwnerName),
+            CFString::wrap_under_get_rule(kCGWindowBounds),
         )
     };
     for entry in windows.iter() {
@@ -213,10 +226,137 @@ fn topmost_window_owner(accept: impl Fn(i32, &str) -> bool) -> Result<TargetApp,
             .map(|s| s.to_string())
             .unwrap_or_default();
         if accept(pid, &name) {
-            return Ok(TargetApp { pid, name });
+            let bounds = dict
+                .find(&bounds_key)
+                .and_then(|v| v.downcast::<CFDictionary>())
+                .and_then(|d| window_rect(&d));
+            return Ok(TargetApp { pid, name, bounds });
         }
     }
     Err(PlatformError::NoFocusedApp)
+}
+
+/// Reads a `kCGWindowBounds` dictionary (`X`, `Y`, `Width`, `Height` in points).
+fn window_rect(dict: &CFDictionary) -> Option<CGRect> {
+    // SAFETY: the window-bounds dictionary maps CFString keys to CFNumber values.
+    let dict: CFDictionary<CFString, CFType> =
+        unsafe { CFDictionary::wrap_under_get_rule(dict.as_concrete_TypeRef().cast()) };
+    let get = |key: &str| {
+        dict.find(CFString::new(key))
+            .and_then(|v| v.downcast::<CFNumber>())
+            .and_then(|n| n.to_f64())
+    };
+    Some(CGRect::new(
+        &CGPoint::new(get("X")?, get("Y")?),
+        &CGSize::new(get("Width")?, get("Height")?),
+    ))
+}
+
+unsafe extern "C" {
+    fn CGImageGetBitmapInfo(image: core_graphics::sys::CGImageRef) -> u32;
+}
+
+/// Captures the display holding the centre of `window` (else the main display),
+/// cropped to `window`.
+fn capture_display(window: Option<CGRect>) -> Result<ScreenCapture, PlatformError> {
+    if !core_graphics::access::ScreenCaptureAccess.preflight() {
+        return Err(PlatformError::PermissionDenied(
+            PermissionKind::ScreenRecording,
+        ));
+    }
+    let center = window.map(|w| {
+        (
+            w.origin.x + w.size.width / 2.0,
+            w.origin.y + w.size.height / 2.0,
+        )
+    });
+    let display = center
+        .and_then(|(cx, cy)| {
+            CGDisplay::active_displays()
+                .ok()?
+                .into_iter()
+                .map(CGDisplay::new)
+                .find(|d| {
+                    let b = d.bounds();
+                    cx >= b.origin.x
+                        && cx < b.origin.x + b.size.width
+                        && cy >= b.origin.y
+                        && cy < b.origin.y + b.size.height
+                })
+        })
+        .unwrap_or_else(CGDisplay::main);
+    let image = display
+        .image()
+        .ok_or_else(|| PlatformError::Os("display capture returned no image".into()))?;
+    if image.bits_per_pixel() != 32 || image.bits_per_component() != 8 {
+        return Err(PlatformError::Os(format!(
+            "unexpected capture format: {} bits per pixel",
+            image.bits_per_pixel()
+        )));
+    }
+    let (width, height, stride) = (image.width(), image.height(), image.bytes_per_row());
+    // SAFETY: `image` is a valid CGImage for the duration of the call.
+    let info = unsafe { CGImageGetBitmapInfo(image.as_ptr()) };
+    let alpha_first = matches!(info & 0x1F, 2 | 4 | 6); // premultiplied/plain/none-skip first
+    let little = info & 0x7000 == 0x2000; // kCGBitmapByteOrder32Little
+    // Byte offsets of R, G, B within a pixel in memory.
+    let (r, g, b) = match (little, alpha_first) {
+        (true, true) => (2, 1, 0),   // BGRA
+        (true, false) => (3, 2, 1),  // ABGR
+        (false, true) => (1, 2, 3),  // ARGB
+        (false, false) => (0, 1, 2), // RGBA
+    };
+    let points = display.bounds();
+    let scale = if points.size.width > 0.0 {
+        width as f64 / points.size.width
+    } else {
+        1.0
+    };
+    // Crop to the target window (clamped to this display): more of the model's
+    // image budget goes to the app the user asked about.
+    let to_px = |v: f64, limit: usize| ((v * scale).round().max(0.0) as usize).min(limit);
+    let (left, top, right, bottom) = window
+        .map(|w| {
+            (
+                to_px(w.origin.x - points.origin.x, width),
+                to_px(w.origin.y - points.origin.y, height),
+                to_px(w.origin.x + w.size.width - points.origin.x, width),
+                to_px(w.origin.y + w.size.height - points.origin.y, height),
+            )
+        })
+        .filter(|(l, t, r, b)| r > l && b > t)
+        .unwrap_or((0, 0, width, height));
+    let (crop_width, crop_height) = (right - left, bottom - top);
+    let data = image.data();
+    let bytes = data.bytes();
+    let mut rgba = Vec::with_capacity(crop_width * crop_height * 4);
+    for row in bytes.chunks(stride).skip(top).take(crop_height) {
+        for pixel in row.as_chunks::<4>().0.iter().skip(left).take(crop_width) {
+            rgba.extend_from_slice(&[pixel[r], pixel[g], pixel[b], 255]);
+        }
+    }
+    if rgba.len() != crop_width * crop_height * 4 {
+        return Err(PlatformError::Os("capture smaller than reported".into()));
+    }
+    let to_u32 = |v: usize| u32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
+    let to_i32 = |v: usize| i32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
+    // Display origins are whole physical pixels; rounding removes float noise.
+    let monitor_x = (points.origin.x * scale).round() as i32;
+    let monitor_y = (points.origin.y * scale).round() as i32;
+    Ok(ScreenCapture {
+        width: to_u32(crop_width)?,
+        height: to_u32(crop_height)?,
+        rgba,
+        x: monitor_x + to_i32(left)?,
+        y: monitor_y + to_i32(top)?,
+        monitor: MonitorFrame {
+            x: monitor_x,
+            y: monitor_y,
+            width: to_u32(width)?,
+            height: to_u32(height)?,
+            scale_factor: scale,
+        },
+    })
 }
 
 /// Active displays as (bounds in global points, backing scale).

@@ -10,6 +10,7 @@ pub mod pipeline;
 pub mod platform;
 pub mod pointer;
 pub mod prompt;
+pub mod screenshot;
 pub mod store;
 pub mod templates;
 

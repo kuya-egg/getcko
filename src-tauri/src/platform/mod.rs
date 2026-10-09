@@ -8,7 +8,7 @@
 #[cfg(target_os = "macos")]
 mod macos;
 use crate::error::{AppError, ErrorKind};
-use crate::model::{PermissionKind, PermissionStatus, ScreenSnapshot};
+use crate::model::{MonitorFrame, PermissionKind, PermissionStatus, ScreenSnapshot};
 
 /// Upper bound on elements sent to the model; keeps the prompt within the
 /// 0.3 s screen+retrieval budget.
@@ -60,6 +60,29 @@ pub trait Platform: Send + Sync {
     /// [`PlatformError::PermissionDenied`] when Accessibility is not granted,
     /// [`PlatformError::NoFocusedApp`] when nothing is focused.
     fn snapshot(&self, max_elements: usize) -> Result<ScreenSnapshot, PlatformError>;
+
+    /// Pixels of the monitor showing the app [`Platform::snapshot`] reads (the
+    /// topmost window that is not this process). The caller hides GetCko's own
+    /// windows first.
+    ///
+    /// # Errors
+    /// [`PlatformError::PermissionDenied`] when Screen Recording is not granted,
+    /// [`PlatformError::Unavailable`] where capture is not implemented.
+    fn capture(&self) -> Result<ScreenCapture, PlatformError>;
+}
+
+/// One monitor's pixels, top row first, 4 bytes per pixel in RGBA order, no row
+/// padding (`rgba.len() == width * height * 4`).
+pub struct ScreenCapture {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+    /// Physical desktop position of the top-left pixel (same space as
+    /// `ScreenElement.bounds`). Captures may be cropped to the target window.
+    pub x: i32,
+    pub y: i32,
+    /// Display holding the capture; the overlay covers it to draw a guess.
+    pub monitor: MonitorFrame,
 }
 
 /// Shared role vocabulary so prompts are identical on both OSes. Map native
@@ -122,6 +145,13 @@ impl Platform for Unbuilt {
     fn snapshot(&self, _max_elements: usize) -> Result<ScreenSnapshot, PlatformError> {
         Err(PlatformError::Unavailable(format!(
             "screen reading is not built for {} yet",
+            self.0
+        )))
+    }
+
+    fn capture(&self) -> Result<ScreenCapture, PlatformError> {
+        Err(PlatformError::Unavailable(format!(
+            "screen capture is not built for {} yet",
             self.0
         )))
     }

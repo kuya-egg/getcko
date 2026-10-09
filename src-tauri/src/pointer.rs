@@ -10,7 +10,7 @@ pub fn locate(element: &ScreenElement, monitors: &[MonitorFrame]) -> Option<Poin
     })?;
     let scale = monitor.scale_factor;
     Some(PointerTarget {
-        element_id: element.id.clone(),
+        element_id: Some(element.id.clone()),
         label: element.label.clone(),
         monitor,
         rect: Rect {
@@ -20,6 +20,25 @@ pub fn locate(element: &ScreenElement, monitors: &[MonitorFrame]) -> Option<Poin
             height: element.bounds.height / scale,
         },
     })
+}
+
+/// Side, in CSS pixels, of the area drawn around a best-guess point.
+const GUESS_SIZE: f64 = 24.0;
+
+/// A tier-3 best guess: a small square around physical point (`x`, `y`) on `monitor`.
+pub fn locate_point(x: f64, y: f64, monitor: MonitorFrame) -> PointerTarget {
+    let scale = monitor.scale_factor;
+    PointerTarget {
+        element_id: None,
+        label: "Best guess".into(),
+        monitor,
+        rect: Rect {
+            x: (x - f64::from(monitor.x)) / scale - GUESS_SIZE / 2.0,
+            y: (y - f64::from(monitor.y)) / scale - GUESS_SIZE / 2.0,
+            width: GUESS_SIZE,
+            height: GUESS_SIZE,
+        },
+    }
 }
 
 pub fn monitors(app: &tauri::AppHandle) -> Vec<MonitorFrame> {

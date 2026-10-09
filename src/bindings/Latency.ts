@@ -3,4 +3,8 @@
 /**
  * Measured, never estimated (BR-24). Milliseconds.
  */
-export type Latency = { transcribeMs: number | null, screenMs: number | null, retrievalMs: number, firstTokenMs: number | null, totalMs: number, };
+export type Latency = { transcribeMs: number | null, screenMs: number | null, 
+/**
+ * Screenshot capture and preparation (tiers 2 and 3).
+ */
+captureMs: number | null, retrievalMs: number, firstTokenMs: number | null, totalMs: number, };

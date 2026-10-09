@@ -96,7 +96,7 @@ The model points by **element ID** whenever it can. A small local model picks an
 |---|---|---|---|---|---|---|
 | 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 elements | Element list only | element ID (target pass) | exact element bounds | `normal` |
 | 2 | `elementsWithImage` | Snapshot non-empty but fails the tier-1 test (unlabelled icons, look-alike cells) | Element list **plus** a screenshot with a numbered box drawn on every listed element, labelled with the same IDs | element ID (target pass) | exact element bounds | `normal` |
-| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot only | `640,312` (image pixels; target-pass grammar allows coordinates only in this tier) | point mapped to the monitor | `bestGuess` (BR-18) |
+| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot only | `[y, x]` normalized to 0–1000, Gemma's native pointing format (target-pass grammar allows a point, or `none`, only in this tier) | point mapped to the monitor | `bestGuess` (BR-18) |
 
 Rules:
 - Screen Recording denied or no capture available → tier 1 only; an empty snapshot gives a targetless answer ("can't read this app"), never a guess.
@@ -108,10 +108,10 @@ Contract additions (one PR containing both OS implementations, per the parity ru
 
 | Piece | Addition | Owner |
 |---|---|---|
-| `Platform` trait | `fn capture(&self) -> Result<ScreenCapture, PlatformError>`: RGBA8 pixels of the monitor containing the focused window, `width`, `height`, and that monitor's `MonitorFrame` (desktop physical px). `PermissionDenied(ScreenRecording)` when not granted. | macOS engineer (`macos.rs`, ScreenCaptureKit), Windows engineer (`windows.rs`, Windows.Graphics.Capture or DXGI duplication) |
-| Engine | llama-cpp-2 `mtmd` feature; `ChatRequest.image: Option<&EncodedImage>`; load `mmproj-gemma-4-E2B-it-Q8_0.gguf` (already downloaded by `bun run models` and bundled by `tauri.models.conf.json`) | macOS engineer |
-| Core | Tier choice, resize to the model's image size, numbered-box drawing (set-of-mark), coordinate mapping image px → monitor → `PointerTarget`; target-pass grammar allows `x,y` only in tier 3 | macOS engineer |
-| IPC types | `PointerTarget.elementId` becomes `string \| null` (null for tier-3 points); `Answer.screenMode: ScreenMode`; `Latency.captureMs` | macOS engineer; consumed by frontend |
+| `Platform` trait | `fn capture(&self) -> Result<ScreenCapture, PlatformError>`: RGBA8 pixels of the target window's area (cropping to the window is recommended: more of the model's image budget goes to the app; the whole monitor is allowed), `width`, `height`, `x`/`y` = desktop physical position of the top-left pixel, and `monitor` = the `MonitorFrame` of the display holding it (desktop physical px; the overlay covers it to draw a guess). `PermissionDenied(ScreenRecording)` when not granted. | macOS engineer (`macos.rs`, done: CoreGraphics `CGDisplay::image`, cropped to the target window), Windows engineer (`windows.rs`, Windows.Graphics.Capture or DXGI duplication) |
+| Engine | llama-cpp-2 `mtmd` feature; `ChatRequest.image: Option<ImagePart>` (RGB image + the text after it; the image goes after `user`), `ChatRequest.grammar: Option<&str>` (GBNF); an image is cached in the KV prefix like text, so the answer pass reuses it; load `mmproj-gemma-4-E2B-it-Q8_0.gguf` (already downloaded by `bun run models` and bundled by `tauri.models.conf.json`) | macOS engineer |
+| Core | `pipeline.rs` tier choice, `screenshot.rs` resize (long side 1024 px), set-of-mark boxes with element IDs, `[y, x]` → image px → desktop px → `PointerTarget` (24 CSS px square); target-pass grammar allows a point only in tier 3 | macOS engineer (done) |
+| IPC types | `PointerTarget.elementId` is `string \| null` (null for tier-3 points); `Answer.screenMode: ScreenMode \| null` (null when screen help is off); `Latency.captureMs` (null when no screenshot) | macOS engineer (done); consumed by frontend |
 
 Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 scripted tasks × 3 demo apps, each run in all three forced tiers, on the demo Mac and on a Windows machine. Record per tier: correct element out of 10 (target ≥ 8/10, S2), first-token and total latency (budget ≈ 3 s end to end), into `docs/MODELS.md`. Tier 2 stays enabled only if it raises accuracy on the screens that trigger it without breaking the budget; otherwise those screens fall back to tier 1.
 

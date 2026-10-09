@@ -8,4 +8,8 @@ import type { Rect } from "./Rect";
  * The overlay window covers `monitor` (set it with `PhysicalPosition`/`PhysicalSize`),
  * then draws at `rect`, which is in **CSS pixels relative to that monitor's top-left**.
  */
-export type PointerTarget = { elementId: string, label: string, monitor: MonitorFrame, rect: Rect, };
+export type PointerTarget = { 
+/**
+ * `None` for a tier-3 best-guess point read from a screenshot.
+ */
+elementId: string | null, label: string, monitor: MonitorFrame, rect: Rect, };

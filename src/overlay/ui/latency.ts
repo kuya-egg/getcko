@@ -11,6 +11,7 @@ export function latencyBreakdown(l: Latency): string {
   const parts: [string, number | null][] = [
     ["speech-to-text", l.transcribeMs],
     ["screen", l.screenMs],
+    ["screenshot", l.captureMs],
     ["search", l.retrievalMs],
     ["first word", l.firstTokenMs],
     ["total", l.totalMs],
