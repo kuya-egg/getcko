@@ -94,7 +94,7 @@ pub fn prepare_turn(state: &AppState) {
             .chat
             .as_ref()
             .ok_or_else(|| AppError::unavailable("chat model is not available"))?;
-        let turn = TurnPrompt::new(&agent.draft, Some(&snapshot));
+        let turn = TurnPrompt::new(&agent.draft, Some(&snapshot), &[]);
         chat.prefill(&ChatRequest {
             system: &turn.system,
             user: turn.warm_user(),
@@ -113,6 +113,7 @@ pub fn run_turn(
     state: Arc<AppState>,
     request: AskRequest,
 ) -> AppResult<TurnId> {
+    validate_task(request.task.as_deref().unwrap_or_default())?;
     let id = state.turns.begin();
     if let Some(engine) = state.engine.get()
         && let Some(s) = &engine.speaker
@@ -163,6 +164,12 @@ pub fn run_turn(
         }
     });
     Ok(id)
+}
+fn validate_task(task: &[TaskStep]) -> AppResult<()> {
+    if task.len() > MAX_TASK_STEPS - 1 {
+        return Err(AppError::invalid("a guided task has at most 5 steps"));
+    }
+    Ok(())
 }
 fn emit(app: &tauri::AppHandle, event: TurnEvent) {
     if let Err(e) = app.emit(crate::EVENT_TURN, event) {
@@ -271,7 +278,11 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         .chat
         .as_ref()
         .ok_or_else(|| AppError::unavailable("chat model is not available"))?;
-    let turn = TurnPrompt::new(&agent.draft, snapshot.as_ref());
+    let turn = TurnPrompt::new(
+        &agent.draft,
+        snapshot.as_ref(),
+        request.task.as_deref().unwrap_or_default(),
+    );
 
     let mut retrieval_ms = 0;
     let mut hits = Vec::new();
@@ -535,5 +546,15 @@ mod tests {
         assert!(t.is_current(b));
         t.cancel();
         assert!(!t.is_current(b));
+    }
+    #[test]
+    fn task_allows_four_earlier_steps_not_five() {
+        let step = TaskStep {
+            question: "q".into(),
+            answer: "a".into(),
+            target_label: None,
+        };
+        assert!(validate_task(&vec![step.clone(); MAX_TASK_STEPS - 1]).is_ok());
+        assert!(validate_task(&vec![step; MAX_TASK_STEPS]).is_err());
     }
 }

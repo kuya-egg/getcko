@@ -10,12 +10,30 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
         "title": "GetCko",
         "width": 1100,
         "height": 760
+      },
+      {
+        "label": "overlay",
+        "title": "GetCko overlay",
+        "url": "overlay.html",
+        "width": 800,
+        "height": 600,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "resizable": false,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "contentProtected": false
       }
     ],
     "security": {

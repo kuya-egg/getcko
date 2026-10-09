@@ -8,7 +8,7 @@
 //! The screen part can be evaluated while the user is still speaking
 //! ([`TurnPrompt::warm_user`]), before the question is known.
 use crate::model::{
-    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenSnapshot,
+    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenSnapshot, TaskStep,
 };
 
 /// General grounding and answer-quality rules (BR-6).
@@ -35,11 +35,14 @@ pub struct TurnPrompt {
     pub max_tokens: u32,
     /// Screen description; every user prompt of the turn starts with it.
     context: String,
+    /// Earlier steps of a guided task (PRD S5), rendered; empty outside a task.
+    task: String,
 }
 
 impl TurnPrompt {
-    /// Builds the system prompt for `agent` and the screen description.
-    pub fn new(agent: &AgentDraft, snapshot: Option<&ScreenSnapshot>) -> Self {
+    /// Builds the system prompt for `agent`, the screen description and the earlier
+    /// steps of a guided task (oldest first; empty when not in a task).
+    pub fn new(agent: &AgentDraft, snapshot: Option<&ScreenSnapshot>, task: &[TaskStep]) -> Self {
         let mut system = String::from(GUARANTEES);
         if agent.base_rules == BaseRulesMode::Include {
             system.push_str("\n\n");
@@ -85,10 +88,31 @@ impl TurnPrompt {
             context.push_str("(no screen)");
         }
         context.push_str("\n\n");
+        let mut task_text = String::new();
+        if !task.is_empty() {
+            use std::fmt::Write;
+            task_text.push_str("Earlier steps of this task:");
+            for (index, step) in task.iter().enumerate() {
+                let _ = write!(
+                    task_text,
+                    "\nStep {}: Q: {} A: {}",
+                    index + 1,
+                    step.question,
+                    truncate_chars(&step.answer, 300)
+                );
+                if let Some(label) = &step.target_label {
+                    let _ = write!(task_text, " (pointed at: {})", truncate_chars(label, 60));
+                }
+            }
+            task_text.push_str(
+                "\nThe user is continuing this task. Give only the next single step on the current screen.\n\n",
+            );
+        }
         Self {
             system,
             max_tokens,
             context,
+            task: task_text,
         }
     }
 
@@ -132,10 +156,10 @@ impl TurnPrompt {
         user
     }
 
-    /// Screen, question and passages: the part both passes share.
+    /// Screen, task steps, question and passages: the part both passes share.
     fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
         use std::fmt::Write;
-        let mut user = format!("{}Question: {question}\n\n", self.context);
+        let mut user = format!("{}{}Question: {question}\n\n", self.context, self.task);
         if passages.is_empty() {
             user.push_str("(no documents)\n\n");
         } else {
@@ -403,7 +427,7 @@ mod tests {
     fn every_turn_prompt_extends_the_warm_prefix() {
         let draft = templates_draft();
         let screen = snapshot();
-        let turn = TurnPrompt::new(&draft, Some(&screen));
+        let turn = TurnPrompt::new(&draft, Some(&screen), &[]);
         let passages = [RetrievedPassage {
             document_name: "Manual",
             location: "p. 4",
@@ -426,7 +450,7 @@ mod tests {
     fn replace_mode_keeps_guarantees_and_drops_base_rules() {
         let mut draft = templates_draft();
         draft.base_rules = BaseRulesMode::Replace;
-        let turn = TurnPrompt::new(&draft, None);
+        let turn = TurnPrompt::new(&draft, None, &[]);
         assert!(turn.system.contains(GUARANTEES));
         assert!(!turn.system.contains(BASE_RULES));
         assert_eq!(turn.warm_user(), "(no screen)\n\n");
@@ -441,5 +465,50 @@ mod tests {
         );
         assert!(target_element(NO_TARGET, &screen).is_none());
         assert!(target_element("e9", &screen).is_none());
+    }
+    fn step(question: &str, answer: &str, target_label: Option<&str>) -> TaskStep {
+        TaskStep {
+            question: question.into(),
+            answer: answer.into(),
+            target_label: target_label.map(Into::into),
+        }
+    }
+    #[test]
+    fn task_steps_come_oldest_first_after_the_screen_and_before_the_question() {
+        let turn = TurnPrompt::new(
+            &templates_draft(),
+            None,
+            &[
+                step("Open file?", "Click File.", Some("File")),
+                step("Then?", "Click Save.", None),
+            ],
+        );
+        let user = turn.target_user("Next?", &[]);
+        assert!(user.starts_with(turn.warm_user()));
+        let first = user
+            .find("Step 1: Q: Open file? A: Click File. (pointed at: File)")
+            .expect("first step");
+        let second = user
+            .find("Step 2: Q: Then? A: Click Save.")
+            .expect("second step");
+        let question = user.find("Question: Next?").expect("question");
+        assert!(first < second && second < question);
+        assert!(user.contains("continuing this task"));
+        assert!(
+            !TurnPrompt::new(&templates_draft(), None, &[])
+                .target_user("Next?", &[])
+                .contains("Earlier steps")
+        );
+    }
+    #[test]
+    fn long_task_answer_is_truncated() {
+        let turn = TurnPrompt::new(
+            &templates_draft(),
+            None,
+            &[step("q", &"x".repeat(1000), None)],
+        );
+        let user = turn.answer_user("Next?", &[], None);
+        assert!(user.contains(&format!("A: {}…", "x".repeat(300))));
+        assert!(!user.contains(&"x".repeat(301)));
     }
 }

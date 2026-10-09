@@ -42,7 +42,7 @@ The typed client is [`src/lib/getcko.ts`](../src/lib/getcko.ts); wire types are 
 | agent_active | – | Agent \| null |
 | agent_set_active | id | Agent |
 | ptt_start | – | null (starts mic recording; in the background also reads the screen and prefills the model's prompt with it while the user speaks) |
-| ask | request: AskRequest | TurnId (returns immediately; progress via `turn` events) |
+| ask | request: AskRequest (optional `task`: up to 4 earlier TaskSteps of a guided task, oldest first, for S5 "next"; more is rejected as invalid) | TurnId (returns immediately; progress via `turn` events) |
 | stop | – | null (cancels current turn, silences speech) |
 | screen_snapshot | – | ScreenSnapshot (debug/dev aid) |
 
@@ -74,6 +74,19 @@ A turn asks Gemma twice (`pipeline.rs`, `prompt.rs`). Both prompts start with th
 4. **Answer pass**: + "the pointer is showing …" + answer task; sentences stream to the panel and TTS. The answer never contains element IDs.
 
 Measured timings per stage: [`docs/MODELS.md`](MODELS.md).
+
+## Overlay window
+
+Code: [`src/overlay/`](../src/overlay/) (page `overlay.html`, window label `overlay`, capability `src-tauri/capabilities/overlay.json`).
+
+| Rule | Detail |
+|---|---|
+| Global shortcuts | Owned by the overlay. `⌥Space` (macOS) / `Ctrl+Space` (Windows): hold ≥ 250 ms = `ptt_start`, release = `ask` voice; tap = text composer. Global `Esc` is registered **only while the answer card is open** and calls `stop`. The main window must not register these keys. |
+| Turn ownership | `turn` events go to every window. The overlay shows only turns it started (it adopts an unseen `turnId` only while its own `ask` is in flight), so main-window "Try this agent" turns never open the overlay card. |
+| Placement | Covers `PointerTarget.monitor` with `PhysicalPosition`/`PhysicalSize`; panels stay inside the monitor work area (Dock, menu bar and taskbar sit above always-on-top windows) and never cover the target or the gecko. |
+| Click-through | Ignores cursor events except while the cursor is over the panel (polled) or the composer is open. |
+| Capture hide | Never re-shows or re-positions itself on visibility/focus changes; state survives the core's hide/show around a screenshot. |
+| Guided task (S5) | "Next step" sends `AskRequest.task` (earlier steps, oldest first) with `screenHelp: true`; after step 5 the card says the task is done and stops offering next. |
 
 ## Screen understanding: three tiers
 

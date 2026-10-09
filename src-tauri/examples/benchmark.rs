@@ -140,7 +140,7 @@ fn main() {
     // target pass, answer pass. Times are from the start of the turn.
     let turn = |question: &str, snapshot: &ScreenSnapshot| -> Turn {
         let started = Instant::now();
-        let prompts = TurnPrompt::new(agent, Some(snapshot));
+        let prompts = TurnPrompt::new(agent, Some(snapshot), &[]);
         let query = embedder.embed_query(question).expect("embed query");
         let hits = store
             .search(&[kb.id], &query, 5)
@@ -225,7 +225,7 @@ fn main() {
     for iteration in 0..=runs {
         // Voice turn: a new screen each run, read and prefilled while the user speaks.
         let (snapshot, target_id) = mock_snapshot(iteration);
-        let prompts = TurnPrompt::new(agent, Some(&snapshot));
+        let prompts = TurnPrompt::new(agent, Some(&snapshot), &[]);
         let prepare_start = Instant::now();
         chat.prefill(&ChatRequest {
             system: &prompts.system,

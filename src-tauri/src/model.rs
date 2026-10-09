@@ -458,6 +458,24 @@ pub struct AskRequest {
     pub screen_help: bool,
     /// Use this agent instead of the active one ("Try this agent"); nothing is saved.
     pub agent_id: Option<AgentId>,
+    /// Earlier steps of a guided task, oldest first; at most MAX_TASK_STEPS - 1.
+    #[serde(default)]
+    #[ts(optional)]
+    pub task: Option<Vec<TaskStep>>,
+}
+
+/// Steps a guided task keeps in context, the current one included (PRD S5).
+pub const MAX_TASK_STEPS: usize = 5;
+
+/// One earlier step of a guided task, sent back by the client on "next".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TaskStep {
+    pub question: String,
+    pub answer: String,
+    /// Label of the element pointed at in that step, if any.
+    pub target_label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
