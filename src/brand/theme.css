@@ -1,0 +1,248 @@
+/*
+ * Tailwind v4 theme for GetcKo. Utilities point at semantic --gc-* tokens,
+ * so they follow light/dark automatically (no dark: prefixes needed).
+ *
+ * Default Tailwind colors are removed on purpose: no slate-500, no purple-600.
+ * If a color is not listed here, it is not in the brand.
+ */
+
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  /* No --color-white: paper is the light ground (bg-surface / bg-paper). */
+
+  /* Semantic (theme-aware). Use these by default. */
+  --color-bg: var(--gc-bg);
+  --color-surface: var(--gc-surface);
+  --color-surface-2: var(--gc-surface-2);
+  --color-border: var(--gc-border);
+  --color-border-strong: var(--gc-border-strong);
+  --color-text: var(--gc-text);
+  --color-text-2: var(--gc-text-2);
+  --color-text-3: var(--gc-text-3);
+  --color-accent: var(--gc-accent-fill);
+  --color-on-accent: var(--gc-on-accent);
+  --color-accent-text: var(--gc-accent-text);
+  --color-accent-wash: var(--gc-accent-wash);
+  --color-target: var(--gc-target);
+  --color-danger: var(--gc-danger);
+  --color-danger-wash: var(--gc-danger-wash);
+  --color-inverse: var(--gc-inverse-bg);
+  --color-inverse-text: var(--gc-inverse-text);
+  --color-chrome: var(--gc-chrome-bg);
+  --color-chrome-raised: var(--gc-chrome-raised);
+  --color-chrome-text: var(--gc-chrome-text);
+  --color-chrome-text-2: var(--gc-chrome-text-2);
+  --color-chrome-border: var(--gc-chrome-border);
+  --color-chrome-line: var(--gc-chrome-line);
+  --color-chrome-hover: var(--gc-chrome-hover);
+  --color-focus: var(--gc-focus);
+  --color-focus-wash: var(--gc-focus-wash);
+  --color-disabled: var(--gc-disabled-bg);
+  --color-disabled-border: var(--gc-disabled-border);
+  --color-disabled-text: var(--gc-disabled-text);
+  --color-keycap: var(--gc-keycap-bg);
+  --color-keycap-border: var(--gc-keycap-border);
+  --color-keycap-inverse: var(--gc-keycap-inverse-bg);
+  --color-keycap-inverse-text: var(--gc-keycap-inverse-text);
+
+  /* Raw palette (fixed, NOT theme-aware). For mascot, marketing, video frames. */
+  --color-paper: var(--gc-paper);
+  --color-canvas: var(--gc-canvas);
+  --color-line: var(--gc-line);
+  --color-line-strong: var(--gc-line-strong);
+  --color-ink: var(--gc-ink);
+  --color-ink-2: var(--gc-ink-2);
+  --color-ink-3: var(--gc-ink-3);
+  --color-gecko: var(--gc-gecko);
+  --color-gecko-deep: var(--gc-gecko-deep);
+  --color-gecko-wash: var(--gc-gecko-wash);
+  --color-gecko-tint: var(--gc-gecko-tint);
+  --color-sun: var(--gc-sun);
+  --color-alert: var(--gc-alert);
+  --color-alert-wash: var(--gc-alert-wash);
+  --color-night: var(--gc-night);
+  --color-night-1: var(--gc-night-1);
+  --color-night-2: var(--gc-night-2);
+  --color-mist: var(--gc-mist);
+
+  /* Fonts: font-display, font-sans (default UI), font-mono, font-pixel */
+  --font-display: var(--gc-font-display);
+  --font-sans: var(--gc-font-ui);
+  --font-mono: var(--gc-font-mono);
+  --font-pixel: var(--gc-font-pixel);
+
+  /* Type scale: text-hero, text-display, text-h1, text-h2, text-body,
+     text-title, text-row, text-label, text-eyebrow, text-caption, text-keys, text-pixel */
+  --text-hero: 84px;
+  --text-hero--line-height: 82px;
+  --text-hero--letter-spacing: -0.035em;
+  --text-hero--font-weight: 800;
+  --text-display: 64px;
+  --text-display--line-height: 64px;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 800;
+  --text-h1: 36px;
+  --text-h1--line-height: 40px;
+  --text-h1--letter-spacing: -0.02em;
+  --text-h1--font-weight: 700;
+  --text-h2: 24px;
+  --text-h2--line-height: 30px;
+  --text-h2--font-weight: 700;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-answer: 16px;
+  --text-answer--line-height: 1.55;
+  --text-title: 20px; /* card titles (pair with font-display) */
+  --text-title--line-height: 26px;
+  --text-title--font-weight: 700;
+  --text-row: 15px; /* list-row names, inline error titles */
+  --text-row--line-height: 20px;
+  --text-row--font-weight: 600;
+  --text-label: 14px;
+  --text-label--line-height: 20px;
+  --text-label--font-weight: 500;
+  --text-eyebrow: 13px;
+  --text-eyebrow--line-height: 16px;
+  --text-eyebrow--letter-spacing: 0.08em;
+  --text-eyebrow--font-weight: 600;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-keys: 13px;
+  --text-keys--line-height: 16px;
+  --text-keys--font-weight: 500;
+  --text-pixel: 22px;
+  --text-pixel--line-height: 24px;
+
+  /* Radius: rounded-code, rounded-input, rounded-keycap, rounded-window, rounded-tile,
+     rounded-button, rounded-bubble, rounded-panel, rounded-icon, rounded-pill */
+  --radius-code: var(--gc-r-code);
+  --radius-input: var(--gc-r-input);
+  --radius-keycap: var(--gc-r-keycap);
+  --radius-window: var(--gc-r-window);
+  --radius-tile: var(--gc-r-tile);
+  --radius-button: var(--gc-r-button);
+  --radius-bubble: var(--gc-r-bubble);
+  --radius-panel: var(--gc-r-panel);
+  --radius-icon: var(--gc-r-icon);
+  --radius-pill: var(--gc-r-pill);
+
+  /* Elevation: shadow-card (1), shadow-overlay (2), shadow-halo, inset-shadow-keycap */
+  --shadow-card: var(--gc-shadow-1);
+  --shadow-overlay: var(--gc-shadow-2);
+  --shadow-halo: var(--gc-halo);
+  --shadow-halo-dark: var(--gc-halo-on-dark);
+  --inset-shadow-keycap: var(--gc-shadow-keycap);
+
+  /* Measure: max-w-copy (44ch), max-w-answer (68ch). Sidebar: w-sidebar (240px). */
+  --container-copy: var(--gc-measure-copy);
+  --container-answer: var(--gc-measure-answer);
+  --spacing-sidebar: var(--gc-sidebar-w);
+
+  /* Tracking: tracking-wordmark (the "GetcKo" lockup). */
+  --tracking-wordmark: -0.03em;
+
+  /* Motion: ease-gc-out, ease-gc-in-out. UI is calm: no overshoot utility on purpose.
+     The landing overshoot (--gc-ease-point) lives only in GSAP flyTo for the gecko. */
+  --ease-gc-out: var(--gc-ease-out);
+  --ease-gc-in-out: var(--gc-ease-in-out);
+  --default-transition-duration: var(--gc-dur-fast);
+  --default-transition-timing-function: var(--gc-ease-out);
+}
+
+/* Pixel art: integer scaling, no smoothing. */
+@utility pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The single target GetcKo points at. Only one per screen. */
+@utility target-halo {
+  box-shadow: var(--gc-halo);
+}
+
+/* Eyebrow: uppercase section label in text-2. */
+@utility eyebrow {
+  font-family: var(--gc-font-ui);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gc-text-2);
+}
+
+/* Numerals that line up (latency, counts). */
+@utility nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hit area at least 44px. */
+@utility hit {
+  min-width: var(--gc-target-min);
+  min-height: var(--gc-target-min);
+}
+
+/* Layers: z-base, z-raised, z-sticky, z-scrim, z-dialog, z-toast, z-overlay (see --gc-z-* in tokens.css). */
+@utility z-base {
+  z-index: var(--gc-z-base);
+}
+@utility z-raised {
+  z-index: var(--gc-z-raised);
+}
+@utility z-sticky {
+  z-index: var(--gc-z-sticky);
+}
+@utility z-scrim {
+  z-index: var(--gc-z-scrim);
+}
+@utility z-dialog {
+  z-index: var(--gc-z-dialog);
+}
+@utility z-toast {
+  z-index: var(--gc-z-toast);
+}
+@utility z-overlay {
+  z-index: var(--gc-z-overlay);
+}
+
+/* Pixel progress: the leading cell blinks in two hard steps (ImportProgress, StepSquares). */
+@keyframes gc-cell-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@utility gc-cell-blink {
+  animation: gc-cell-blink 800ms steps(1, end) infinite;
+}
+
+/* Calm UI entrance for CSS-only parts (toast, tooltip): 8px rise, 220ms, ease-out. */
+@keyframes gc-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@utility gc-rise-in {
+  animation: gc-rise-in var(--gc-dur-base) var(--gc-ease-out) both;
+}
