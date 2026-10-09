@@ -61,6 +61,11 @@ impl OnDemand<LlamaGrounder> {
 /// model on Intel Iris Xe), and a failed GPU allocation aborts the app. Without a GPU
 /// the model would run on the CPU, where it is too slow to help.
 fn grounder_fits(model: &Path, projector: &Path) -> bool {
+    // Measured only on Windows (Intel Iris Xe, shared memory); a Mac keeps loading the
+    // grounder as before.
+    if cfg!(not(target_os = "windows")) {
+        return true;
+    }
     use super::llama::{file_bytes, gpu_free_bytes};
     let needed = (file_bytes(model) + file_bytes(projector)).saturating_mul(2) + (256 << 20);
     let free = gpu_free_bytes().unwrap_or(0);

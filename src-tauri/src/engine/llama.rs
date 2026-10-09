@@ -432,7 +432,9 @@ impl LlamaChat {
             // A projector the GPU has no room for would abort the process (llama.cpp
             // asserts on a failed buffer allocation); it runs on the CPU instead.
             let room = file_bytes(projector).saturating_mul(3) / 2 + GPU_HEADROOM;
-            let use_gpu = device == "gpu" && gpu_free_bytes().is_none_or(|free| free >= room);
+            // Windows only (shared-memory laptop GPUs); a Mac keeps it on the GPU as before.
+            let fits = cfg!(not(target_os = "windows")) || gpu_free_bytes().is_none_or(|free| free >= room);
+            let use_gpu = device == "gpu" && fits;
             if device == "gpu" && !use_gpu {
                 tracing::warn!("not enough GPU memory for the image projector; it runs on the CPU");
             }

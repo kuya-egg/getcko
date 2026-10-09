@@ -199,8 +199,11 @@ fn note_screenshot_cost(elapsed_ms: u32) {
 /// `mode`, with tier 2 replaced by tier 1 once a screenshot is known to take longer
 /// than [`TIER2_BUDGET_MS`] here (an Intel Iris Xe takes ~6 s at 1024 px). A forced
 /// `GETCKO_SCREEN_MODE` is kept.
+/// Windows only: a Mac evaluates a screenshot in well under a second, and its first one
+/// after a new build includes Metal shader compilation, which must not turn tier 2 off.
 fn within_budget(mode: ScreenMode) -> ScreenMode {
-    let slow = SCREENSHOT_COST_MS.load(Ordering::SeqCst) > TIER2_BUDGET_MS;
+    let slow = cfg!(target_os = "windows")
+        && SCREENSHOT_COST_MS.load(Ordering::SeqCst) > TIER2_BUDGET_MS;
     if mode == ScreenMode::ElementsWithImage && slow && std::env::var("GETCKO_SCREEN_MODE").is_err() {
         ScreenMode::Elements
     } else {
@@ -1624,6 +1627,7 @@ pub fn stop(state: &AppState) {
 mod tests {
     use super::*;
     #[test]
+    #[cfg(target_os = "windows")]
     fn slow_screenshots_turn_tier_2_into_tier_1() {
         assert_eq!(within_budget(ScreenMode::ElementsWithImage), ScreenMode::ElementsWithImage);
         note_screenshot_cost(TIER2_BUDGET_MS + 1);
