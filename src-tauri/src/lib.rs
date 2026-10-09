@@ -1,5 +1,6 @@
 //! GetCko core: local RAG, agents, screen help and voice behind Tauri commands.
 
+pub mod app_menu;
 pub mod commands;
 pub mod engine;
 pub mod error;
@@ -41,14 +42,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        // Closing never quits or destroys a window (Cmd+Q quits): the red button and
+        // Cmd+W (app_menu) hide the main window; the overlay's session bar stays.
+        .menu(app_menu::build)
+        .on_menu_event(|app, event| {
+            if event.id() == app_menu::CLOSE_WINDOW {
+                app_menu::hide_main(app);
+            }
+        })
         .on_window_event(|window, event| {
-            if window.label() == "main"
-                && let tauri::WindowEvent::CloseRequested { api, .. } = event
-            {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if let Err(error) = window.hide() {
-                    tracing::warn!("could not hide main window: {error}");
-                }
+                app_menu::hide_main(window.app_handle());
             }
         })
         .setup(|app| {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import type { AskInput } from "../bindings/AskInput";
 import type { TaskStep } from "../bindings/TaskStep";
 import type { MonitorFrame } from "../bindings/MonitorFrame";
@@ -11,6 +11,8 @@ import { Gecko } from "./pointer/Gecko";
 import { Halo } from "./pointer/Halo";
 import { placeGecko, placePanel } from "./pointer/placement";
 import { SPRITE_COLS, SPRITE_ROWS } from "./pointer/sprite";
+import { initialFollowState, reduceFollow } from "./pointer/follow";
+import { positionFractions, positionFromFractions, parseBarPosition, type BarPosition } from "./ui/sessionBarPosition";
 import { coverMonitor, coverPrimaryMonitor, currentWorkArea, showOverlayOnce, useClickThrough } from "./pointer/window";
 import { geckoPose, initialOverlayState, isBestGuess, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./state/turn";
 import type { GeckoPlacement, Size, TurnStatus } from "./types";
@@ -27,6 +29,7 @@ const NEXT_STEP = "What's the next step?";
 export function Overlay() {
   const platform = useMemo(() => detectPlatform(), []);
   const [state, dispatch] = useReducer(reduceOverlay, initialOverlayState);
+  const target = state.target ?? null;
   const [screenHelp, setScreenHelp] = useState(true);
   const [agentName, setAgentName] = useState<string | null>(null);
   const [viewport, setViewport] = useState<Size>(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -35,13 +38,92 @@ export function Overlay() {
   const [placedOn, setPlacedOn] = useState<MonitorFrame | null>(null);
   /** Work area of the covered monitor (CSS px); `null` until known, then the whole viewport is used. */
   const [workArea, setWorkArea] = useState<Rect | null>(null);
+  /** Latest cursor in overlay CSS px (null off this monitor); read every frame by the gecko. */
+  const cursorRef = useRef<{ x: number; y: number } | null>(null);
+  const [cursorOnScreen, setCursorOnScreen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [follow, followDispatch] = useReducer(reduceFollow, initialFollowState);
+  const followMode = useRef(follow.mode);
+  followMode.current = follow.mode;
+  const [barVisible, setBarVisible] = useState(() => localStorage.getItem("getcko.barHidden") !== "true");
+  const [barCompact, setBarCompact] = useState(() => localStorage.getItem("getcko.barCompact") === "true");
+  const [barPosition, setBarPosition] = useState<BarPosition>(() => parseBarPosition(localStorage.getItem("getcko.sessionBar")) ?? { x: 1, y: 1 });
+  const [flightLanded, setFlightLanded] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  useClickThrough([panelRef, barRef], state.composerOpen);
+  useEffect(() => {
+    followDispatch({ type: "tick", now: performance.now() });
+    const timer = window.setInterval(() => followDispatch({ type: "tick", now: performance.now() }), 40);
+    return () => window.clearInterval(timer);
+  }, []);
+  // A new target starts the flight; the halo draws once the gecko has landed. Keyed on the
+  // target alone: status changes during the flight (the answer finishing) must not cancel
+  // the landing or restart the follow state.
+  useEffect(() => {
+    setFlightLanded(false);
+    if (!target) return;
+    followDispatch({ type: "turn-start", target: target.rect, now: performance.now() });
+    const landing = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 80 : 520;
+    const timer = window.setTimeout(() => setFlightLanded(true), landing);
+    return () => window.clearTimeout(timer);
+  }, [target]);
+  useEffect(() => {
+    if (state.status === "finished") followDispatch({ type: "turn-finished", now: performance.now() });
+  }, [state.status]);
+  useEffect(() => {
+    if (!state.cardOpen) {
+      followDispatch({ type: "dismiss" });
+      setFlightLanded(false);
+    }
+  }, [state.cardOpen]);
+  useEffect(() => {
+    // One IPC call per poll at ~60 Hz: the window origin and scale only change when the
+    // overlay moves to another monitor (`placedOn`), so they are read once per placement.
+    let stopped = false;
+    let busy = false;
+    let frame: { x: number; y: number; scale: number } | null = null;
+    const win = getCurrentWindow();
+    void Promise.all([win.outerPosition(), win.scaleFactor()])
+      .then(([origin, scale]) => {
+        frame = { x: origin.x, y: origin.y, scale };
+      })
+      .catch(() => {
+        frame = null;
+      });
+    const poll = async () => {
+      if (busy || !frame) return;
+      busy = true;
+      try {
+        const point = await cursorPosition();
+        if (stopped || !frame) return;
+        const x = (point.x - frame.x) / frame.scale;
+        const y = (point.y - frame.y) / frame.scale;
+        const on = x >= 0 && y >= 0 && x <= viewport.width && y <= viewport.height;
+        cursorRef.current = on ? { x, y } : null;
+        setCursorOnScreen(on);
+        // The follow reducer only cares while the gecko is at a target (did the user reach it?).
+        if (on && followMode.current !== "cursor") followDispatch({ type: "cursor", x, y, now: performance.now() });
+      } catch {
+        if (!stopped) {
+          cursorRef.current = null;
+          setCursorOnScreen(false);
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 16);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [viewport.width, viewport.height, placedOn]);
   /** Serialises asks so `askResolved` of one turn always lands before the next `asked`. */
   const pendingAsk = useRef<Promise<unknown>>(Promise.resolve());
   /** Resolves when the microphone is recording; `null` when not held. */
   const recording = useRef<Promise<boolean> | null>(null);
 
-  useClickThrough([panelRef], state.composerOpen);
 
   useEffect(() => {
     void coverPrimaryMonitor()
@@ -51,7 +133,11 @@ export function Overlay() {
       .catch((e: unknown) => console.error("overlay placement failed", e));
     const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener("resize", onResize);
-    const unlisten = onTurn((event) => dispatch({ type: "event", event }));
+    const unlisten = onTurn((event) => {
+      setBarVisible(true);
+      localStorage.setItem("getcko.barHidden", "false");
+      dispatch({ type: "event", event });
+    });
     return () => {
       window.removeEventListener("resize", onResize);
       void unlisten.then((off) => off());
@@ -67,7 +153,6 @@ export function Overlay() {
   }, []);
 
   // Move to the target's monitor. Never react to the core's capture hide/show.
-  const target = state.target ?? null;
   useEffect(() => {
     if (!target) return;
     const monitor = target.monitor;
@@ -88,6 +173,8 @@ export function Overlay() {
 
   /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5). */
   const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[]) => {
+    setBarVisible(true);
+    localStorage.setItem("getcko.barHidden", "false");
     const run = pendingAsk.current.then(async () => {
       dispatch({ type: "asked", input: input.type, screenHelp: help, question, task });
       try {
@@ -101,6 +188,8 @@ export function Overlay() {
   }, []);
 
   const micDown = useCallback(() => {
+    setBarVisible(true);
+    localStorage.setItem("getcko.barHidden", "false");
     if (recording.current) return;
     dispatch({ type: "listen" });
     recording.current = pttStart().then(
@@ -127,10 +216,10 @@ export function Overlay() {
   }, []);
 
   const openComposer = useCallback(() => {
+    setBarVisible(true);
+    localStorage.setItem("getcko.barHidden", "false");
     dispatch({ type: "openComposer" });
-    void getCurrentWindow()
-      .setFocus()
-      .catch((e: unknown) => console.error("overlay focus failed", e));
+    void getCurrentWindow().setFocus().catch((e: unknown) => console.error("overlay focus failed", e));
   }, []);
 
   // Global ask hotkey: hold = talk, tap = type. Handlers go through a ref so the
@@ -162,15 +251,37 @@ export function Overlay() {
   // placePanel works in work-area coordinates; shift into it and back out.
   const area: Rect = workArea ?? { x: 0, y: 0, ...viewport };
   const toArea = (r: Rect): Rect => ({ ...r, x: r.x - area.x, y: r.y - area.y });
-  const avoid = pointing ? [toArea({ x: pointing.x, y: pointing.y, ...sprite })] : [];
+  const barBounds = { width: barRef.current?.offsetWidth ?? 280, height: barRef.current?.offsetHeight ?? 64 };
+  const barPoint = positionFromFractions(barPosition, viewport, barBounds);
+  // The card keeps clear of the gecko at its target and of the (movable) session bar.
+  const avoid = [
+    ...(pointing ? [toArea({ x: pointing.x, y: pointing.y, ...sprite })] : []),
+    ...(barVisible ? [toArea({ ...barPoint, ...barBounds })] : []),
+  ];
   const inArea = placePanel(targetShown ? toArea(target.rect) : null, area, panel, PANEL_MARGIN, avoid);
   const panelAt = { x: inArea.x + area.x, y: inArea.y + area.y };
-  const gecko: GeckoPlacement = pointing ?? {
-    x: panelAt.x + panel.width - sprite.width,
-    y: panelAt.y - sprite.height - 4,
-    facing: "right",
-    scale: GECKO_SCALE,
+  const atTarget = (follow.mode === "target" || follow.mode === "dwelling") && pointing !== null;
+  const gecko: GeckoPlacement = atTarget && pointing
+    ? pointing
+    : {
+      x: panelAt.x + panel.width - sprite.width,
+      y: panelAt.y - sprite.height - 4,
+      facing: "right",
+      scale: GECKO_SCALE,
+    };
+  const dragStart = (event: PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = event.currentTarget.getBoundingClientRect();
+    drag.current = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
   };
+  const dragMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    const next = positionFractions({ x: drag.current.left + event.clientX - drag.current.x, y: drag.current.top + event.clientY - drag.current.y }, viewport, barBounds);
+    setBarPosition(next);
+    localStorage.setItem("getcko.sessionBar", JSON.stringify(next));
+  };
+  const dragEnd = () => { drag.current = null; };
   const nextSteps = nextTaskSteps(state);
 
   const closeComposerOnBackdrop = (e: PointerEvent<HTMLDivElement>) => {
@@ -178,8 +289,8 @@ export function Overlay() {
   };
 
   return (
-    <div className="gc-overlay-root" onPointerDown={closeComposerOnBackdrop}>
-      {targetShown && (
+    <div className="gc-overlay-root" onPointerDown={closeComposerOnBackdrop} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd}>
+      {targetShown && flightLanded && follow.mode !== "cursor" && (
         <Halo
           key={`${target.rect.x},${target.rect.y},${target.rect.width},${target.rect.height}`}
           rect={target.rect}
@@ -187,7 +298,12 @@ export function Overlay() {
           viewport={viewport}
         />
       )}
-      <Gecko pose={geckoPose(state)} placement={gecko} />
+      <Gecko
+        pose={geckoPose(state)}
+        placement={gecko}
+        visible={atTarget || cursorOnScreen}
+        follow={atTarget ? undefined : cursorRef}
+      />
       <div ref={panelRef} className="gc-panel" style={{ position: "absolute", left: panelAt.x, top: panelAt.y }}>
         {state.cardOpen && (
           <AnswerCard
@@ -216,17 +332,23 @@ export function Overlay() {
           onMicUp={micUp}
           onToggleScreenHelp={() => setScreenHelp((on) => !on)}
         />
-        <SessionBar
+        {barVisible && <SessionBar
+          ref={barRef}
+          style={{ position: "fixed", left: barPoint.x, top: barPoint.y }}
           agentName={agentName}
           askLabel={platform.askLabel}
           listening={state.status === "listening"}
           busy={BUSY[state.status] === true}
           screenHelp={screenHelp}
+          compact={barCompact}
+          onCompact={() => { const next = !barCompact; setBarCompact(next); localStorage.setItem("getcko.barCompact", String(next)); }}
+          onHide={() => { setBarVisible(false); localStorage.setItem("getcko.barHidden", "true"); }}
+          onDragStart={dragStart}
           onMicDown={micDown}
           onMicUp={micUp}
           onToggleScreenHelp={() => setScreenHelp((on) => !on)}
           onStop={handleStop}
-        />
+        />}
       </div>
     </div>
   );

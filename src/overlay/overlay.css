@@ -217,6 +217,9 @@ body {
   color: var(--gc-paper);
   box-shadow: var(--gc-shadow-2);
 }
+.gc-session-grip { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; min-height: 32px; color: #C9CCC4; cursor: grab; touch-action: none; }
+.gc-session-grip:active { cursor: grabbing; }
+.gc-session-bar--compact { gap: 4px; padding: 6px; }
 .gc-agent-chip {
   white-space: nowrap;
   display: inline-flex;

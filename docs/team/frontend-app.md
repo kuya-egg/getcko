@@ -9,7 +9,9 @@ Build GetCko’s main React/Tauri experience for setup, local knowledge and edit
 - `src/assets/`, local font assets, Tailwind configuration and styles
 - Main-window Tauri capabilities/config changes, coordinated with overlay engineer
 
-Closing the main window hides it while the app and overlay session bar keep running. Use the agent chip ("Open GetCko") or the macOS Dock icon to reopen the main window.
+Closing the main window (red button or Cmd+W) hides it while the app and the overlay session bar keep running. Cmd+W is a custom "Close Window" menu item (`src-tauri/src/app_menu.rs`) because Tauri's default item closes the key window, which is often the overlay. Use the agent chip ("Open GetCko") or the macOS Dock icon to reopen the main window.
+
+The overlay session bar floats like Wispr Flow: drag it by its grip, switch between compact and expanded, or hide it with ×; Option+Space or a new turn brings it back. Its position (as screen fractions) and its compact/hidden state persist in localStorage. The gecko follows the cursor (positioned every animation frame by a transform, without a React render), flies to the target when a turn points somewhere, draws the halo on landing, and returns to the cursor once the cursor has rested on the target for 300 ms, or 8 s after the answer finishes (`src/overlay/pointer/follow.ts`). The answer card keeps clear of both the gecko and the bar. The overlay engineer owns this behavior.
 
 ## Consumes
 - [IPC commands, events and generated types](../architecture.md#ipc-contract)
