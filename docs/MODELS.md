@@ -180,5 +180,29 @@ An earlier survey over 15 apps (Safari, Chrome, Finder, Calculator, TextEdit, Sy
 | Physical footprint added, idle / after a point | +0.9 / +1.0 GB | +1.5 / +1.6 GB |
 
    Gemma alone is ~0.9 GB physical footprint (RSS 3.5 GB counts mmapped weights). Dropping a grounder returns its memory. Cold-disk load is unmeasured.
+
+   **Correction:** the ~0.2 s target passes above reuse one screenshot for all ten questions, so its image is already in the KV cache. With a new screenshot per call, as in the app, a point costs **0.9–1.4 s** with Qwen3-VL and 0.7–0.95 s with Gemma's own detection (1024 px images, Chrome/Finder/TextEdit).
 25. **Qwen3-VL-2B cannot replace Gemma.** On the demo class record both pick the right field and cite both passages, but Qwen3-VL's Taglish is broken ("kung kaya magbigay ngayon ngayon … sumbaga sa na pagkakasunod") and it repeats role names ("textField"); its English is fine. It also has no audio input, so speech-to-text would still need Gemma.
+26. **Held-out set: the 30 questions are now a regression check, not the quality bar.** `scripts/fixtures/heldout/` holds five pages written separately from the pipeline and never used to tune it (`./scripts/tier-eval.sh --heldout`, 50 questions, all in Chrome): a two-column DepEd enrollment form, an 8×9 grade grid with an icon toolbar, a rich-text editor with icon-only buttons, a settings page with switches and side navigation, and a dark-mode store dashboard with row action icons. Scoring reads the whole accessibility tree (up to 2,000 elements), not the 150 the model sees, so grid cells outside the prompt list still have ground truth.
+
+| Tier | Enrollment | Grade grid | Editor | Settings | Dark dashboard | Total |
+|---|---|---|---|---|---|---|
+| 1 (elements) | 9 | 6 | 8 | 9 | 10 | 42/50 |
+| 2 (elements + marks) | 10 | 6 | 9 | 9 | 10 | 44/50 |
+| 3, text first (shipped) | 2 | 0 | 0 | 5 | 1 | 8/50 |
+| 3, Qwen3-VL-2B grounder | 9 | 4 | 3 | 9 | 5 | **30/50** |
+
+   Grade-grid tier 1 misses are cells beyond the 150-element prompt list.
+27. **Gemma 4 E2B cannot ground by coordinates, in any measured form.** Gemma 4's documented detection reply (`[{"box_2d": [y1, x1, y2, x2], "label": …}]`, 0–1000; a bare "detect X" prompt gets prose in our template, so the JSON is asked for) scored 4/30 on the regression set; its `point` form 3/30. Boxes have the right size and shape but land on the wrong control (asked for "Q1", it boxed "Q4"). Larger screenshots (2048 px, up to its 1,120-token image budget) made it worse (1/30, 0/30). A 2× zoom around the first answer helped on a hand-picked crop but not overall (4/30). Qwen3-VL with the same zoom: 20/30, but 8/10 instead of 9/10 on the first held-out page and ~2–2.8 s per point; not adopted.
+28. **Pixel-detected candidates did not help Gemma pick (removed).** Tried: finding empty fields and icons from edges and connected shapes (4–18 ms), naming grid cells from the header above and the row label to the left ("Q1, Juan Dela Cruz"), splitting letter rows that text recognition merges ("BIUS" → B, I, U, S; Vision's per-character boxes are the word's box in accurate mode, so the split used the glyph shapes), and drawing id tags above boxes so they do not hide icons. Regression set 15/30 (same as text only: Chrome 5→7, TextEdit 2→0); held-out 8/50 with and without them. Gemma picks numbered marks well when they have meaningful names (tiers 1–2); unnamed icons give it nothing to match. Naming icons first (a contact sheet of enlarged crops, one Gemma pass) gave shape words ("circle", "list") rather than functions and took 8 s for 23 controls. Gemma does name toolbar icons when shown the whole toolbar row enlarged (B, I, U, S, text colour, font, size right; alignment called "list"), so per-row naming remains an untested option.
+29. **Taglish instruction: measured and changed.** `scripts/fixtures/taglish-questions.json` holds 20 questions (class record with manual passages, Finder, TextEdit, three with no screen or passage) asked of the Taglish Explainer; `cargo run --release --example taglish_eval` writes the answers to `$TMPDIR/taglish-<label>.jsonl`. Blind A/B judgment by an LLM judge (`anthropic/claude-sonnet-5-5`; not a native speaker; order randomized per question), new instruction against the old "use a natural mix of Filipino and English":
+
+| Instruction | Natural Taglish (old / new / tie) | Correct and safe (old / new / tie) |
+|---|---|---|
+| Style guide + two example answers | 5 / 11 / 4 | 7 / 6 / 7 |
+| Style guide, no examples, "never override the rules above" | 4 / 12 / 4 | 6 / 7 / 7 |
+| Same, as shipped in `TurnPrompt::new` | 1 / 16 / 3 | 2 / 9 / 9 |
+
+   The example answers made Gemma invent answers to questions with no source (2 of 3) and add steps nobody asked for; without them the "don't know" answers stay intact (3/3). Role names (popUpButton, colorWell) still leak in a few answers despite the instruction. A native-speaker review is still needed.
+30. **Decision input for tier 3.** On screens with an accessibility tree, tiers 1–2 already score 42–44/50 on held-out pages without any extra model. Only screenshot-only screens (canvas apps, games, remote desktops, some Electron/Java apps) reach tier 3, where Gemma alone scores 8/50 and the on-demand Qwen3-VL-2B grounder 30/50 at +1.48 GB on disk, ~+1 GB memory while loaded, and ~1–1.4 s per point. Making Gemma itself ground would need fine-tuning (LoRA on screenshot → box data, e.g. Qwen3-VL predictions checked by hand), not prompting.
 

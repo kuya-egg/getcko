@@ -63,7 +63,11 @@ impl TurnPrompt {
         system.push_str(match agent.language {
             Language::English => "English.",
             Language::Filipino => "Filipino.",
-            Language::Taglish => "Taglish: use a natural mix of Filipino and English.",
+            // Measured on scripts/fixtures/taglish-questions.json (MODELS.md): more
+            // natural than "a natural mix of Filipino and English", no less correct.
+            Language::Taglish => {
+                "Taglish: write the way a Filipino co-teacher talks: Filipino sentence structure with everyday English words mixed in (\"i-click mo\", \"yung\", \"tapos\"). Keep screen labels exactly as shown and never name element roles (textField, popUpButton, checkbox). Only give the steps the question asks for. These style rules never override the rules above."
+            }
         });
         let max_tokens = match agent.answer_length {
             AnswerLength::Short => {

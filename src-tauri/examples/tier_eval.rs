@@ -5,8 +5,9 @@
 //!
 //! Run with `./scripts/tier-eval.sh`; `--app <name>` runs one app, `--survey` asks
 //! about controls found on each app's screen instead, `--dump <app>` prints that app's
-//! elements and saves the screenshot the model sees. Brings Google Chrome, Finder and
-//! TextEdit (no other apps) to the front while it runs.
+//! elements and saves the screenshot the model sees (and tier 3's marked one).
+//! `--heldout` measures the held-out pages in Chrome instead (never used for tuning).
+//! Brings Google Chrome, Finder and TextEdit (no other apps) to the front while it runs.
 
 use std::{
     path::{Path, PathBuf},
@@ -183,6 +184,65 @@ const APPS: &[App] = &[
     },
 ];
 
+/// One screen to measure: the app to open, the page it shows (Chrome) and the questions.
+struct Run {
+    /// Row label, and the `--app` / `--dump` name.
+    name: String,
+    app: &'static str,
+    page: Option<PathBuf>,
+    /// (question, accessible name of the expected element)
+    tasks: Vec<(String, String)>,
+}
+
+/// The fixed apps, or with `--heldout` the held-out pages in Chrome
+/// (`scripts/fixtures/heldout/questions.json`, never used to tune the pipeline).
+fn runs(fixtures: &Path, heldout: bool) -> Vec<Run> {
+    if !heldout {
+        return APPS
+            .iter()
+            .map(|app| Run {
+                name: app.name.to_owned(),
+                app: app.name,
+                page: (app.name == "Google Chrome").then(|| fixtures.join("class-record.html")),
+                tasks: app
+                    .tasks
+                    .iter()
+                    .map(|t| (t.question.to_owned(), t.expect.to_owned()))
+                    .collect(),
+            })
+            .collect();
+    }
+    let dir = fixtures.join("heldout");
+    let json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("questions.json")).expect("held-out questions"),
+    )
+    .expect("held-out questions are JSON");
+    json["pages"]
+        .as_array()
+        .expect("pages")
+        .iter()
+        .map(|page| Run {
+            name: page["slug"].as_str().expect("slug").to_owned(),
+            app: "Google Chrome",
+            page: Some(dir.join(page["file"].as_str().expect("file"))),
+            tasks: page["questions"]
+                .as_array()
+                .expect("questions")
+                .iter()
+                .map(|q| {
+                    (
+                        q["question"].as_str().expect("question").to_owned(),
+                        q["expect"].as_str().expect("expect").to_owned(),
+                    )
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// Elements read for scoring (not for prompts).
+const TRUTH_ELEMENTS: usize = 2000;
+
 /// Radius of the overlay's best-guess circle in CSS px (`Halo.tsx`: 36 px diameter).
 const HALO_RADIUS: f64 = 18.0;
 
@@ -210,27 +270,40 @@ fn main() {
     let fixtures = manifest.join("../scripts/fixtures");
     let platform = platform::current();
 
+    let heldout = args.iter().any(|a| a == "--heldout");
+    let runs = runs(&fixtures, heldout);
     if let Some(name) = dump {
-        let snapshot = show(&name, &fixtures, platform.as_ref()).expect("app shown");
+        let run = runs
+            .iter()
+            .find(|r| r.name == name)
+            .expect("--dump names an app or held-out page");
+        let snapshot = show(run, platform.as_ref()).expect("app shown");
         println!(
             "{} ({} elements, auto tier {:?})",
             snapshot.app_name,
             snapshot.elements.len(),
             pipeline::tier_for(&snapshot)
         );
-        let shot = screenshot::prepare(platform.capture().expect("screen capture"), None);
-        let path = std::env::temp_dir().join(format!("tier-eval-{name}.ppm"));
-        let mut ppm = format!("P6\n{} {}\n255\n", shot.image.width, shot.image.height).into_bytes();
-        ppm.extend_from_slice(&shot.image.rgb);
-        std::fs::write(&path, ppm).expect("write screenshot");
+        let capture = platform.capture().expect("screen capture");
+        let shot = screenshot::prepare(capture.clone(), None);
+        let (marked, text) = pipeline::read_screenshot(platform.as_ref(), capture);
+        let write = |shot: &screenshot::Prepared, suffix: &str| {
+            let path = std::env::temp_dir().join(format!("tier-eval-{name}{suffix}.ppm"));
+            let mut ppm =
+                format!("P6\n{} {}\n255\n", shot.image.width, shot.image.height).into_bytes();
+            ppm.extend_from_slice(&shot.image.rgb);
+            std::fs::write(&path, ppm).expect("write screenshot");
+            path
+        };
         println!(
-            "model image {}x{} at origin {:?}: {}",
+            "model image {}x{} at origin {:?}: {} (tier 3 marks: {})",
             shot.image.width,
             shot.image.height,
             shot.origin,
-            path.display()
+            write(&shot, "").display(),
+            write(&marked, "-tier3").display()
         );
-        for e in &snapshot.elements {
+        for e in snapshot.elements.iter().chain(&text.elements) {
             println!(
                 "{} | {} | {:?} | {:?} | {:?}",
                 e.id, e.role, e.label, e.value, e.bounds
@@ -270,7 +343,7 @@ fn main() {
     });
     let agent = templates::get(TemplateId::OfficeHelper).draft;
     if args.iter().any(|a| a == "--survey") {
-        survey(chat.as_ref(), &agent, platform.as_ref(), &fixtures);
+        survey(chat.as_ref(), &agent, platform.as_ref(), &runs);
         return;
     }
     println!(
@@ -282,11 +355,14 @@ fn main() {
         .iter()
         .position(|a| a == "--app")
         .and_then(|i| args.get(i + 1));
-    for app in APPS
+    for app in runs
         .iter()
-        .filter(|a| only.is_none_or(|name| name == a.name))
+        .filter(|a| only.is_none_or(|name| *name == a.name))
     {
-        let snapshot = show(app.name, &fixtures, platform.as_ref()).expect("app shown");
+        let snapshot = show(app, platform.as_ref()).expect("app shown");
+        // Ground truth: the whole tree, not the app's 150-element prompt list (a dense
+        // grid's cells can fall outside it).
+        let truth = platform.snapshot(TRUTH_ELEMENTS).expect("full snapshot");
         let capture_start = Instant::now();
         let capture = platform
             .capture()
@@ -333,9 +409,9 @@ fn main() {
             let mut correct = 0;
             let mut near = 0usize;
             let mut times = Vec::new();
-            for task in app.tasks {
-                let named = |text: &str| text.eq_ignore_ascii_case(task.expect);
-                let expected: Vec<&ScreenElement> = snapshot
+            for (question, expect) in &app.tasks {
+                let named = |text: &str| text.eq_ignore_ascii_case(expect);
+                let expected: Vec<&ScreenElement> = truth
                     .elements
                     .iter()
                     .filter(|e| named(&e.label) || e.value.as_deref().is_some_and(named))
@@ -344,21 +420,20 @@ fn main() {
                     !expected.is_empty(),
                     "{}: no element labelled {:?}; run --dump {}",
                     app.name,
-                    task.expect,
+                    expect,
                     app.name
                 );
                 let started = Instant::now();
                 let aim = pipeline::aim(
                     chat.as_ref() as &dyn ChatModel,
                     &turn.system,
-                    &turn.body(task.question, &[]),
+                    &turn.body(question, &[]),
                     mode,
                     screen,
                     shot.as_ref(),
-                    grounder.as_ref().map(|g| pipeline::Grounding {
-                        model: g,
-                        question: task.question,
-                    }),
+                    grounder
+                        .as_ref()
+                        .map(|g| pipeline::Grounding { model: g, question }),
                     &|| true,
                 )
                 .expect("target pass");
@@ -395,10 +470,7 @@ fn main() {
                         Aim::Point { x, y, .. } => format!("point ({x:.0}, {y:.0})"),
                         Aim::Nothing => "nothing".into(),
                     };
-                    misses.push(format!(
-                        "{} {:?}: {:?} → {got}",
-                        app.name, mode, task.question
-                    ));
+                    misses.push(format!("{} {:?}: {:?} → {got}", app.name, mode, question));
                 }
             }
             times.sort_unstable();
@@ -420,7 +492,8 @@ fn main() {
 }
 
 /// Opens `app` on its fixture, brings it to the front and reads its screen.
-fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> Result<ScreenSnapshot, String> {
+fn show(target: &Run, platform: &dyn Platform) -> Result<ScreenSnapshot, String> {
+    let app = target.app;
     match app {
         "Google Chrome" => {
             // One fixture tab: earlier runs' copies would fill the tab strip and
@@ -429,10 +502,10 @@ fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> Result<ScreenSna
                 "osascript",
                 &[
                     "-e",
-                    r#"tell application "Google Chrome" to close (every tab of every window whose URL contains "class-record.html")"#,
+                    r#"tell application "Google Chrome" to close (every tab of every window whose URL contains "/scripts/fixtures/")"#,
                 ],
             );
-            let page = fixtures.join("class-record.html");
+            let page = target.page.as_ref().ok_or("Chrome needs a page")?;
             run("open", &["-a", app, &page.to_string_lossy()]);
         }
         "TextEdit" => {
@@ -446,6 +519,19 @@ fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> Result<ScreenSna
             run("open", &["-a", "TextEdit", &letter.to_string_lossy()]);
         }
         "Finder" => {
+            // Only the fixture's window: leftover windows on the temp folder (its
+            // parent, "T") would otherwise be read instead.
+            run(
+                "osascript",
+                &[
+                    "-e",
+                    r#"tell application "Finder"
+                        repeat with w in (get every Finder window)
+                            if name of w is in {"T", "GetCko Demo"} then close w
+                        end repeat
+                    end tell"#,
+                ],
+            );
             let folder = finder_folder();
             run("open", &["-a", "Finder", &folder.to_string_lossy()]);
         }
@@ -537,15 +623,16 @@ fn survey(
     chat: &dyn ChatModel,
     agent: &getcko_lib::model::AgentDraft,
     platform: &dyn Platform,
-    fixtures: &Path,
+    runs: &[Run],
 ) {
     println!(
         "| App | Elements | Labelled | Read | Auto tier | Named-control questions | Target pass median |"
     );
     println!("|---|---|---|---|---|---|---|");
     let mut misses = Vec::new();
-    for app in APPS.iter().map(|a| a.name) {
-        let snapshot = match show(app, fixtures, platform) {
+    for target in runs {
+        let app = target.name.as_str();
+        let snapshot = match show(target, platform) {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 println!("| {app} | — | — | — | — | {error} | — |");
