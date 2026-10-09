@@ -19,6 +19,7 @@ pub const GUARANTEES: &str = "Never claim a source that is not among the numbere
 pub const NO_TARGET: &str = "none";
 
 const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. Reply with the element id only, or none if nothing on the screen fits.";
+const TIE_BREAK_TASK: &str = "Task: the user means one of these look-alike elements. Compare the question's words (names, numbers, positions, first/second/third/fourth, left/center/right) with each label and reply with the matching label exactly as written:";
 const MARKS_NOTE: &str = "The screenshot shows the same screen; each listed element has a box with its id written at its top-left corner. ";
 const TEXT_NOTE: &str = "Text read from the screenshot; each piece has a box on the screenshot with its id written at its top-left corner:";
 const POINT_TASK: &str = "Task: the screenshot shows the user's screen. Point to the one place where the user should act to do what the question asks. Reply with the point as [y, x] normalized to 0-1000, or none if nothing on the screen fits.";
@@ -224,6 +225,57 @@ pub fn target_grammar(snapshot: &ScreenSnapshot) -> String {
         .chain(std::iter::once(NO_TARGET.to_owned()))
         .collect();
     choices_grammar(&choices)
+}
+
+/// Label tokens compared between look-alike elements: words, split at spaces and commas.
+fn label_tokens(label: &str) -> Vec<&str> {
+    label
+        .split([' ', ','])
+        .map(|t| t.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// Elements easily confused with `pick`: same role, a label of two or more words
+/// that differs from the pick's in exactly one word ("Q1, Juan Dela Cruz" / "Q2, …",
+/// "Align left" / "Align right"). Includes `pick`; shorter than 2 means none.
+pub fn look_alikes<'a>(
+    pick: &'a ScreenElement,
+    snapshot: &'a ScreenSnapshot,
+) -> Vec<&'a ScreenElement> {
+    let tokens = label_tokens(&pick.label);
+    if tokens.len() < 2 {
+        return Vec::new();
+    }
+    snapshot
+        .elements
+        .iter()
+        .filter(|e| {
+            if e.role != pick.role {
+                return false;
+            }
+            let other = label_tokens(&e.label);
+            other.len() == tokens.len()
+                && other
+                    .iter()
+                    .zip(&tokens)
+                    .filter(|(a, b)| !a.eq_ignore_ascii_case(b))
+                    .count()
+                    == 1
+        })
+        .chain(std::iter::once(pick))
+        .collect()
+}
+
+/// Second target pass among look-alikes: the task text, listing each choice's label.
+/// Reply grammar: [`choices_grammar`] of the same labels.
+pub fn tie_break_task(labels: &[String]) -> String {
+    let mut task = String::from(TIE_BREAK_TASK);
+    for label in labels {
+        task.push('\n');
+        task.push_str(label);
+    }
+    task
 }
 
 /// GBNF (root rule `root`) accepting exactly one of `choices`.
@@ -614,6 +666,50 @@ mod tests {
         );
         assert!(target_element(NO_TARGET, &screen).is_none());
         assert!(target_element("e9", &screen).is_none());
+    }
+    #[test]
+    fn look_alikes_share_all_but_one_word_and_the_role() {
+        let make = |id: &str, role: &str, label: &str| ScreenElement {
+            id: id.into(),
+            role: role.into(),
+            label: label.into(),
+            value: None,
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            },
+        };
+        let screen = ScreenSnapshot {
+            app_name: String::new(),
+            window_title: None,
+            elements: vec![
+                make("e1", "textField", "Q1, Juan Dela Cruz"),
+                make("e2", "textField", "Q2, Juan Dela Cruz"),
+                make("e3", "textField", "Q2, Ana Santos"),
+                make("e4", "text", "Q3, Juan Dela Cruz"),
+                make("e5", "button", "Desktop"),
+                make("e6", "button", "Downloads"),
+                make("e7", "checkbox", "Align left"),
+                make("e8", "checkbox", "Align right"),
+            ],
+        };
+        let ids = |pick: usize| {
+            let mut ids: Vec<&str> = look_alikes(&screen.elements[pick], &screen)
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        };
+        assert_eq!(ids(1), ["e1", "e2"]);
+        assert_eq!(ids(7), ["e7", "e8"]);
+        // One-word labels are never look-alikes.
+        assert!(look_alikes(&screen.elements[4], &screen).is_empty());
+        let task = tie_break_task(&["Align left".into(), "Align right".into()]);
+        assert!(task.ends_with("\nAlign left\nAlign right"));
     }
     fn step(question: &str, answer: &str, target_label: Option<&str>) -> TaskStep {
         TaskStep {

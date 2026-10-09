@@ -54,5 +54,5 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
 - [x] AX physical-coordinate conversion handles display backing scale and excludes own PID.
 - [x] Permission prompts/statuses and microphone disclosure are in place.
 - [x] Shared Whisper small.en helper `Transcriber` and `tts` `Speaker` implemented; English-only speech and text.
-- [ ] Tiers 2–3 shipped with Windows `capture` and `recognize_text` (macOS side done; waiting on Windows); Qwen3-VL tier-3 grounder wired and smoke-tested in the app; macOS tier measurements recorded in `docs/MODELS.md`.
+- [ ] Tiers 2–3 shipped with Windows `capture` and `recognize_text` (macOS side done; waiting on Windows); Qwen3-VL tier-3 grounder wired and smoke-tested in the app; macOS tier measurements recorded in `docs/MODELS.md` (latest: held-out tier 1 47/50, tier 2 47/50, tier 3 28/50; regression 29/30, 29/30; finding 45).
 - [x] Ten-run measured benchmark and `docs/MODELS.md` are reproducible.

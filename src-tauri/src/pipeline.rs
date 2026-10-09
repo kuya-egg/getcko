@@ -682,7 +682,66 @@ pub fn aim<'a>(
         shot,
         keep_going,
     )?;
-    Ok(prompt::target_element(&reply, screen).map_or(Aim::Nothing, Aim::Element))
+    let Some(pick) = prompt::target_element(&reply, screen) else {
+        return Ok(Aim::Nothing);
+    };
+    Ok(Aim::Element(tie_break(
+        chat, system, body, screen, pick, shot, keep_going,
+    )?))
+}
+
+/// Longest tie-break reply: one listed label.
+const TIE_BREAK_MAX_TOKENS: u32 = 32;
+/// More look-alikes than this is a grid the first pass handles better than a list.
+const MAX_LOOK_ALIKES: usize = 8;
+
+/// A second pass when `pick` has look-alikes ([`prompt::look_alikes`]): the model
+/// chooses among their spelled-out labels, which keeps one-off neighbours apart
+/// (quarter columns, left/center/right). Returns `pick` when there is nothing to
+/// weigh or the reply names nothing listed.
+fn tie_break<'a>(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    screen: &'a ScreenSnapshot,
+    pick: &'a ScreenElement,
+    shot: Option<&Prepared>,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<&'a ScreenElement> {
+    let mut candidates = prompt::look_alikes(pick, screen);
+    candidates.sort_by_key(|e| e.id.as_str());
+    candidates.dedup_by_key(|e| e.id.as_str());
+    if candidates.len() < 2 || candidates.len() > MAX_LOOK_ALIKES {
+        return Ok(pick);
+    }
+    let labels: Vec<String> = candidates.iter().map(|e| e.label.clone()).collect();
+    let mut unique = labels.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    if unique.len() != labels.len() {
+        return Ok(pick);
+    }
+    let reply = target_reply(
+        chat,
+        system,
+        body,
+        &prompt::tie_break_task(&labels),
+        &prompt::choices_grammar(&labels),
+        TIE_BREAK_MAX_TOKENS,
+        shot,
+        keep_going,
+    )?;
+    let chosen = candidates
+        .iter()
+        .find(|e| e.label == reply.trim())
+        .copied()
+        .unwrap_or(pick);
+    tracing::debug!(
+        candidates = candidates.len(),
+        changed = !std::ptr::eq(chosen, pick),
+        "tie-break among look-alikes"
+    );
+    Ok(chosen)
 }
 
 /// Tier 3: one point on the screenshot. A second pass on a crop around the first

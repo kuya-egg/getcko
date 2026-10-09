@@ -252,6 +252,7 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
             queue.extend(children(&node).into_iter().map(|child| (child, depth + 1)));
         }
     }
+    super::drop_control_captions(&mut candidates);
     let elements = rank_and_assign(candidates, max_elements);
     tracing::debug!(
         pid = target.pid,
