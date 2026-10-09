@@ -16,7 +16,10 @@ use std::{
 };
 
 use getcko_lib::{
-    engine::{self, ChatModel},
+    engine::{
+        self, ChatModel, Grounder,
+        grounder::{GrounderKind, LlamaGrounder},
+    },
     model::{ScreenElement, ScreenMode, ScreenSnapshot, TemplateId},
     pipeline::{self, Aim},
     platform::{self, Platform},
@@ -238,6 +241,33 @@ fn main() {
 
     let ai = engine::Engine::load(&manifest.join("models"));
     let chat = ai.chat.clone().expect("chat model loads");
+    // Tier-3 grounding model under test: GETCKO_GROUNDER=ui-tars|qwen3-vl.
+    let grounder = std::env::var("GETCKO_GROUNDER").ok().map(|name| {
+        let models = manifest.join("models");
+        let rt = engine::llama::Runtime::init().expect("runtime");
+        let (kind, model, projector) = match name.as_str() {
+            "ui-tars" => (
+                GrounderKind::UiTars,
+                "UI-TARS-2B-SFT-Q4_K_M.gguf",
+                "mmproj-UI-TARS-2B-SFT-f16.gguf",
+            ),
+            "qwen3-vl" => (
+                GrounderKind::Qwen3Vl,
+                "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+                "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf",
+            ),
+            other => panic!("unknown GETCKO_GROUNDER {other}"),
+        };
+        let started = Instant::now();
+        let grounder = LlamaGrounder::load(&rt, kind, &models.join(model), &models.join(projector))
+            .expect("grounder loads");
+        eprintln!(
+            "{} loaded in {} ms",
+            grounder.name(),
+            started.elapsed().as_millis()
+        );
+        grounder
+    });
     let agent = templates::get(TemplateId::OfficeHelper).draft;
     if args.iter().any(|a| a == "--survey") {
         survey(chat.as_ref(), &agent, platform.as_ref(), &fixtures);
@@ -279,10 +309,20 @@ fn main() {
                     Some(&snapshot.elements),
                 )),
                 ScreenMode::ImageOnly => {
-                    let (shot, pieces) =
-                        pipeline::read_screenshot(platform.as_ref(), capture.clone());
-                    text = Some(pieces);
-                    Some(shot)
+                    // The grounder replaces text recognition and needs an unmarked image.
+                    if grounder.is_none() {
+                        let (shot, pieces) =
+                            pipeline::read_screenshot(platform.as_ref(), capture.clone());
+                        text = Some(pieces);
+                        Some(shot)
+                    } else {
+                        text = Some(ScreenSnapshot {
+                            app_name: String::new(),
+                            window_title: None,
+                            elements: Vec::new(),
+                        });
+                        Some(screenshot::prepare(capture.clone(), None))
+                    }
                 }
             };
             let screen = text.as_ref().unwrap_or(&snapshot);
@@ -315,6 +355,10 @@ fn main() {
                     mode,
                     screen,
                     shot.as_ref(),
+                    grounder.as_ref().map(|g| pipeline::Grounding {
+                        model: g,
+                        question: task.question,
+                    }),
                     &|| true,
                 )
                 .expect("target pass");
@@ -379,6 +423,15 @@ fn main() {
 fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> Result<ScreenSnapshot, String> {
     match app {
         "Google Chrome" => {
+            // One fixture tab: earlier runs' copies would fill the tab strip and
+            // use up the element budget before the page's fields.
+            run(
+                "osascript",
+                &[
+                    "-e",
+                    r#"tell application "Google Chrome" to close (every tab of every window whose URL contains "class-record.html")"#,
+                ],
+            );
             let page = fixtures.join("class-record.html");
             run("open", &["-a", app, &page.to_string_lossy()]);
         }
@@ -564,6 +617,7 @@ fn survey(
                 mode,
                 screen,
                 shot.as_ref(),
+                None,
                 &|| true,
             )
             .expect("target pass");

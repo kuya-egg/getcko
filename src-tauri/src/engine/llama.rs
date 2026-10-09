@@ -129,6 +129,44 @@ pub struct LlamaChat {
     model: Box<LlamaModel>,
     backend: Arc<LlamaBackend>,
     device: &'static str,
+    format: PromptFormat,
+}
+
+/// How a model's turns are written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptFormat {
+    /// Gemma 4 `<|turn>role … <turn|>` (Gemma 4 E2B).
+    Gemma4,
+    /// ChatML `<|im_start|>role … <|im_end|>` (Qwen-family models: Qwen3-VL, UI-TARS).
+    ChatMl,
+}
+
+impl PromptFormat {
+    /// The prompt up to the end of the user's text. An empty `system` is left out.
+    fn prefix(self, system: &str, user: &str) -> String {
+        match self {
+            Self::Gemma4 => gemma4_prefix(Some(system), user),
+            Self::ChatMl => {
+                let mut prompt = String::with_capacity(system.len() + user.len() + 64);
+                if !system.is_empty() {
+                    prompt.push_str("<|im_start|>system\n");
+                    prompt.push_str(system);
+                    prompt.push_str("<|im_end|>\n");
+                }
+                prompt.push_str("<|im_start|>user\n");
+                prompt.push_str(user);
+                prompt
+            }
+        }
+    }
+
+    /// End of the user turn and start of the model's reply.
+    fn reply(self) -> &'static str {
+        match self {
+            Self::Gemma4 => GEMMA4_REPLY,
+            Self::ChatMl => "<|im_end|>\n<|im_start|>assistant\n",
+        }
+    }
 }
 
 /// The long-lived chat context and what its KV cache currently holds, one slot per
@@ -292,6 +330,21 @@ impl LlamaChat {
         Self::load_with_gpu_layers(rt, path, projector, u32::MAX)
     }
 
+    /// Loads another chat model whose turns use `format` (GPU first, CPU fallback).
+    ///
+    /// # Errors
+    /// As [`LlamaChat::load`].
+    pub fn load_with_format(
+        rt: &Runtime,
+        path: &Path,
+        projector: &Path,
+        format: PromptFormat,
+    ) -> EngineResult<Self> {
+        let mut chat = Self::load_with_gpu_layers(rt, path, projector, u32::MAX)?;
+        chat.format = format;
+        Ok(chat)
+    }
+
     pub(crate) fn load_with_gpu_layers(
         rt: &Runtime,
         path: &Path,
@@ -360,6 +413,7 @@ impl LlamaChat {
             model,
             backend: Arc::clone(&rt.backend),
             device,
+            format: PromptFormat::Gemma4,
         })
     }
     /// Reports whether the model is running with GPU or CPU placement.
@@ -381,13 +435,13 @@ impl LlamaChat {
             .is_some_and(|mtmd| mtmd.lock().is_ok_and(|mtmd| mtmd.support_vision()))
     }
 
-    /// Formats the request as Gemma 4 turns and tokenizes it (and its image),
+    /// Formats the request in the model's turn format and tokenizes it (and its image),
     /// checking the context budget.
     fn plan(&self, request: &ChatRequest<'_>) -> EngineResult<Plan> {
         let vocab = self.model.vocab();
         let plan = match request.image {
             None => {
-                let prompt = gemma4_prompt(Some(request.system), request.user);
+                let prompt = self.format.prefix(request.system, request.user) + self.format.reply();
                 let slots = vocab
                     .tokenize(prompt.as_bytes(), true, true)
                     .into_iter()
@@ -402,7 +456,7 @@ impl LlamaChat {
                     .ok_or_else(|| runtime_error("image projector is unavailable"))?
                     .lock()
                     .map_err(runtime_error)?;
-                let prefix = gemma4_prefix(Some(request.system), request.user);
+                let prefix = self.format.prefix(request.system, request.user);
                 let mut slots: Vec<Slot> = vocab
                     .tokenize(prefix.as_bytes(), true, true)
                     .into_iter()
@@ -430,7 +484,7 @@ impl LlamaChat {
                     Slot::Image(image_key(part.image)),
                     positions,
                 ));
-                let suffix = format!("{}{GEMMA4_REPLY}", part.text_after);
+                let suffix = format!("{}{}", part.text_after, self.format.reply());
                 slots.extend(
                     vocab
                         .tokenize(suffix.as_bytes(), false, true)

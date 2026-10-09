@@ -355,6 +355,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             mode,
             screen,
             screenshot.as_ref(),
+            None,
             &check,
         )? {
             Aim::Element(element) if mode == ScreenMode::ImageOnly => {
@@ -571,6 +572,13 @@ pub fn warm_up_text_recognition(platform: &dyn Platform) {
     }
 }
 
+/// A GUI grounding model for tier 3 and the user's question it should locate.
+#[derive(Clone, Copy)]
+pub struct Grounding<'q> {
+    pub model: &'q dyn crate::engine::Grounder,
+    pub question: &'q str,
+}
+
 /// Where the target pass says to point.
 #[derive(Debug, Clone, Copy)]
 pub enum Aim<'a> {
@@ -594,9 +602,11 @@ fn with_task(body: &str, task: &str, has_image: bool) -> String {
     }
 }
 
-/// Target pass (pass 1) for `mode`: element ids for tiers 1-2, a screenshot point
-/// for tier 3, each constrained by a grammar. `shot` is required for tier 3 and
-/// adds the marked screenshot in tier 2. `keep_going` stops generation early.
+/// Target pass (pass 1) for `mode`: element ids for tiers 1-2. Tier 3 asks the
+/// grounding model when one is given (`shot` unmarked), else picks a text id from the
+/// text read off the screenshot, else Gemma's own point. `shot` is required for tier 3
+/// and adds the marked screenshot in tier 2. `keep_going` stops generation early.
+#[allow(clippy::too_many_arguments)] // one call site per caller; a struct would only rename them
 pub fn aim<'a>(
     chat: &dyn ChatModel,
     system: &str,
@@ -604,12 +614,32 @@ pub fn aim<'a>(
     mode: ScreenMode,
     screen: &'a ScreenSnapshot,
     shot: Option<&Prepared>,
+    grounding: Option<Grounding<'_>>,
     keep_going: &dyn Fn() -> bool,
 ) -> AppResult<Aim<'a>> {
     if mode == ScreenMode::ImageOnly {
         let Some(shot) = shot else {
             return Ok(Aim::Nothing);
         };
+        // A grounding model alone scored higher than text-first, then grounder
+        // (MODELS.md): once Gemma picks a text box the grounder never sees the question.
+        if let Some(Grounding { model, question }) = grounding {
+            let point = model
+                .ground(&shot.image, question)
+                .map_err(AppError::from)?;
+            return Ok(point.map_or(Aim::Nothing, |(fx, fy)| {
+                let (x, y) = crate::screenshot::to_physical(
+                    shot,
+                    fx * f64::from(shot.image.width),
+                    fy * f64::from(shot.image.height),
+                );
+                Aim::Point {
+                    x,
+                    y,
+                    monitor: shot.monitor,
+                }
+            }));
+        }
         // `screen` holds the text read from the screenshot ([`read_screenshot`]):
         // pick a piece by id like tier 2; point only when none fits (icons).
         if !screen.elements.is_empty() {

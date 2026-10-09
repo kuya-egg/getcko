@@ -17,6 +17,7 @@
 //! All methods are blocking; callers run them on worker threads, never on the
 //! async runtime.
 
+pub mod grounder;
 pub mod llama;
 pub mod microphone;
 pub mod speaker;
@@ -149,6 +150,20 @@ pub trait ChatModel: Send + Sync {
     /// # Errors
     /// Runtime failure or a prompt longer than the context window.
     fn prefill(&self, request: &ChatRequest<'_>) -> EngineResult<()>;
+}
+
+/// A GUI grounding model: finds where on a screenshot an instruction should be
+/// carried out (tier 3 icons and empty fields that have no readable text).
+pub trait Grounder: Send + Sync {
+    /// Model name for logs and measurements.
+    fn name(&self) -> &'static str;
+
+    /// The point for `instruction` in `image`, as fractions of its width and height
+    /// (`x`, `y` in 0..=1), or `None` when the reply holds no point.
+    ///
+    /// # Errors
+    /// Runtime failure.
+    fn ground(&self, image: &RgbImage, instruction: &str) -> EngineResult<Option<(f64, f64)>>;
 }
 
 /// On-device speech-to-text.
