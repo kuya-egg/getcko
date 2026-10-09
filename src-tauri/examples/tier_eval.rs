@@ -270,14 +270,22 @@ fn main() {
         );
         for mode in MODES {
             let prepare_start = Instant::now();
+            // Tier 3 sees only the screenshot and the text read from it, as in the app.
+            let mut text = None;
             let shot = match mode {
                 ScreenMode::Elements => None,
                 ScreenMode::ElementsWithImage => Some(screenshot::prepare(
                     capture.clone(),
                     Some(&snapshot.elements),
                 )),
-                ScreenMode::ImageOnly => Some(screenshot::prepare(capture.clone(), None)),
+                ScreenMode::ImageOnly => {
+                    let (shot, pieces) =
+                        pipeline::read_screenshot(platform.as_ref(), capture.clone());
+                    text = Some(pieces);
+                    Some(shot)
+                }
             };
+            let screen = text.as_ref().unwrap_or(&snapshot);
             let image_ms = shot
                 .as_ref()
                 .map(|_| capture_ms + prepare_start.elapsed().as_millis());
@@ -305,7 +313,7 @@ fn main() {
                     &turn.system,
                     &turn.body(task.question, &[]),
                     mode,
-                    &snapshot,
+                    screen,
                     shot.as_ref(),
                     &|| true,
                 )
@@ -529,17 +537,20 @@ fn survey(
             .take(SURVEY_QUESTIONS)
             .copied()
             .collect();
+        let mut text = None;
         let shot = match mode {
             ScreenMode::Elements => None,
             ScreenMode::ElementsWithImage => platform
                 .capture()
                 .ok()
                 .map(|c| screenshot::prepare(c, Some(&snapshot.elements))),
-            ScreenMode::ImageOnly => platform
-                .capture()
-                .ok()
-                .map(|c| screenshot::prepare(c, None)),
+            ScreenMode::ImageOnly => platform.capture().ok().map(|c| {
+                let (shot, pieces) = pipeline::read_screenshot(platform, c);
+                text = Some(pieces);
+                shot
+            }),
         };
+        let screen = text.as_ref().unwrap_or(&snapshot);
         let turn = TurnPrompt::new(agent, Some(&snapshot), &[]);
         let mut correct = 0;
         let mut times = Vec::new();
@@ -551,7 +562,7 @@ fn survey(
                 &turn.system,
                 &turn.body(&question, &[]),
                 mode,
-                &snapshot,
+                screen,
                 shot.as_ref(),
                 &|| true,
             )

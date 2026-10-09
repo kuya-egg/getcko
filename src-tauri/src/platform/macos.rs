@@ -30,7 +30,7 @@ use core_graphics::window::{
 };
 use foreign_types::ForeignType;
 
-use super::{Platform, PlatformError, ScreenCapture};
+use super::{Platform, PlatformError, ScreenCapture, TextBox};
 use crate::model::{
     MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenElement, ScreenSnapshot,
 };
@@ -120,6 +120,84 @@ impl Platform for MacPlatform {
             .or(target.bounds);
         capture_display(window)
     }
+
+    fn recognize_text(&self, capture: &ScreenCapture) -> Result<Vec<TextBox>, PlatformError> {
+        recognize_text(capture)
+    }
+}
+
+/// Reads text in `capture` with the Vision framework (on device).
+fn recognize_text(capture: &ScreenCapture) -> Result<Vec<TextBox>, PlatformError> {
+    use objc2::AllocAnyThread;
+    use objc2_foundation::{NSArray, NSDictionary};
+    use objc2_vision::{
+        VNImageRequestHandler, VNRecognizeTextRequest, VNRequest, VNRequestTextRecognitionLevel,
+    };
+
+    let (width, height) = (capture.width as usize, capture.height as usize);
+    if width == 0 || height == 0 {
+        return Ok(Vec::new());
+    }
+    let provider = core_graphics::data_provider::CGDataProvider::from_buffer(std::sync::Arc::new(
+        capture.rgba.clone(),
+    ));
+    let image = core_graphics::image::CGImage::new(
+        width,
+        height,
+        8,
+        32,
+        width * 4,
+        &core_graphics::color_space::CGColorSpace::create_device_rgb(),
+        core_graphics::base::kCGImageAlphaNoneSkipLast,
+        &provider,
+        false,
+        core_graphics::base::kCGRenderingIntentDefault,
+    );
+    // SAFETY: both crates wrap the same CoreGraphics `CGImageRef`; `image` outlives
+    // the borrow, which ends with this function.
+    let image: &objc2_core_graphics::CGImage = unsafe { &*image.as_ptr().cast() };
+    let request = VNRecognizeTextRequest::new();
+    request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);
+    // UI labels are names and single words; correction would "fix" them.
+    request.setUsesLanguageCorrection(false);
+    // SAFETY: `image` is a valid CGImage and the options dictionary is empty.
+    let handler = unsafe {
+        VNImageRequestHandler::initWithCGImage_options(
+            VNImageRequestHandler::alloc(),
+            image,
+            &NSDictionary::new(),
+        )
+    };
+    let requests: objc2::rc::Retained<NSArray<VNRequest>> =
+        NSArray::from_retained_slice(&[objc2::rc::Retained::into_super(
+            objc2::rc::Retained::into_super(request.clone()),
+        )]);
+    handler
+        .performRequests_error(&requests)
+        .map_err(|error| PlatformError::Os(format!("text recognition failed: {error}")))?;
+    let (w, h) = (width as f64, height as f64);
+    let mut boxes = Vec::new();
+    for observation in request.results().iter().flatten() {
+        let Some(best) = observation.topCandidates(1).firstObject() else {
+            continue;
+        };
+        let text = best.string().to_string();
+        if text.trim().is_empty() {
+            continue;
+        }
+        // SAFETY: plain getter; the box is normalized with a lower-left origin.
+        let b = unsafe { observation.boundingBox() };
+        boxes.push(TextBox {
+            text,
+            bounds: Rect {
+                x: f64::from(capture.x) + b.origin.x * w,
+                y: f64::from(capture.y) + (1.0 - b.origin.y - b.size.height) * h,
+                width: b.size.width * w,
+                height: b.size.height * h,
+            },
+        });
+    }
+    Ok(boxes)
 }
 
 /// The window an app's accessibility tree treats as current.

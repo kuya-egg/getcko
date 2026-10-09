@@ -150,4 +150,14 @@ An earlier survey over 15 apps (Safari, Chrome, Finder, Calculator, TextEdit, Sy
 19. **Fixed: long lists exhausted the walk.** Walking `AXChildren` (finding 13) also walked every off-screen row; lists, outlines, tables, browsers and grids use their visible children (Finder: 1,400 nodes and a 300 ms timeout → 144 nodes in 70 ms).
 20. **Fixed: the first read of an app had almost no walk budget.** The 250 ms web-tree wait counted against the 300 ms walk budget.
 21. **Leaner prompts:** unnamed elements of unknown role (ruler ticks carrying a number, layout groups) are dropped (TextEdit: 47 → 32 elements).
+22. **Tier 3 reads text first: 0/30 → 15/30.** The screenshot goes through on-device text recognition (`Platform::recognize_text`; macOS Vision `VNRecognizeTextRequest`, accurate, no language correction). Each text line becomes an element `t1`, `t2`, … with its box and id drawn on the screenshot, and Gemma picks one by id as in tier 2; the `[y, x]` point is the fallback when no text fits. The pointer shows the text's exact box, still labelled best guess. Same three apps, forced tier 3:
+
+| App | Before (point only) | Text first |
+|---|---|---|
+| Google Chrome | 0/10 | 5/10 |
+| Finder | 0/10 | 8/10 |
+| TextEdit | 0/10 | 2/10 |
+
+   Remaining misses: empty grade fields have no text, so the model points at the column header ("Q1") instead of the cell; TextEdit's toolbar is icons (Vision reads B I U S as one "BIUS" box; alignment and list buttons have no text). Icons need a GUI grounding model (e.g. UI-TARS-2B, Apache-2.0, GGUF) — not bundled.
+23. **Text recognition loads its model on first use:** 28 s for the first call in a cold system, ~110 ms after. GetCko warms it up at startup on a 64×32 blank image (`pipeline::warm_up_text_recognition`).
 

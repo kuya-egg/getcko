@@ -21,6 +21,7 @@ pub const NO_TARGET: &str = "none";
 
 const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. Reply with the element id only, or none if nothing on the screen fits.";
 const MARKS_NOTE: &str = "The screenshot shows the same screen; each listed element has a box with its id written at its top-left corner. ";
+const TEXT_NOTE: &str = "Text read from the screenshot; each piece has a box on the screenshot with its id written at its top-left corner:";
 const POINT_TASK: &str = "Task: the screenshot shows the user's screen. Point to the one place where the user should act to do what the question asks. Reply with the point as [y, x] normalized to 0-1000, or none if nothing on the screen fits.";
 const ANSWER_TASK: &str = "Task: answer the question.";
 const CITE_TASK: &str = " Cite the passages you use inline as [n].";
@@ -136,6 +137,24 @@ impl TurnPrompt {
             ScreenMode::ElementsWithImage => format!("{MARKS_NOTE}{TARGET_TASK}"),
             ScreenMode::ImageOnly => POINT_TASK.to_owned(),
         }
+    }
+
+    /// Tier-3 target task when text was read from the screenshot: the text pieces
+    /// (ids `t1`…) and the element task. Reply grammar: [`target_grammar`] of `text`.
+    pub fn text_target_task(text: &ScreenSnapshot) -> String {
+        use std::fmt::Write;
+        let mut task = String::from(TEXT_NOTE);
+        for piece in &text.elements {
+            let _ = write!(
+                task,
+                "\n{} | {}",
+                piece.id,
+                truncate_chars(&piece.label, 80)
+            );
+        }
+        task.push_str("\n\n");
+        task.push_str(TARGET_TASK);
+        task
     }
 
     /// The last part of the answer-pass prompt: what the pointer shows, then the task.
@@ -331,9 +350,10 @@ fn is_protected_period(text: &str, byte: usize) -> bool {
         "p." | "pp." | "e.g." | "i.e." | "vs."
     )
 }
-/// `e` followed by digits: the ids [`TurnPrompt`] gives screen elements.
+/// `e` or `t` followed by digits: the ids given to screen elements and to text read
+/// from a screenshot.
 fn is_element_id(text: &str) -> bool {
-    text.strip_prefix('e')
+    text.strip_prefix(['e', 't'])
         .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
@@ -476,7 +496,7 @@ mod tests {
     #[test]
     fn element_ids_never_reach_the_answer() {
         let (_, answer) =
-            finish_text(&["Click \"All Clear\" [e15]. Then (e25) [e3, e4] or [Ctrl] (eat)."]);
+            finish_text(&["Click \"All Clear\" [e15]. Then (e25) [e3, t4] or [Ctrl] (eat)."]);
         assert_eq!(answer.text, "Click \"All Clear\". Then or [Ctrl] (eat).");
     }
     #[test]

@@ -58,6 +58,10 @@ pub fn run() {
                 if engine.set(loaded).is_err() { tracing::error!("engine initialized more than once"); }
                 if let Err(error) = handle.emit(EVENT_ENGINE, statuses) { tracing::warn!("could not emit engine event: {error}"); }
             });
+            // The OS loads its text-recognition model on first use (~28 s cold on macOS);
+            // pay that at startup instead of on a user's first tier-3 question.
+            let ocr_platform = Arc::clone(&state.platform);
+            std::thread::spawn(move || pipeline::warm_up_text_recognition(ocr_platform.as_ref()));
             app.manage(state);
             Ok(())
         })

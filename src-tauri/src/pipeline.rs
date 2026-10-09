@@ -230,14 +230,21 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     let mut capture_ms = None;
     let mut mode = snapshot.as_ref().map(screen_mode);
     let mut screenshot = None;
+    // Tier 3: text read from the screenshot, offered like an element list.
+    let mut screen_text = None;
     if let (Some(wanted), Some(snap)) = (mode, snapshot.as_ref())
         && wanted != ScreenMode::Elements
     {
         let t = Instant::now();
         match capture_screen(app, state.platform.as_ref()) {
             Ok(capture) => {
-                let marks = (wanted == ScreenMode::ElementsWithImage).then_some(&snap.elements[..]);
-                screenshot = Some(crate::screenshot::prepare(capture, marks));
+                if wanted == ScreenMode::ImageOnly {
+                    let (shot, text) = read_screenshot(state.platform.as_ref(), capture);
+                    screenshot = Some(shot);
+                    screen_text = Some(text);
+                } else {
+                    screenshot = Some(crate::screenshot::prepare(capture, Some(&snap.elements)));
+                }
                 capture_ms = Some(ms(t));
             }
             Err(error) => {
@@ -339,7 +346,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     let mut pointed = Pointed::Nothing;
     let mut target = None;
     let mut confidence = Confidence::Normal;
-    if let (Some(mode), Some(screen)) = (mode, snapshot.as_ref()) {
+    let screen = screen_text.as_ref().or(snapshot.as_ref());
+    if let (Some(mode), Some(screen)) = (mode, screen) {
         match aim(
             chat.as_ref(),
             &turn.system,
@@ -349,6 +357,18 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             screenshot.as_ref(),
             &check,
         )? {
+            Aim::Element(element) if mode == ScreenMode::ImageOnly => {
+                // Text read from a screenshot: its box is exact, but whether it is
+                // the control to use is a guess (BR-18), so no element id.
+                target = crate::pointer::locate(element, &crate::pointer::monitors(app)).map(|t| {
+                    PointerTarget {
+                        element_id: None,
+                        ..t
+                    }
+                });
+                pointed = Pointed::Element(element);
+                confidence = Confidence::BestGuess;
+            }
             Aim::Element(element) => {
                 target = crate::pointer::locate(element, &crate::pointer::monitors(app));
                 pointed = Pointed::Element(element);
@@ -492,6 +512,65 @@ fn ms(t: Instant) -> u32 {
     u32::try_from(t.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
+/// Text pieces read from a tier-3 screenshot are offered to the model, at most this many.
+const MAX_TEXT_PIECES: usize = crate::platform::MAX_SNAPSHOT_ELEMENTS;
+
+/// Tier-3 input: the text the OS reads in `capture` as elements `t1`, `t2`, … (role
+/// `text`), and the screenshot with each piece's box and id drawn on it. No text
+/// (or no OCR on this OS) gives an empty list and an unmarked screenshot.
+pub fn read_screenshot(
+    platform: &dyn Platform,
+    capture: crate::platform::ScreenCapture,
+) -> (Prepared, ScreenSnapshot) {
+    let boxes = platform.recognize_text(&capture).unwrap_or_else(|error| {
+        tracing::debug!(%error, "no text read from the screenshot");
+        Vec::new()
+    });
+    let elements: Vec<ScreenElement> = boxes
+        .into_iter()
+        .take(MAX_TEXT_PIECES)
+        .enumerate()
+        .map(|(index, piece)| ScreenElement {
+            id: format!("t{}", index + 1),
+            role: "text".into(),
+            label: piece.text,
+            value: None,
+            bounds: piece.bounds,
+        })
+        .collect();
+    let marks = (!elements.is_empty()).then_some(&elements[..]);
+    let shot = crate::screenshot::prepare(capture, marks);
+    let text = ScreenSnapshot {
+        app_name: String::new(),
+        window_title: None,
+        elements,
+    };
+    (shot, text)
+}
+
+/// Runs text recognition once on a tiny blank image so the OS loads its model now.
+pub fn warm_up_text_recognition(platform: &dyn Platform) {
+    let blank = crate::platform::ScreenCapture {
+        width: 64,
+        height: 32,
+        rgba: vec![255; 64 * 32 * 4],
+        x: 0,
+        y: 0,
+        monitor: MonitorFrame {
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 32,
+            scale_factor: 1.0,
+        },
+    };
+    let started = Instant::now();
+    match platform.recognize_text(&blank) {
+        Ok(_) => tracing::info!(elapsed_ms = ms(started), "text recognition warmed up"),
+        Err(error) => tracing::debug!(%error, "text recognition unavailable"),
+    }
+}
+
 /// Where the target pass says to point.
 #[derive(Debug, Clone, Copy)]
 pub enum Aim<'a> {
@@ -531,6 +610,23 @@ pub fn aim<'a>(
         let Some(shot) = shot else {
             return Ok(Aim::Nothing);
         };
+        // `screen` holds the text read from the screenshot ([`read_screenshot`]):
+        // pick a piece by id like tier 2; point only when none fits (icons).
+        if !screen.elements.is_empty() {
+            let reply = target_reply(
+                chat,
+                system,
+                body,
+                &TurnPrompt::text_target_task(screen),
+                &prompt::target_grammar(screen),
+                TARGET_MAX_TOKENS,
+                Some(shot),
+                keep_going,
+            )?;
+            if let Some(piece) = prompt::target_element(&reply, screen) {
+                return Ok(Aim::Element(piece));
+            }
+        }
         return point(chat, system, body, shot, keep_going);
     }
     if screen.elements.is_empty() {

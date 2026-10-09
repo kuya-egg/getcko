@@ -8,7 +8,7 @@
 #[cfg(target_os = "macos")]
 mod macos;
 use crate::error::{AppError, ErrorKind};
-use crate::model::{MonitorFrame, PermissionKind, PermissionStatus, ScreenSnapshot};
+use crate::model::{MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenSnapshot};
 
 /// Upper bound on elements sent to the model; keeps the prompt within the
 /// 0.3 s screen+retrieval budget.
@@ -61,14 +61,30 @@ pub trait Platform: Send + Sync {
     /// [`PlatformError::NoFocusedApp`] when nothing is focused.
     fn snapshot(&self, max_elements: usize) -> Result<ScreenSnapshot, PlatformError>;
 
-    /// Pixels of the monitor showing the app [`Platform::snapshot`] reads (the
-    /// topmost window that is not this process). The caller hides GetCko's own
+    /// Pixels of the window [`Platform::snapshot`] reads (the topmost window that is
+    /// not this process), on the monitor holding it. The caller hides GetCko's own
     /// windows first.
     ///
     /// # Errors
     /// [`PlatformError::PermissionDenied`] when Screen Recording is not granted,
     /// [`PlatformError::Unavailable`] where capture is not implemented.
     fn capture(&self) -> Result<ScreenCapture, PlatformError>;
+
+    /// Text the OS reads in `capture` (tier 3: screens without accessible elements).
+    /// Bounds are desktop physical pixels, like [`ScreenElement::bounds`]. On-device
+    /// only (macOS Vision; Windows `Windows.Media.Ocr`).
+    ///
+    /// # Errors
+    /// [`PlatformError::Unavailable`] where text recognition is not implemented.
+    fn recognize_text(&self, capture: &ScreenCapture) -> Result<Vec<TextBox>, PlatformError>;
+}
+
+/// One line of text read from a screenshot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextBox {
+    pub text: String,
+    /// Desktop physical pixels.
+    pub bounds: Rect,
 }
 
 /// Captured pixels (the target window's area), top row first, 4 bytes per pixel in RGBA order, no row
@@ -153,6 +169,13 @@ impl Platform for Unbuilt {
     fn capture(&self) -> Result<ScreenCapture, PlatformError> {
         Err(PlatformError::Unavailable(format!(
             "screen capture is not built for {} yet",
+            self.0
+        )))
+    }
+
+    fn recognize_text(&self, _capture: &ScreenCapture) -> Result<Vec<TextBox>, PlatformError> {
+        Err(PlatformError::Unavailable(format!(
+            "text recognition is not built for {} yet",
             self.0
         )))
     }
