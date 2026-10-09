@@ -1,22 +1,22 @@
-# GetCko PRD: Local AI Desktop Copilot
+# GetcKo PRD: Local AI Desktop Copilot
 
 Oct 9, 2026 · @Louie Miguel
 
 ## Overview
 
-GetCko is a private desktop copilot whose AI runs entirely on your own laptop. You ask it anything about what is on your screen or in your own documents. It answers out loud, points at where to click, and works the same with Wi-Fi off. For the AppBuildersPH 2026 "Local AI" challenge, it rebuilds the GetCko v1 concept around four local features: **RAG** over your documents (stored with sqlite-vector), **Customizable Agents**, **Screen Help**, and **TTS**.
+GetcKo is a private desktop copilot whose AI runs entirely on your own laptop. You ask it anything about what is on your screen or in your own documents. It answers out loud, points at where to click, and works the same with Wi-Fi off. For the AppBuildersPH 2026 "Local AI" challenge, it rebuilds the GetcKo v1 concept around four local features: **RAG** over your documents (stored with sqlite-vector), **Customizable Agents**, **Screen Help**, and **TTS**.
 
-**What changes from GetCko v1:**
+**What changes from GetcKo v1:**
 
 | v1 (upstream app) | Hackathon build |
 | --- | --- |
-| Hidden from screen share and the app switcher; answers meeting questions covertly | **Removed.** GetCko is a visible helper, not a stealth tool. |
+| Hidden from screen share and the app switcher; answers meeting questions covertly | **Removed.** GetcKo is a visible helper, not a stealth tool. |
 | Cloud AI: OpenAI chat and embeddings, DeepSeek question detection, Soniox/AssemblyAI transcription | **All local:** on-device LLM, embeddings, speech-to-text, TTS |
 | Postgres + pgvector server, Better Auth accounts, FastAPI agents service | **No server.** One local SQLite file with sqlite-vector; agents and knowledge stored on the device |
 | Documents sent to OpenAI for indexing | Documents never leave the laptop |
 | Windows only (Win32 calls) | macOS first (the M4 Pro is the demo machine), Windows as a stretch goal |
 
-**Hackathon rule to respect.** GetCko v1 was extracted on 2026-09-30, before the hackathon. The rules require the project to be substantially built during the hackathon and every piece of existing code to be disclosed, and a pre-existing project can get the result disputed. Build this as a **new repo during the hackathon**. Reuse only small pieces where it saves real time (for example the brand assets or the overlay window setup), and list each one under "Existing code and assets" in the submission.
+**Hackathon rule to respect.** GetcKo v1 was extracted on 2026-09-30, before the hackathon. The rules require the project to be substantially built during the hackathon and every piece of existing code to be disclosed, and a pre-existing project can get the result disputed. Build this as a **new repo during the hackathon**. Reuse only small pieces where it saves real time (for example the brand assets or the overlay window setup), and list each one under "Existing code and assets" in the submission.
 
 ## Problem and target users
 
@@ -37,11 +37,11 @@ People are being pushed onto digital tools faster than they can learn them. The 
 | Professionals with confidential documents (lawyers, HR, consultants, agencies under NDA) | Answers from their own files and the app in front of them | Files and screens can't go to a third-party cloud |
 | People with unreliable or expensive internet | Help that works offline | Nothing to upload, no API bill |
 
-**Primary demo persona:** a teacher or LGU staffer learning a new desktop system, who asks GetCko out loud and gets a spoken answer plus a pointer, grounded in the office's own manual.
+**Primary demo persona:** a teacher or LGU staffer learning a new desktop system, who asks GetcKo out loud and gets a spoken answer plus a pointer, grounded in the office's own manual.
 
 ## Goals and non-goals
 
-The build succeeds if, with Wi-Fi off on stage, GetCko answers a spoken question about the screen from the user's own documents. It must speak the answer and point at the right element within about 3 seconds.
+The build succeeds if, with Wi-Fi off on stage, GetcKo answers a spoken question about the screen from the user's own documents. It must speak the answer and point at the right element within about 3 seconds.
 
 **Goals:**
 
@@ -56,8 +56,8 @@ The build succeeds if, with Wi-Fi off on stage, GetCko answers a spoken question
 - Hiding from screen share, covert meeting answers, or any stealth mode
 - Accounts, sign-in, servers or sync
 - Live call transcription of other people (system-audio capture)
-- GetCko clicking or typing for the user. It only points and explains; the user stays in control.
-- iOS/Android apps (possible later as GetCko Lens / SDK)
+- GetcKo clicking or typing for the user. It only points and explains; the user stays in control.
+- iOS/Android apps (possible later as GetcKo Lens / SDK)
 - Windows parity (stretch only, if the macOS build is done)
 
 ## Features and requirements
@@ -66,7 +66,7 @@ P0 items are the demo; P1 items make it feel like a product; P2 items happen onl
 
 ### 1. RAG over your own documents (sqlite-vector)
 
-Users drop files into a knowledge base. GetCko reads them once, splits them into passages, embeds each passage on the device, and stores everything in one local SQLite file with the sqlite-vector extension. At question time it retrieves the top passages and the LLM answers with citations.
+Users drop files into a knowledge base. GetcKo reads them once, splits them into passages, embeds each passage on the device, and stores everything in one local SQLite file with the sqlite-vector extension. At question time it retrieves the top passages and the LLM answers with citations.
 
 | ID | Requirement | Priority | Acceptance criteria |
 | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ An agent is a saved preset: a name, instructions, attached knowledge bases, answ
 | ID | Requirement | Priority | Acceptance criteria |
 | --- | --- | --- | --- |
 | A1 | Create, edit, duplicate and delete agents, stored locally | P0 | Survives app restart, Wi-Fi off |
-| A2 | Instructions field plus a toggle to include or replace GetCko's base rules | P0 | Turning the base rules off changes the behaviour in the next answer |
+| A2 | Instructions field plus a toggle to include or replace GetcKo's base rules | P0 | Turning the base rules off changes the behaviour in the next answer |
 | A3 | Attach up to 5 knowledge bases | P0 | Answers draw only from the attached knowledge bases |
 | A4 | Templates: Office Helper (new software), Teacher (DepEd forms), Study Buddy (my notes), Taglish Explainer | P0 | One click makes an editable copy |
 | A5 | Answer language: English, Filipino, Taglish | P1 | Answer follows the setting |
@@ -96,7 +96,7 @@ An agent is a saved preset: a name, instructions, attached knowledge bases, answ
 
 ### 3. Screen Help
 
-The user presses a hotkey and asks, by voice or text, "Where do I...?" or "What does this mean?". GetCko reads the current screen, answers, and moves an on-screen pointer (the gecko) to the right element. It never clicks for the user.
+The user presses a hotkey and asks, by voice or text, "Where do I...?" or "What does this mean?". GetcKo reads the current screen, answers, and moves an on-screen pointer (the gecko) to the right element. It never clicks for the user.
 
 | ID | Requirement | Priority | Acceptance criteria |
 | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ macOS needs Accessibility and Screen Recording permission once, which goes in on
 
 ## Architecture
 
-&#91;embedded content: GetCko architecture · 3 inputs, local AI core, 3 outputs\]
+&#91;embedded content: GetcKo architecture · 3 inputs, local AI core, 3 outputs\]
 
 The question, the screen's element list and the retrieved passages all meet in one local LLM call. Its answer drives the voice, the pointer and the citations. The internet is touched once, to download the models before the event, and never during use.
 
@@ -161,7 +161,7 @@ The 5-minute pitch is mostly the live demo, run in airplane mode with a network 
 4. **Screen Help + RAG (90 s).** In a spreadsheet or form app, press the hotkey and ask aloud: "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta?" ("Where do I put Juan's grade, and how is it computed?"). The gecko flies to the cell, the answer is spoken, and it cites "Manual p. 4".
 5. **Second app (40 s).** The same question style works in a different app, showing it is a general helper.
 6. **Proof (30 s).** Show measured latency and tokens per second on screen, read from `MODELS.md`.
-7. **Close (30 s).** "Gets mo na." Next: GetCko Lens for iPhone and the SDK for any app.
+7. **Close (30 s).** "Gets mo na." Next: GetcKo Lens for iPhone and the SDK for any app.
 
 **Success metrics for the hackathon:**
 
@@ -199,7 +199,7 @@ The build runs on macOS Tauri 2 + React + Rust on the M4 Pro. P0 must be working
 **Compliance checklist (submission):**
 
 - [ ] New public repo created during the hackathon; MIT or Apache-2.0 license (also covers the sqlite-vector open-source exception)
-- [ ] Existing code and assets disclosed (any piece taken from GetCko v1, brand art, the `.claude/` config)
+- [ ] Existing code and assets disclosed (any piece taken from GetcKo v1, brand art, the `.claude/` config)
 - [ ] Models, frameworks and licenses listed: the LLM, embedding model, whisper, sqlite-vector, Tauri
 - [ ] What runs locally (everything in the core path) and what needs internet (only the first model download)
 - [ ] AI dev tools disclosed (Claude Code, etc.)
@@ -213,7 +213,7 @@ The biggest risk is the judges' first question: "Isn't this just a local ChatGPT
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Seen as a pre-existing project (GetCko v1) | Result can be disputed | New repo, built tonight; disclose every reused piece |
+| Seen as a pre-existing project (GetcKo v1) | Result can be disputed | New repo, built tonight; disclose every reused piece |
 | Small model picks the wrong element | Demo misfire | Pick from numbered AX elements, not coordinates; scripted demo tasks; pre-recorded backup run |
 | Apps with a thin accessibility tree (Electron, canvas) | Pointer has nothing to target | Demo on apps with good AX trees; vision fallback labeled "best guess" |
 | End-to-end latency over 3 s | Feels slow on stage | Stream answer and TTS by sentence; smaller whisper; warm-load models before the pitch |
@@ -227,7 +227,7 @@ The biggest risk is the judges' first question: "Isn't this just a local ChatGPT
 - [ ] Is a Filipino voice installed or available in macOS Settings?
 - [ ] llama.cpp inside Rust or an Ollama/MLX sidecar: which is faster to wire up tonight?
 - [ ] Which sample manual or PDF for the demo knowledge base: an office manual, the DepEd grading guide, or the team's own?
-- [ ] Keep the name GetCko in the pitch, with the gecko pointer as the hero visual?
+- [ ] Keep the name GetcKo in the pitch, with the gecko pointer as the hero visual?
 
 ## Sources
 

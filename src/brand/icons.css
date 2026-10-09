@@ -1,0 +1,27 @@
+/*
+ * GetcKo pixel icons (src/brand/icons.ts, docs/brand/icons.md).
+ * Icons are crisp SVG units in currentColor. Nothing here smooths them.
+ */
+.gc-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  shape-rendering: crispEdges;
+  vertical-align: middle;
+}
+
+/* Processing: one square lights up at a time and walks clockwise in 8 hard steps (no rotation,
+   so the squares never leave the grid). 100ms a step, 800ms a lap. */
+@keyframes gc-icon-chase {
+  0% { opacity: 1; }
+  12.5% { opacity: 0.75; }
+  25% { opacity: 0.55; }
+  37.5% { opacity: 0.4; }
+  50%, 100% { opacity: 0.25; }
+}
+.gc-icon-spin [data-step] {
+  animation: gc-icon-chase 800ms steps(1, end) infinite;
+  animation-delay: calc(var(--gc-i) * 100ms - 800ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gc-icon-spin [data-step] { animation: none; }
+}
