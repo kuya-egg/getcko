@@ -421,6 +421,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
 
     // Pass 1: where to point.
     let mut pointed = Pointed::Nothing;
+    // A tier-3 point: the screen around it at full resolution, for the answer pass.
+    let mut close = None;
     let mut target = None;
     let mut confidence = Confidence::Normal;
     let screen = screen_text.as_ref().or(snapshot.as_ref());
@@ -458,7 +460,12 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             }
             Aim::Point { x, y, monitor } => {
                 target = Some(crate::pointer::locate_point(x, y, monitor));
-                pointed = Pointed::Guess;
+                close = screenshot
+                    .as_ref()
+                    .and_then(|shot| crate::screenshot::close_up(shot, x, y));
+                if close.is_some() {
+                    pointed = Pointed::Guess;
+                }
                 confidence = Confidence::BestGuess;
             }
             Aim::Nothing => {}
@@ -542,10 +549,13 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             user: &answer_user,
             max_tokens: turn.max_tokens,
             grammar: None,
-            image: screenshot.as_ref().map(|s| ImagePart {
-                image: &s.image,
-                text_after: &answer_task,
-            }),
+            image: close
+                .as_ref()
+                .or(screenshot.as_ref().map(|s| &s.image))
+                .map(|image| ImagePart {
+                    image,
+                    text_after: &answer_task,
+                }),
         },
         &mut |piece| {
             if !check() {
