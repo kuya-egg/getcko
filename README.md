@@ -67,7 +67,7 @@ cargo test -- --ignored
 | Rust core: SQLite + sqlite-vector, local llama.cpp inference, document/RAG and agent pipeline, typed IPC | Implemented and verified | Core |
 | macOS Accessibility screen capture | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) |
 | Windows UI Automation screen capture | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
-| Whisper speech-to-text, microphone capture, and text-to-speech | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
+| Gemma 4 E2B audio speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
 | DOCX/PPTX ingestion | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
 | Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
 | Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |

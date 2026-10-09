@@ -19,9 +19,13 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
 
 ### P0 — by 1 AM
 1. Implement `Platform` in `src-tauri/src/platform/macos.rs` with Accessibility API. Snapshot focused app’s element list, map native roles to shared `ROLES`, exclude GetCko’s own PID, cap at 150, and assign unique IDs. Convert AX global points to desktop physical pixels with each `NSScreen.backingScaleFactor`. Prefer `accessibility-sys` / `objc2` crates. Acceptance: `platform::conformance` passes on a real desktop; useful labeled/actionable elements from Finder, browser, and Numbers or Excel; screen permission denial is returned, never bypassed (S1). Types: `ScreenSnapshot`, `ScreenElement`, `PermissionKind`, `PermissionStatus`.
+   Status (f68285f): AX snapshot of Chrome's 41 elements in 18–28 ms; `platform::conformance` passes on a real desktop. `AXManualAccessibility` is set for Chromium/Electron; its effect on Chrome web content is not yet verified.
 2. Wire `platform::current()` macOS arm. Implement permission status/request with `AXIsProcessTrustedWithOptions` prompt and `CGPreflightScreenCaptureAccess`. Acceptance: setup status reports actual Accessibility and Screen Recording permissions; request opens system prompt/settings appropriately.
-3. Implement `Transcriber` using `whisper-rs` and `Speaker` using `tts`; add whisper model file to `scripts/fetch-models.sh` with SHA-256 verification and `src-tauri/tauri.models.conf.json` bundle resources. Acceptance: 5-second audio transcribes in ≤1.5 s (T2); sentence-streamed TTS begins ≤0.5 s after first sentence (T1), `stop` silences immediately (T3); Filipino voice falls back to English when absent (T4). The same implementations must build and work on Windows; coordinate APIs and build compatibility with Windows engineer.
+   Status (f68285f): implemented.
+3. Implement the shared `Transcriber` with `LlamaChat` and Gemma 4 E2B's audio encoder through llama-cpp-2 `mtmd`; implement `Speaker` using `tts`. No separate speech model is fetched. Acceptance: 5-second audio transcribes in ≤1.5 s (T2); sentence-streamed TTS begins ≤0.5 s after first sentence (T1), `stop` silences immediately (T3); Filipino voice falls back to English when absent (T4). The same implementation builds and works on Windows.
+   Status (f68285f): implemented; 3.8-second English clip transcribes in 0.44–0.67 s on M4 Pro. TTS uses `tts` on a dedicated thread; demo Mac has 180 voices and no Filipino voice, so English fallback is used. Filipino/Taglish transcription accuracy remains unmeasured with a real speaker.
 4. Add macOS `NSMicrophoneUsageDescription`. Ensure microphone permission denial appears as unavailable, without requesting unrelated permissions.
+   Status (f68285f): implemented; `NSMicrophoneUsageDescription` is present. Development runs (`bun run tauri dev`) inherit permissions from the terminal app that launched them; the bundled app asks for its own.
 
 ### P1 — 1–4 AM
 5. Build screen tiers 2 and 3 ([three tiers](../architecture.md#screen-understanding-three-tiers), S4) in one PR with the Windows engineer's `capture`:
@@ -30,6 +34,7 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
    - Core: tier choice in `pipeline.rs`, hide `overlay` → capture → show, resize, numbered-box drawing with element IDs, `TARGET: x,y` parsing for tier 3 only, image px → `PointerTarget` with `elementId: null` and `Confidence::BestGuess`; add `Answer.screenMode`, `Latency.captureMs`; `GETCKO_SCREEN_MODE` override for benchmarks.
    - Acceptance: tier 2 still answers with an element ID; tier 3 is labelled best guess; Screen Recording denied → tier 1 only, empty snapshot → targetless answer; regenerate `src/bindings` and tell both frontend engineers about the changed types.
 6. Add benchmark script and `docs/MODELS.md` with PRD latency table values measured over 10 runs on the demo Mac; include machine/model/date and method. Acceptance: median spoken-response ≤3 s target is reported honestly, with all latency figures reproducible (BR-24); do not publish estimates as measurements.
+   Status: `scripts/benchmark.sh` + `src-tauri/examples/benchmark.rs` landed; 10-run results in [`docs/MODELS.md`](../MODELS.md). Open: first token 1.28 s (budget 0.3 s) and 0/10 pointer accuracy on the compound demo question — see "Findings to act on" there. Tier protocol not measured yet (needs tiers 2–3).
    Starting point measured on the M4 Pro (Oct 9, debug build, Metal): first launch of a new build loads models in ~16.6 s, ~15.9 s of it llama.cpp compiling its embedded Metal library; the next launch loaded in 0.87 s. First token 0.47–0.74 s for a ~420-token prompt (budget 0.3 s); full 55–63-token answer 1.1–1.3 s; top-5 retrieval 13–44 ms. Warm-launch the release build once before the pitch, investigate prompt-prefill cost (smaller snapshot, shorter system prompt) and record before/after numbers.
    Include the [tier measurement protocol](../architecture.md#screen-understanding-three-tiers): 10 scripted tasks × 3 apps in each forced tier, accuracy and latency per tier; it decides whether tier 2 stays on.
    Optional latency experiment: `ggml-org/gemma-4-E2B-it-GGUF` also publishes `mtp-gemma-4-E2B-it-Q4_0.gguf` (59 MB) for multi-token prediction. Check whether llama-cpp-2 0.1.159 can use it; if it does, measure first-token and total latency with and without it, and only add it to `fetch-models.sh` if the numbers improve.
@@ -43,10 +48,9 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
 - By 4–6 AM: provide benchmark script, raw measured results and `MODELS.md` to pitcher/designer; inform frontend of measured-latency field availability.
 
 ## Done
-- [ ] AX implementation passes `platform::conformance` on macOS and reads three demo apps.
-- [ ] AX physical-coordinate conversion handles display backing scale and excludes own PID.
-- [ ] Permission prompts/statuses and microphone disclosure are in place.
-- [ ] Whisper model is verified by checksum and bundled; T1–T4 criteria recorded.
-- [ ] Shared whisper/tts implementations build and work on Windows too.
+- [x] AX implementation passes `platform::conformance` on macOS; Chrome snapshot and real-desktop conformance evidence recorded under task 1.
+- [x] AX physical-coordinate conversion handles display backing scale and excludes own PID.
+- [x] Permission prompts/statuses and microphone disclosure are in place.
+- [x] Shared Gemma audio `Transcriber` and `tts` `Speaker` implemented; English clip latency recorded. Filipino/Taglish accuracy with a real speaker remains unmeasured.
 - [ ] Tiers 2–3 shipped with the Windows `capture` in the same PR; tier measurements recorded in `docs/MODELS.md`.
-- [ ] Ten-run measured benchmark and `docs/MODELS.md` are reproducible.
+- [x] Ten-run measured benchmark and `docs/MODELS.md` are reproducible.

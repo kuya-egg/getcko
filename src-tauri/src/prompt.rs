@@ -6,7 +6,7 @@ use crate::model::{AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenSnap
 /// General grounding and answer-quality rules (BR-6).
 pub const BASE_RULES: &str = "Be grounded and honest: answer from the supplied screen and passages. If neither supports an answer, say \"I don't know\". Be brief; lead with the action, then the reason, then the source.";
 /// Product guarantees that remain in force for every agent configuration.
-pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages (BR-4). Only point to element ids listed in the screen (BR-15). Never offer to click or type for the user (BR-14). Output protocol: first line exactly TARGET: <element id> or TARGET: none (always none with no screen); then answer prose, citing passages inline as [n]. Example: TARGET: e3\\nClick Save [1].";
+pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages (BR-4). Only point to element ids listed in the screen (BR-15). Never offer to click or type for the user (BR-14). Output protocol: first line exactly TARGET: <element id> or TARGET: none (always none with no screen); then, on the next line, answer prose citing passages inline as [n]. Never write element ids in the prose.\nExample:\nTARGET: e3\nClick Save [1].";
 
 /// One retrieved passage and its display location.
 pub struct RetrievedPassage<'a> {

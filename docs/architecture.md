@@ -11,7 +11,7 @@ flowchart TB
   IPC --> CORE[Rust core: commands]
   CORE --> PIPE[Ask / document pipeline]
   PIPE --> STORE[Store: SQLite + sqlite-vector]
-  PIPE --> ENGINE[Engine: llama.cpp · Gemma 4 E2B + EmbeddingGemma; whisper STT; OS TTS; microphone]
+  PIPE --> ENGINE[Engine: llama.cpp · Gemma 4 E2B + EmbeddingGemma; Gemma audio STT; OS TTS; microphone]
   PIPE --> PLATFORM[Platform: macOS AX | Windows UIA]
 ```
 
@@ -93,17 +93,26 @@ Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 sc
 
 ## Cross-platform parity
 
-macOS and Windows expose identical commands and behaviour. OS code lives only in `src-tauri/src/platform/macos.rs` and `windows.rs`, implementing the same `Platform` trait; both implementations pass `platform::conformance`. Any trait or IPC contract change updates both OS sides in the same PR. `whisper-rs`, `tts`, and `cpal` are cross-platform and used identically on both systems. llama.cpp uses Metal on macOS, Vulkan on Windows, automatic CPU fallback on both, and the same model files. No OS-only command or behaviour is permitted.
+macOS and Windows expose identical commands and behaviour. OS code lives only in `src-tauri/src/platform/macos.rs` and `windows.rs`, implementing the same `Platform` trait; both implementations pass `platform::conformance`. Any trait or IPC contract change updates both OS sides in the same PR. Speech-to-text uses Gemma 4 E2B's audio encoder through llama-cpp-2 `mtmd` on both systems; `tts` and `cpal` are cross-platform. llama.cpp uses Metal on macOS, Vulkan on Windows, automatic CPU fallback on both, and the same model files. No OS-only command or behaviour is permitted.
+
+Engine components:
+
+| Component | Implementation |
+|---|---|
+| `Transcriber` | `LlamaChat` (`engine/llama.rs`), using Gemma 4 E2B audio via `mtmd` |
+| `Speaker` | `engine/speaker.rs` |
 
 ## Local models and runtime
 
 | File | Approx. size | Use |
 |---|---:|---|
-| `gemma-4-E2B-it-Q4_0.gguf` | 2.8 GB | Chat, target selection; vision fallback when enabled |
+| `gemma-4-E2B-it-Q4_0.gguf` | 2.8 GB | Chat, target selection; vision fallback when enabled; audio transcription |
 | `embeddinggemma-300M-Q8_0.gguf` | 0.33 GB | Local embeddings, 256 dimensions |
-| `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.56 GB | Gemma 4 E2B vision projector for screenshots (tiers 2–3); downloaded and bundled now, loaded once vision lands |
+| `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.56 GB | Gemma 4 E2B vision and audio encoder/projector; screenshots (tiers 2–3) and transcription, downloaded and bundled |
 
-Gemma 4 E2B is one multimodal model. In GGUF/llama.cpp it ships as two files that are loaded together: the language weights (`gemma-4-E2B-it-Q4_0.gguf`) and its own vision encoder + projector (`mmproj-…`). The mmproj is not a second model. EmbeddingGemma is the only separate model, because search needs a dedicated embedding model. The same Hugging Face repo also has `mtp-gemma-4-E2B-it-*.gguf` multi-token-prediction files (faster generation, unverified with llama-cpp-2); not used yet, see macOS task 6.
+Gemma 4 E2B is one multimodal model. In GGUF/llama.cpp it ships as two files loaded together: language weights (`gemma-4-E2B-it-Q4_0.gguf`) and its own vision and audio encoder + projector (`mmproj-…`). The mmproj is not a second model. EmbeddingGemma is the only separate model, because search needs a dedicated embedding model. The same Hugging Face repo also has `mtp-gemma-4-E2B-it-*.gguf` multi-token-prediction files (faster generation, unverified with llama-cpp-2); not used yet, see macOS task 6.
+
+The transcriber is `LlamaChat`, using Gemma 4 E2B's audio encoder via `mtmd`. This reuses the bundled model rather than downloading a separate speech model. `mtmd` audio input is experimental; Filipino/Taglish accuracy with a real speaker is not yet measured. If accuracy is inadequate, evaluate whisper.cpp in a separate process or build llama.cpp as shared libraries.
 
 `bun run models` fetches and SHA-256 verifies models using `scripts/fetch-models.sh`. Development uses `src-tauri/models/`; release bundles models via `bun run tauri:build` and `src-tauri/tauri.models.conf.json`. `GETCKO_MODELS_DIR` overrides model location. Nothing downloads at runtime; the only network use is explicit model setup.
 

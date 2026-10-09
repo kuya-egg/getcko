@@ -9,6 +9,7 @@
 | Chat and embeddings | llama.cpp in-process via `llama-cpp-2` 0.1.159; Gemma 4 E2B Q4_0 and EmbeddingGemma 300M Q8_0, 256 dimensions | Local private inference (BR-1/6), same models on both OSes and GPU/CPU fallback; over Ollama/MLX sidecar, see ADR-0001. |
 | Persistence/search | One bundled SQLite database via rusqlite 0.40, SQL schema; vendored sqlite-vector 1.1.2 exact full scan | Local relational ownership and exact retrieval (BR-2/4/5/9); over a separate vector database, see ADR-0002. |
 | OS integration | Rust `Platform` trait and OS-specific implementations with conformance tests | Shared snapshot/permission semantics (BR-15/16/20); over OS-specific IPC, see ADR-0003. |
+| Speech-to-text | Gemma 4 E2B audio encoder through llama-cpp-2 `mtmd` | Reuses the already-bundled multimodal model across macOS and Windows; avoids a separate speech-model download and whisper-rs/llama.cpp ggml symbol collision. Audio input is experimental; Filipino/Taglish accuracy remains unmeasured. See ADR-0004. |
 
 ## Runtime
 Rust 2024, MSRV 1.88, with Tauri 2 desktop host; blocking engine/platform calls run on worker threads rather than async runtime. The React 19/TypeScript 6 frontend is bundled by Vite 8 and uses Bun scripts. Native local execution serves offline/privacy and desktop screen needs (BR-1, BR-14).
@@ -39,3 +40,4 @@ Development models in `src-tauri/models/`; explicit `bun run models` invokes `sc
 - `.monozukuri/decisions/0001-in-process-llama-cpp.md` — in-process llama.cpp over Ollama/MLX sidecar.
 - `.monozukuri/decisions/0002-sqlite-vector-single-file-store.md` — one SQLite file with sqlite-vector exact full scan.
 - `.monozukuri/decisions/0003-platform-trait-parity.md` — Platform trait as sole OS seam and conformance parity.
+- `.monozukuri/decisions/0004-gemma-audio-speech-to-text.md` — Gemma 4 E2B audio transcription through llama-cpp-2 `mtmd`, avoiding whisper-rs ggml symbol collisions.

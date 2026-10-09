@@ -20,7 +20,9 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 ### P0 — by 1 AM
 1. Implement `Platform` in `src-tauri/src/platform/windows.rs` with Windows UI Automation (`windows` crate, `IUIAutomation`). Walk the focused window element tree, map control types to shared `ROLES`, exclude GetCko’s PID, and assign unique IDs. Use `BoundingRectangle` in physical pixels with per-monitor DPI awareness. Acceptance: at most 150 useful elements; `platform::conformance` passes on a real desktop; snapshot geometry maps through overlay `PhysicalPosition` without scaling drift (S1, S3 parity). Permission/commands: Accessibility and ScreenRecording return `NotRequired`; microphone maps to Windows privacy settings; `screen_snapshot` uses same shape.
 2. Wire Windows arm of `platform::current()`. Acceptance: both OS implementations satisfy the identical `Platform` trait and permission API; no Windows-only command or answer behaviour.
-3. Implement microphone capture with `cpal`: default input device, resample to 16 kHz mono `f32` in [-1,1], `start`/`stop` per `Microphone` trait. This cross-platform code must build and work on macOS too; coordinate macOS build/API with macOS engineer. Acceptance: PTT captured 5-second input transcribes in ≤1.5 s with Wi-Fi off (T2). Commands: `ptt_start`, `ask` voice.
+Speech-to-text is shared through Gemma 4 E2B's audio encoder; there is nothing speech-specific to build for Windows. The T2 dependency in task 3 is microphone capture (`cpal`) only.
+3. Implement microphone capture with `cpal`: default input device, resample to 16 kHz mono `f32` in [-1,1], `start`/`stop` per `Microphone` trait. This cross-platform code must build and work on macOS too; coordinate macOS build/API with macOS engineer. Acceptance: PTT captured 5-second input transcribes in ≤1.5 s with Wi-Fi off (T2; shared Gemma transcriber). Commands: `ptt_start`, `ask`.
+   Windows build must compile `llama-cpp-2` with `mtmd` enabled; this feature is already in `Cargo.toml`.
 
 ### P1 — 1–4 AM
 4. Replace Unsupported extraction arms in `src-tauri/src/ingest.rs` for DOCX and PPTX (R6). Acceptance: imports use existing queued processing and live `document` events; preserve page/section location where available; DOCX/PPTX reaches Ready with extractable text; 20-page PDF remains Ready <60 s on M4 Pro (R1 baseline). Commands/events: `doc_import`, `onDocument`.
@@ -38,7 +40,7 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 ## Done
 - [ ] UIA snapshot excludes own PID, maps roles, is DPI-aware and passes conformance.
 - [ ] Windows permissions and screen-reading behaviour match shared API semantics.
-- [ ] `cpal` microphone gives 16 kHz mono and works on both Windows and macOS.
+- [ ] `cpal` microphone gives 16 kHz mono and works on both Windows and macOS; shared Gemma audio transcription meets T2.
 - [ ] DOCX and PPTX extractable text imports meet R6 and document status events.
 - [ ] `capture` shipped in the same PR as the macOS side; Windows tier measurements recorded.
 - [ ] Windows installer bundles the same models; Vulkan and CPU fallback have recorded machine evidence.
