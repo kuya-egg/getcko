@@ -1,17 +1,23 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
 
   // Two windows, two pages: `main` (index.html) and `overlay` (overlay.html).
+  // GC_SHEETS=1 also builds the brand QA sheets (scripts/brand/*.html) for `vite preview`.
   build: {
     rolldownOptions: {
-      input: { main: "index.html", overlay: "overlay.html" },
+      input: {
+        main: "index.html",
+        overlay: "overlay.html",
+        ...(process.env.GC_SHEETS ? { iconsSheet: "scripts/brand/icons-sheet.html" } : {}),
+      },
     },
   },
 

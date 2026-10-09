@@ -1,8 +1,37 @@
 use crate::{error::AppResult, model::*, pipeline::AppState};
 use std::{path::PathBuf, sync::Arc};
-use tauri::State;
+use tauri::{Manager, State};
 fn state(s: &State<'_, Arc<AppState>>) -> Arc<AppState> {
     Arc::clone(s.inner())
+}
+
+#[tauri::command]
+pub fn models_status(
+    app: tauri::AppHandle,
+    downloads: State<'_, Arc<crate::models::ModelDownloads>>,
+) -> AppResult<ModelsStatus> {
+    let dir = crate::paths::models_dir(&app)?;
+    crate::models::status(&dir, downloads.is_running())
+}
+
+#[tauri::command]
+pub fn models_download(
+    app: tauri::AppHandle,
+    include_optional: bool,
+    downloads: State<'_, Arc<crate::models::ModelDownloads>>,
+) -> AppResult<()> {
+    Arc::clone(downloads.inner()).start(app, include_optional)
+}
+
+#[tauri::command]
+pub fn models_cancel(downloads: State<'_, Arc<crate::models::ModelDownloads>>) -> AppResult<()> {
+    downloads.cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn app_restart(app: tauri::AppHandle) {
+    app.restart();
 }
 #[tauri::command]
 pub async fn setup_status(s: State<'_, Arc<AppState>>) -> AppResult<SetupStatus> {
@@ -267,4 +296,23 @@ pub fn screen_snapshot(s: State<'_, Arc<AppState>>) -> AppResult<ScreenSnapshot>
     s.platform
         .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
         .map_err(crate::error::AppError::from)
+}
+/// Show and focus the main application window.
+#[tauri::command]
+pub fn main_show(app: tauri::AppHandle) -> AppResult<()> {
+    show_main_window(&app)
+}
+
+pub(crate) fn show_main_window(app: &tauri::AppHandle) -> AppResult<()> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| crate::error::AppError::not_found("main window"))?;
+    window.show().map_err(window_error)?;
+    window.unminimize().map_err(window_error)?;
+    window.set_focus().map_err(window_error)?;
+    Ok(())
+}
+
+fn window_error(error: tauri::Error) -> crate::error::AppError {
+    crate::error::AppError::new(crate::error::ErrorKind::Unavailable, error.to_string())
 }

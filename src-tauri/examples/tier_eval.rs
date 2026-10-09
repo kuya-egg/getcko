@@ -17,16 +17,16 @@ use std::{
 };
 
 use getcko_lib::{
-    engine::{
-        self, ChatModel, Grounder,
-        grounder::{GrounderKind, LlamaGrounder},
-    },
+    engine::{self, ChatModel, Grounder, grounder::LlamaGrounder},
     model::{ScreenElement, ScreenMode, ScreenSnapshot, TemplateId},
     pipeline::{self, Aim},
     platform::{self, Platform},
     prompt::TurnPrompt,
     screenshot, templates,
 };
+
+#[path = "common/mod.rs"]
+mod common;
 
 struct Task {
     question: &'static str,
@@ -49,7 +49,7 @@ const CLASS_RECORD: &[Task] = &[
         expect: "Q2, Ana Santos",
     },
     Task {
-        question: "Saan ko ilalagay ang grade ni Maria Reyes sa third quarter?",
+        question: "Where do I put Maria Reyes's grade for the third quarter?",
         expect: "Q3, Maria Reyes",
     },
     Task {
@@ -184,6 +184,29 @@ const APPS: &[App] = &[
     },
 ];
 
+/// Questions about the regression apps that no control answers (an explanation, a
+/// definition, a fact): the target pass should point at nothing.
+fn no_target_questions(app: &str) -> &'static [&'static str] {
+    match app {
+        "Google Chrome" => &[
+            "What does quarterly assessment mean?",
+            "Why is the total of the grades divided by four?",
+            "What is a passing grade?",
+        ],
+        "Finder" => &[
+            "What does a lesson plan usually include?",
+            "What is the difference between a PDF and a Word file?",
+            "When are the grades due this quarter?",
+        ],
+        "TextEdit" => &[
+            "How is the final grade computed?",
+            "What is a class record?",
+            "How should I explain a failing grade to parents?",
+        ],
+        _ => &[],
+    }
+}
+
 /// One screen to measure: the app to open, the page it shows (Chrome) and the questions.
 struct Run {
     /// Row label, and the `--app` / `--dump` name.
@@ -313,27 +336,22 @@ fn main() {
     }
 
     let ai = engine::Engine::load(&manifest.join("models"));
-    let chat = ai.chat.clone().expect("chat model loads");
-    // Tier-3 grounding model under test: GETCKO_GROUNDER=ui-tars|qwen3-vl.
+    let chat = common::chat_under_test(
+        ai.chat.clone().expect("chat model loads"),
+        &manifest.join("models"),
+    );
+    // Tier-3 grounding model under test: GETCKO_GROUNDER=qwen3-vl.
     let grounder = std::env::var("GETCKO_GROUNDER").ok().map(|name| {
+        assert_eq!(name, "qwen3-vl", "unknown GETCKO_GROUNDER");
         let models = manifest.join("models");
         let rt = engine::llama::Runtime::init().expect("runtime");
-        let (kind, model, projector) = match name.as_str() {
-            "ui-tars" => (
-                GrounderKind::UiTars,
-                "UI-TARS-2B-SFT-Q4_K_M.gguf",
-                "mmproj-UI-TARS-2B-SFT-f16.gguf",
-            ),
-            "qwen3-vl" => (
-                GrounderKind::Qwen3Vl,
-                "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
-                "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf",
-            ),
-            other => panic!("unknown GETCKO_GROUNDER {other}"),
-        };
         let started = Instant::now();
-        let grounder = LlamaGrounder::load(&rt, kind, &models.join(model), &models.join(projector))
-            .expect("grounder loads");
+        let grounder = LlamaGrounder::load(
+            &rt,
+            &models.join(engine::GROUNDER_MODEL_FILE),
+            &models.join(engine::GROUNDER_PROJECTOR_FILE),
+        )
+        .expect("grounder loads");
         eprintln!(
             "{} loaded in {} ms",
             grounder.name(),
@@ -351,6 +369,8 @@ fn main() {
     );
     println!("|---|---|---|---|---|---|");
     let mut misses = Vec::new();
+    let mut none_rows = Vec::new();
+    let none_only = args.iter().any(|a| a == "--none-only");
     let only = args
         .iter()
         .position(|a| a == "--app")
@@ -374,6 +394,42 @@ fn main() {
             snapshot.elements.len(),
             pipeline::tier_for(&snapshot)
         );
+        let questions = if heldout {
+            &[][..]
+        } else {
+            no_target_questions(&app.name)
+        };
+        if !questions.is_empty() {
+            let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
+            let mut right = 0;
+            for question in questions {
+                let aim = pipeline::aim(
+                    chat.as_ref() as &dyn ChatModel,
+                    &turn,
+                    &turn.body(question),
+                    ScreenMode::Elements,
+                    &snapshot,
+                    None,
+                    None,
+                    &|| true,
+                )
+                .expect("target pass");
+                match aim {
+                    Aim::Nothing => right += 1,
+                    Aim::Element(e) => misses.push(format!(
+                        "{} no-target: {question:?} → {} {:?}",
+                        app.name, e.role, e.label
+                    )),
+                    Aim::Point { .. } => {
+                        misses.push(format!("{} no-target: {question:?} → point", app.name));
+                    }
+                }
+            }
+            none_rows.push(format!("| {} | {right}/{} |", app.name, questions.len()));
+        }
+        if none_only {
+            continue;
+        }
         for mode in MODES {
             let prepare_start = Instant::now();
             // Tier 3 sees only the screenshot and the text read from it, as in the app.
@@ -427,7 +483,7 @@ fn main() {
                 let aim = pipeline::aim(
                     chat.as_ref() as &dyn ChatModel,
                     &turn,
-                    &turn.body(question, &[]),
+                    &turn.body(question),
                     mode,
                     screen,
                     shot.as_ref(),
@@ -483,6 +539,12 @@ fn main() {
                 app.tasks.len(),
                 image_ms.map_or("—".into(), |ms| format!("{ms} ms"))
             );
+        }
+    }
+    if !none_rows.is_empty() {
+        println!("\n| App | No-target questions answered with no pointer |\n|---|---|");
+        for row in &none_rows {
+            println!("{row}");
         }
     }
     println!("\nMisses:");
@@ -700,7 +762,7 @@ fn survey(
             let aim = pipeline::aim(
                 chat,
                 &turn,
-                &turn.body(&question, &[]),
+                &turn.body(&question),
                 mode,
                 screen,
                 shot.as_ref(),

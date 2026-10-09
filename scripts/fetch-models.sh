@@ -1,29 +1,23 @@
 #!/usr/bin/env bash
-# Downloads the local models GetCko ships with into src-tauri/models/.
-# Run once before `bun run tauri dev` / `bun run tauri:build`. This is the only
-# network use in the whole product (BR-1); the app never downloads at runtime.
-#
-# Works on macOS and on Windows under Git Bash. Re-running skips verified files.
+# Downloads models listed in src-tauri/models.json into src-tauri/models/.
+# Requires python3 (or python, as on Windows), curl, and sha256sum or shasum. Run
+# before building; the app itself never downloads models at runtime.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$ROOT/src-tauri/models"
 mkdir -p "$DEST"
 
-# file name | url | sha256 (from the Hugging Face LFS pointer)
-MODELS=(
-  "gemma-4-E2B-it-Q4_0.gguf|https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf|8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52"
-  "embeddinggemma-300M-Q8_0.gguf|https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf|b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63"
-  "mmproj-gemma-4-E2B-it-Q8_0.gguf|https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-Q8_0.gguf|9406f99c16d68cda4f1f0552192dcc99021ea1fc6d2fd50b1dc3ccf30d04b292"
-)
+# On Windows `python3` is often only the Microsoft Store placeholder; use one that runs.
+PYTHON=python3
+"$PYTHON" -c "" >/dev/null 2>&1 || PYTHON=python
 
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-for entry in "${MODELS[@]}"; do
-  IFS='|' read -r name url sum <<<"$entry"
+while IFS='|' read -r name url sum; do
   path="$DEST/$name"
   if [[ -f "$path" ]] && [[ "$(sha256 "$path")" == "$sum" ]]; then
     echo "ok       $name"
@@ -39,4 +33,5 @@ for entry in "${MODELS[@]}"; do
   fi
   mv "$path.part" "$path"
   echo "ok       $name"
-done
+# Windows Python ends its lines with CRLF; the checksums must not keep the CR.
+done < <("$PYTHON" -c 'import json,sys; [print(x["file"]+"|"+x["url"]+"|"+x["sha256"]) for x in json.load(open(sys.argv[1]))]' "$ROOT/src-tauri/models.json" | tr -d '\r')

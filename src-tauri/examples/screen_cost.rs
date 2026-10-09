@@ -53,7 +53,7 @@ fn main() {
 
     let agent = templates::get(TemplateId::OfficeHelper).draft;
     let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
-    let body = turn.body(QUESTION, &[]);
+    let body = turn.body(QUESTION);
     let ahead = |shot: Option<&Prepared>| {
         let t = Instant::now();
         chat.prefill(&ChatRequest {

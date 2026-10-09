@@ -1,25 +1,29 @@
 //! Prompt construction and streaming answer parsing.
 //!
 //! A turn asks the model twice with prompts that share one prefix (system, screen,
-//! question, passages), so the second request only evaluates its own short suffix:
-//! 1. target: which screen element to point at, constrained to the element ids;
-//! 2. answer: prose that cites passages, told which element the pointer shows.
+//! question), so the second request only evaluates its own suffix:
+//! 1. target: which screen element to point at, constrained to the element ids. It
+//!    never sees the passages: with a passage that answers a fact question in view,
+//!    the model pointed at some element anyway (0/9 no-target questions, finding 49);
+//! 2. answer: the passages, which element the pointer shows, then prose citing them.
 //!
 //! The screen part can be evaluated while the user is still speaking
 //! ([`TurnPrompt::warm_user`]), before the question is known.
 use crate::model::{
-    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenMode, ScreenSnapshot,
-    TaskStep,
+    AgentDraft, AnswerLength, BaseRulesMode, ScreenElement, ScreenMode, ScreenSnapshot, TaskStep,
 };
 
 /// General grounding and answer-quality rules (BR-6).
 pub const BASE_RULES: &str = "Be grounded and honest: answer from the supplied screen and passages. If neither supports an answer, say \"I don't know\". Be brief; lead with the action, then the reason, then the source.";
-/// Product guarantees that remain in force for every agent configuration.
-pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages (BR-4). Never offer to click or type for the user (BR-14). Never write screen element ids such as e12 in an answer.";
+/// Product guarantees that remain in force for every agent configuration: BR-4 (no
+/// invented sources) and BR-14 (no offers to act). The ids stay out of the text: the
+/// model copied "[BR-4]" into answers as if it were a citation.
+pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages. Never offer to click or type for the user. Never write screen element ids such as e12 in an answer.";
 /// Choice meaning "no element fits" in the target pass.
 pub const NO_TARGET: &str = "none";
 
-const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. Reply with the element id only, or none if nothing on the screen fits.";
+const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. If the question asks for an explanation, a definition or a fact rather than a place to act, reply none unless one element on the screen does exactly that; never pick an empty field, a text area or a label just because it is there. Reply with the element id only, or none if nothing on the screen fits.";
+const TIE_BREAK_TASK: &str = "Task: the user means one of these look-alike elements. Compare the question's words (names, numbers, positions, first/second/third/fourth, left/center/right) with each label and reply with the matching label exactly as written:";
 const MARKS_NOTE: &str = "The screenshot shows the same screen; each listed element has a box with its id written at its top-left corner. ";
 const TEXT_NOTE: &str = "Text read from the screenshot; each piece has a box on the screenshot with its id written at its top-left corner:";
 const POINT_TASK: &str = "Task: the screenshot shows the user's screen. Point to the one place where the user should act to do what the question asks. Reply with the point as [y, x] normalized to 0-1000, or none if nothing on the screen fits.";
@@ -59,16 +63,7 @@ impl TurnPrompt {
             system.push_str("\n\nAgent instructions: ");
             system.push_str(&agent.instructions);
         }
-        system.push_str("\n\nLanguage: ");
-        system.push_str(match agent.language {
-            Language::English => "English.",
-            Language::Filipino => "Filipino.",
-            // Measured on scripts/fixtures/taglish-questions.json (MODELS.md): more
-            // natural than "a natural mix of Filipino and English", no less correct.
-            Language::Taglish => {
-                "Taglish: write the way a Filipino co-teacher talks: Filipino sentence structure with everyday English words mixed in (\"i-click mo\", \"yung\", \"tapos\"). Keep screen labels exactly as shown and never name element roles (textField, popUpButton, checkbox). Only give the steps the question asks for. These style rules never override the rules above."
-            }
-        });
+        system.push_str("\n\nAnswer in English. Keep screen labels exactly as shown, never name element roles, and only give the steps the question asks for.");
         let max_tokens = match agent.answer_length {
             AnswerLength::Short => {
                 system.push_str("\nLength: 1-2 sentences.");
@@ -89,7 +84,8 @@ impl TurnPrompt {
                 context.push('\n');
                 context.push_str(&element.id);
                 context.push_str(" | ");
-                context.push_str(&element.role);
+                // Plain words (field, drop-down): the answer pass copied raw roles.
+                context.push_str(plain_role(&element.role));
                 context.push_str(" | ");
                 context.push_str(&truncate_chars(&element.label, 60));
                 context.push_str(" | ");
@@ -161,18 +157,34 @@ impl TurnPrompt {
         task
     }
 
-    /// The last part of the answer-pass prompt: what the pointer shows, then the task.
-    /// `cite`: passages were supplied, so ask for `[n]` citations (asking without
-    /// passages makes the model cite element ids or app names instead).
-    pub fn answer_task(pointed: Pointed<'_>, cite: bool) -> String {
+    /// The answer pass after the shared body (and screenshot): the passages, what the
+    /// pointer shows, then the task. With passages it asks for `[n]` citations (asking
+    /// without passages makes the model cite element ids or app names instead).
+    pub fn answer_task(pointed: Pointed<'_>, passages: &[RetrievedPassage<'_>]) -> String {
         use std::fmt::Write;
         let mut task = String::new();
+        // No passages: say nothing. A marker here gets echoed into the answer
+        // ("[no documents]", "(No passage found)").
+        if !passages.is_empty() {
+            task.push_str("Passages:");
+            for (index, passage) in passages.iter().enumerate() {
+                let _ = write!(
+                    task,
+                    "\n[{}] {}, {}: {}",
+                    index + 1,
+                    passage.document_name,
+                    passage.location,
+                    passage.text
+                );
+            }
+            task.push_str("\n\n");
+        }
         match pointed {
             Pointed::Element(element) => {
                 let _ = write!(
                     task,
                     "The pointer is showing the user this {}: \"{}\"",
-                    element.role,
+                    plain_role(&element.role),
                     truncate_chars(&element.label, 60)
                 );
                 if let Some(value) = &element.value {
@@ -186,33 +198,19 @@ impl TurnPrompt {
             Pointed::Nothing => {}
         }
         task.push_str(ANSWER_TASK);
-        task.push_str(if cite { CITE_TASK } else { NO_SOURCE_TASK });
+        task.push_str(if passages.is_empty() {
+            NO_SOURCE_TASK
+        } else {
+            CITE_TASK
+        });
         task
     }
 
-    /// Screen, task steps, question and passages: the part both passes share. A
-    /// screenshot, when used, goes right after the screen part ([`Self::warm_user`]),
-    /// so it can be evaluated before the question is known.
-    pub fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
-        use std::fmt::Write;
-        let mut user = format!("{}{}Question: {question}\n\n", self.context, self.task);
-        // No passages: say nothing. A marker here gets echoed into the answer
-        // ("[no documents]", "(No passage found)").
-        if !passages.is_empty() {
-            user.push_str("Passages:");
-            for (index, passage) in passages.iter().enumerate() {
-                let _ = write!(
-                    user,
-                    "\n[{}] {}, {}: {}",
-                    index + 1,
-                    passage.document_name,
-                    passage.location,
-                    passage.text
-                );
-            }
-            user.push_str("\n\n");
-        }
-        user
+    /// Screen, task steps and question: the part both passes share. A screenshot,
+    /// when used, goes right after the screen part ([`Self::warm_user`]), so it can
+    /// be evaluated before the question is known.
+    pub fn body(&self, question: &str) -> String {
+        format!("{}{}Question: {question}\n\n", self.context, self.task)
     }
 }
 
@@ -236,6 +234,57 @@ pub fn target_grammar(snapshot: &ScreenSnapshot) -> String {
     choices_grammar(&choices)
 }
 
+/// Label tokens compared between look-alike elements: words, split at spaces and commas.
+fn label_tokens(label: &str) -> Vec<&str> {
+    label
+        .split([' ', ','])
+        .map(|t| t.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// Elements easily confused with `pick`: same role, a label of two or more words
+/// that differs from the pick's in exactly one word ("Q1, Juan Dela Cruz" / "Q2, …",
+/// "Align left" / "Align right"). Includes `pick`; shorter than 2 means none.
+pub fn look_alikes<'a>(
+    pick: &'a ScreenElement,
+    snapshot: &'a ScreenSnapshot,
+) -> Vec<&'a ScreenElement> {
+    let tokens = label_tokens(&pick.label);
+    if tokens.len() < 2 {
+        return Vec::new();
+    }
+    snapshot
+        .elements
+        .iter()
+        .filter(|e| {
+            if e.role != pick.role {
+                return false;
+            }
+            let other = label_tokens(&e.label);
+            other.len() == tokens.len()
+                && other
+                    .iter()
+                    .zip(&tokens)
+                    .filter(|(a, b)| !a.eq_ignore_ascii_case(b))
+                    .count()
+                    == 1
+        })
+        .chain(std::iter::once(pick))
+        .collect()
+}
+
+/// Second target pass among look-alikes: the task text, listing each choice's label.
+/// Reply grammar: [`choices_grammar`] of the same labels.
+pub fn tie_break_task(labels: &[String]) -> String {
+    let mut task = String::from(TIE_BREAK_TASK);
+    for label in labels {
+        task.push('\n');
+        task.push_str(label);
+    }
+    task
+}
+
 /// GBNF (root rule `root`) accepting exactly one of `choices`.
 pub fn choices_grammar(choices: &[String]) -> String {
     let alternatives = choices
@@ -250,6 +299,34 @@ pub fn choices_grammar(choices: &[String]) -> String {
 pub fn target_element<'a>(reply: &str, snapshot: &'a ScreenSnapshot) -> Option<&'a ScreenElement> {
     let id = reply.trim();
     snapshot.elements.iter().find(|element| element.id == id)
+}
+
+/// A shared role ([`crate::platform::ROLES`]) as a user would say it: the answer
+/// pass repeats the word it is given ("this textField" became "sa textField na").
+fn plain_role(role: &str) -> &'static str {
+    match role {
+        "button" => "button",
+        "checkbox" => "checkbox",
+        "radio" => "option",
+        "textField" => "field",
+        "textArea" => "text box",
+        "comboBox" => "drop-down",
+        "list" => "list",
+        "listItem" | "row" => "item",
+        "menu" => "menu",
+        "menuItem" => "menu item",
+        "menuBar" => "menu bar",
+        "tab" => "tab",
+        "link" => "link",
+        "cell" => "cell",
+        "table" => "table",
+        "image" => "picture",
+        "text" => "text",
+        "slider" => "slider",
+        "toolbar" => "toolbar",
+        "window" => "window",
+        _ => "item",
+    }
 }
 
 fn truncate_chars(text: &str, limit: usize) -> String {
@@ -530,17 +607,39 @@ mod tests {
             text: "Enter grades in the Q1 column.",
         }];
         let question = "Where do I put Juan's grade?";
-        let body = turn.body(question, &passages);
+        let body = turn.body(question);
         assert!(body.starts_with(turn.warm_user()));
-        assert!(body.contains("[1] Manual, p. 4: Enter grades"));
+        // The target pass sees only the body: passages belong to the answer pass.
+        assert!(!body.contains("Enter grades"));
         assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
-        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), true);
+        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), &passages);
+        assert!(answer_task.starts_with("Passages:\n[1] Manual, p. 4: Enter grades"));
         assert!(answer_task.contains("\"Q1, Juan Dela Cruz\""));
+        // Roles in the user's words: the answer repeats them.
+        let field = ScreenElement {
+            role: "textField".into(),
+            ..screen.elements[1].clone()
+        };
+        let field_task = TurnPrompt::answer_task(Pointed::Element(&field), &passages);
+        assert!(field_task.contains("this field: "), "{field_task}");
+        assert!(!field_task.contains("textField"));
+        let listed = ScreenSnapshot {
+            elements: vec![field.clone()],
+            ..screen.clone()
+        };
+        let listed_prompt = TurnPrompt::new(&draft, Some(&listed), &[]);
+        assert!(
+            listed_prompt
+                .warm_user()
+                .contains("e2 | field | Q1, Juan Dela Cruz")
+        );
+        assert!(!listed_prompt.warm_user().contains("textField"));
         assert!(!answer_task.contains("e2"));
-        assert!(TurnPrompt::answer_task(Pointed::Guess, true).contains("best guess"));
-        assert!(!TurnPrompt::answer_task(Pointed::Nothing, true).contains("pointer"));
+        assert!(TurnPrompt::answer_task(Pointed::Guess, &passages).contains("best guess"));
+        assert!(!TurnPrompt::answer_task(Pointed::Nothing, &passages).contains("pointer"));
         assert!(answer_task.contains("[n]"));
-        assert!(!TurnPrompt::answer_task(Pointed::Nothing, false).contains("[n]"));
+        let bare = TurnPrompt::answer_task(Pointed::Nothing, &[]);
+        assert!(!bare.contains("[n]") && !bare.contains("Passages"));
         // Tier 2 explains the drawn ids; tier 3 asks for a point, not an id.
         assert!(TurnPrompt::target_task(ScreenMode::ElementsWithImage).contains("id written"));
         assert!(TurnPrompt::target_task(ScreenMode::ImageOnly).contains("[y, x]"));
@@ -553,6 +652,12 @@ mod tests {
         assert!(turn.system.contains(GUARANTEES));
         assert!(!turn.system.contains(BASE_RULES));
         assert_eq!(turn.warm_user(), "(no screen)\n\n");
+    }
+    #[test]
+    fn system_prompt_requires_english_and_hides_element_roles() {
+        let turn = TurnPrompt::new(&templates_draft(), None, &[]);
+        assert!(turn.system.contains("Answer in English."));
+        assert!(turn.system.contains("never name element roles"));
     }
     #[test]
     fn target_grammar_and_reply_mapping() {
@@ -572,6 +677,50 @@ mod tests {
         assert!(target_element(NO_TARGET, &screen).is_none());
         assert!(target_element("e9", &screen).is_none());
     }
+    #[test]
+    fn look_alikes_share_all_but_one_word_and_the_role() {
+        let make = |id: &str, role: &str, label: &str| ScreenElement {
+            id: id.into(),
+            role: role.into(),
+            label: label.into(),
+            value: None,
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            },
+        };
+        let screen = ScreenSnapshot {
+            app_name: String::new(),
+            window_title: None,
+            elements: vec![
+                make("e1", "textField", "Q1, Juan Dela Cruz"),
+                make("e2", "textField", "Q2, Juan Dela Cruz"),
+                make("e3", "textField", "Q2, Ana Santos"),
+                make("e4", "text", "Q3, Juan Dela Cruz"),
+                make("e5", "button", "Desktop"),
+                make("e6", "button", "Downloads"),
+                make("e7", "checkbox", "Align left"),
+                make("e8", "checkbox", "Align right"),
+            ],
+        };
+        let ids = |pick: usize| {
+            let mut ids: Vec<&str> = look_alikes(&screen.elements[pick], &screen)
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        };
+        assert_eq!(ids(1), ["e1", "e2"]);
+        assert_eq!(ids(7), ["e7", "e8"]);
+        // One-word labels are never look-alikes.
+        assert!(look_alikes(&screen.elements[4], &screen).is_empty());
+        let task = tie_break_task(&["Align left".into(), "Align right".into()]);
+        assert!(task.ends_with("\nAlign left\nAlign right"));
+    }
     fn step(question: &str, answer: &str, target_label: Option<&str>) -> TaskStep {
         TaskStep {
             question: question.into(),
@@ -589,7 +738,7 @@ mod tests {
                 step("Then?", "Click Save.", None),
             ],
         );
-        let user = turn.body("Next?", &[]);
+        let user = turn.body("Next?");
         assert!(user.starts_with(turn.warm_user()));
         let first = user
             .find("Step 1: Q: Open file? A: Click File. (pointed at: File)")
@@ -602,7 +751,7 @@ mod tests {
         assert!(user.contains("continuing this task"));
         assert!(
             !TurnPrompt::new(&templates_draft(), None, &[])
-                .body("Next?", &[])
+                .body("Next?")
                 .contains("Earlier steps")
         );
     }
@@ -613,7 +762,7 @@ mod tests {
             None,
             &[step("q", &"x".repeat(1000), None)],
         );
-        let user = turn.body("Next?", &[]);
+        let user = turn.body("Next?");
         assert!(user.contains(&format!("A: {}…", "x".repeat(300))));
         assert!(!user.contains(&"x".repeat(301)));
     }

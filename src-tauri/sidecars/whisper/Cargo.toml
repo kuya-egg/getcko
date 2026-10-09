@@ -1,0 +1,15 @@
+[package]
+name = "getcko-whisper"
+version = "0.1.0"
+edition = "2024"
+description = "GetCko speech-to-text helper: whisper.cpp in its own process (its ggml must not be linked next to llama.cpp's)."
+publish = false
+
+[dependencies]
+whisper-rs = { version = "0.16", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", default-features = false, features = ["metal"] }
+
+[profile.release]
+lto = "thin"

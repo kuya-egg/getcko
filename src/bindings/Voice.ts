@@ -2,6 +2,6 @@
 
 export type Voice = { id: string, name: string, 
 /**
- * BCP-47 tag, e.g. `en-US`, `fil-PH`.
+ * BCP-47 language tag for this voice, e.g. `en-US`.
  */
 language: string, };

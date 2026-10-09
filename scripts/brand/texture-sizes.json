@@ -1,0 +1,62 @@
+{
+  "footprints": {
+    "w": 384,
+    "h": 384
+  },
+  "lamellae": {
+    "w": 96,
+    "h": 108
+  },
+  "skin": {
+    "w": 288,
+    "h": 288
+  },
+  "canopy": {
+    "w": 384,
+    "h": 192
+  },
+  "canopy-bottom": {
+    "w": 384,
+    "h": 192
+  },
+  "canopy-corner": {
+    "w": 320,
+    "h": 320
+  },
+  "pointer": {
+    "w": 240,
+    "h": 240
+  },
+  "weave": {
+    "w": 160,
+    "h": 160
+  },
+  "dither-lo": {
+    "w": 16,
+    "h": 16
+  },
+  "dither-mid": {
+    "w": 16,
+    "h": 16
+  },
+  "dither-hi": {
+    "w": 16,
+    "h": 16
+  },
+  "dither-fade": {
+    "w": 16,
+    "h": 320
+  },
+  "section-hero": {
+    "w": 1040,
+    "h": 560
+  },
+  "section-how": {
+    "w": 640,
+    "h": 176
+  },
+  "section-footer": {
+    "w": 384,
+    "h": 256
+  }
+}

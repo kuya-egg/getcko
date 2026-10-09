@@ -68,6 +68,7 @@ use ::windows::Win32::UI::HiDpi::{
 use ::windows::Win32::UI::Shell::ShellExecuteW;
 use ::windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, GW_HWNDNEXT, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetTopWindow, GetWindow,
+    GetWindowRect,
     GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, OBJID_CLIENT,
     SMTO_ABORTIFHUNG, SW_SHOWNORMAL, SendMessageTimeoutW, WM_GETOBJECT, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
@@ -162,7 +163,7 @@ impl Platform for WindowsPlatform {
         }
         on_worker("getcko-capture", WORKER_TIMEOUT, move || {
             let target = topmost_window(std::process::id()).ok_or(PlatformError::NoFocusedApp)?;
-            capture_monitor(target.bounds)
+            capture_window(&target)
         })
     }
 
@@ -541,6 +542,7 @@ fn snapshot_window(target: &TargetWindow, max_elements: usize) -> Result<ScreenS
             }
         }
     }
+    super::drop_control_captions(&mut candidates);
     let elements = rank_and_assign(candidates, max_elements);
     tracing::debug!(
         pid = target.pid,
@@ -740,8 +742,10 @@ fn describe(node: &IUIAutomationElement, window: Rect, own_pid: u32) -> Option<S
             return None;
         }
         // Unnamed, unrecognised elements can't be asked about or described; they
-        // only lengthen the prompt.
-        if label.is_empty() && role == "other" {
+        // only lengthen the prompt. Empty table cells and rows are wrappers whose
+        // field or text is listed on its own; in a dense grid they alone fill the
+        // element cap (same rule as `macos.rs`).
+        if label.is_empty() && (role == "other" || (value.is_none() && matches!(role, "cell" | "row"))) {
             return None;
         }
         Some(ScreenElement {
@@ -992,18 +996,107 @@ fn file_description(path: &str) -> Option<String> {
     }
 }
 
-/// Captures the monitor holding the centre of `window` (else the nearest one),
-/// cropped to `window`, as `macos.rs` `capture_display` does.
-fn capture_monitor(window: RECT) -> Result<ScreenCapture, PlatformError> {
+/// Captures the target window alone, so GetCko's own windows above it (main window,
+/// overlay) never reach the model, like `macos.rs` capturing the target window and
+/// those below it. Windows.Graphics.Capture draws just that window's content, without
+/// hiding GetCko from screen sharing (BR-3). Cropped to the part on its monitor. Falls
+/// back to the monitor image when the window cannot be captured on its own.
+fn capture_window(target: &TargetWindow) -> Result<ScreenCapture, PlatformError> {
     if !GraphicsCaptureSession::IsSupported().unwrap_or(false) {
         return Err(PlatformError::Unavailable("screen capture is not supported on this Windows version".into()));
     }
+    let (_, monitor_rect, scale) = monitor_of(target.bounds)?;
+    let mut outer = RECT::default();
+    // SAFETY: plain query on a window handle from the system; `outer` is writable.
+    let outer = unsafe { GetWindowRect(target.hwnd, &raw mut outer) }.ok().map(|()| outer);
+    let frame = match grab(Source::Window(target.hwnd)) {
+        Ok(frame) => frame,
+        Err(error) => {
+            tracing::debug!(%error, "window capture failed; capturing the monitor");
+            return capture_monitor(target.bounds);
+        }
+    };
+    let origin = window_capture_origin(target.bounds, outer, frame.width, frame.height);
+    tracing::debug!(
+        image = ?(frame.width, frame.height),
+        frame = ?(target.bounds.left, target.bounds.top, target.bounds.right, target.bounds.bottom),
+        outer = ?outer.map(|r| (r.left, r.top, r.right, r.bottom)),
+        ?origin,
+        "window capture"
+    );
+    // The visible frame on its monitor, in the captured image's pixels.
+    let visible = intersect(target.bounds, monitor_rect).unwrap_or(target.bounds);
+    let image = RECT {
+        left: origin.0,
+        top: origin.1,
+        right: origin.0 + i32::try_from(frame.width).unwrap_or(i32::MAX),
+        bottom: origin.1 + i32::try_from(frame.height).unwrap_or(i32::MAX),
+    };
+    let Some(area) = intersect(visible, image) else {
+        return capture_monitor(target.bounds);
+    };
+    let left = (area.left - image.left) as usize;
+    let top = (area.top - image.top) as usize;
+    let (width, height) = ((area.right - area.left) as usize, (area.bottom - area.top) as usize);
+    let rgba = to_rgba(&frame, left, top, width, height)?;
+    let to_u32 = |v: i32| u32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
+    Ok(ScreenCapture {
+        width: to_u32(area.right - area.left)?,
+        height: to_u32(area.bottom - area.top)?,
+        rgba,
+        x: area.left,
+        y: area.top,
+        monitor: MonitorFrame {
+            x: monitor_rect.left,
+            y: monitor_rect.top,
+            width: to_u32(monitor_rect.right - monitor_rect.left)?,
+            height: to_u32(monitor_rect.bottom - monitor_rect.top)?,
+            scale_factor: scale,
+        },
+    })
+}
+
+/// Desktop position of a window capture's top-left pixel. Windows.Graphics.Capture
+/// returns the visible frame (`frame`, DWM extended frame bounds) on current Windows
+/// and the whole window rectangle (`outer`, invisible resize borders included) on some
+/// older builds; whichever matches the image size wins, else the image is centred on
+/// the visible frame.
+fn window_capture_origin(frame: RECT, outer: Option<RECT>, width: usize, height: usize) -> (i32, i32) {
+    let size = |r: RECT| ((r.right - r.left).max(0) as usize, (r.bottom - r.top).max(0) as usize);
+    if size(frame) == (width, height) {
+        return (frame.left, frame.top);
+    }
+    if let Some(outer) = outer
+        && size(outer) == (width, height)
+    {
+        return (outer.left, outer.top);
+    }
+    let (w, h) = size(frame);
+    let dx = (i64::try_from(width).unwrap_or(0) - i64::try_from(w).unwrap_or(0)) / 2;
+    let dy = (i64::try_from(height).unwrap_or(0) - i64::try_from(h).unwrap_or(0)) / 2;
+    (frame.left - dx as i32, frame.top - dy as i32)
+}
+
+/// The overlap of two rectangles, if any.
+fn intersect(a: RECT, b: RECT) -> Option<RECT> {
+    let r = RECT {
+        left: a.left.max(b.left),
+        top: a.top.max(b.top),
+        right: a.right.min(b.right),
+        bottom: a.bottom.min(b.bottom),
+    };
+    (r.right > r.left && r.bottom > r.top).then_some(r)
+}
+
+/// The monitor holding the centre of `window` (else the nearest one), its desktop
+/// rectangle and its scale factor.
+fn monitor_of(window: RECT) -> Result<(::windows::Win32::Graphics::Gdi::HMONITOR, RECT, f64), PlatformError> {
     let center = POINT {
         x: window.left + (window.right - window.left) / 2,
         y: window.top + (window.bottom - window.top) / 2,
     };
     // SAFETY: plain monitor queries; `info` is a valid MONITORINFO with cbSize set.
-    let (monitor, monitor_rect, scale) = unsafe {
+    unsafe {
         let monitor = MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
         let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
         if !GetMonitorInfoW(monitor, &raw mut info).as_bool() {
@@ -1011,9 +1104,30 @@ fn capture_monitor(window: RECT) -> Result<ScreenCapture, PlatformError> {
         }
         let (mut dpi_x, mut dpi_y) = (96u32, 96u32);
         let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &raw mut dpi_x, &raw mut dpi_y);
-        (monitor, info.rcMonitor, f64::from(dpi_x) / 96.0)
-    };
-    let frame = grab_monitor(monitor).map_err(|e| PlatformError::Os(format!("screen capture failed: {e}")))?;
+        Ok((monitor, info.rcMonitor, f64::from(dpi_x) / 96.0))
+    }
+}
+
+/// `width`×`height` pixels of `frame` from (`left`, `top`), as opaque RGBA.
+fn to_rgba(frame: &Frame, left: usize, top: usize, width: usize, height: usize) -> Result<Vec<u8>, PlatformError> {
+    let mut rgba = Vec::with_capacity(width * height * 4);
+    for row in frame.bgra.chunks(frame.stride).skip(top).take(height) {
+        for pixel in row.as_chunks::<4>().0.iter().skip(left).take(width) {
+            rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
+        }
+    }
+    if rgba.len() == width * height * 4 {
+        Ok(rgba)
+    } else {
+        Err(PlatformError::Os("capture smaller than reported".into()))
+    }
+}
+
+/// Captures the monitor holding the centre of `window` (else the nearest one),
+/// cropped to `window`, as `macos.rs` `capture_display` does without a window id.
+fn capture_monitor(window: RECT) -> Result<ScreenCapture, PlatformError> {
+    let (monitor, monitor_rect, scale) = monitor_of(window)?;
+    let frame = grab(Source::Monitor(monitor)).map_err(|e| PlatformError::Os(format!("screen capture failed: {e}")))?;
     let monitor_width = (monitor_rect.right - monitor_rect.left).max(0) as usize;
     let monitor_height = (monitor_rect.bottom - monitor_rect.top).max(0) as usize;
     if frame.width != monitor_width || frame.height != monitor_height {
@@ -1024,15 +1138,7 @@ fn capture_monitor(window: RECT) -> Result<ScreenCapture, PlatformError> {
     }
     let (left, top, right, bottom) = crop(window, monitor_rect);
     let (crop_width, crop_height) = (right - left, bottom - top);
-    let mut rgba = Vec::with_capacity(crop_width * crop_height * 4);
-    for row in frame.bgra.chunks(frame.stride).skip(top).take(crop_height) {
-        for pixel in row.as_chunks::<4>().0.iter().skip(left).take(crop_width) {
-            rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
-        }
-    }
-    if rgba.len() != crop_width * crop_height * 4 {
-        return Err(PlatformError::Os("capture smaller than reported".into()));
-    }
+    let rgba = to_rgba(&frame, left, top, crop_width, crop_height)?;
     let to_u32 = |v: usize| u32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
     let to_i32 = |v: usize| i32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
     Ok(ScreenCapture {
@@ -1076,9 +1182,17 @@ struct Frame {
     bgra: Vec<u8>,
 }
 
-/// Grabs one frame of `monitor` with Windows.Graphics.Capture (cursor and the
+/// What Windows.Graphics.Capture draws.
+#[derive(Clone, Copy)]
+enum Source {
+    Monitor(::windows::Win32::Graphics::Gdi::HMONITOR),
+    /// That window's content only, even where other windows cover it.
+    Window(HWND),
+}
+
+/// Grabs one frame of `source` with Windows.Graphics.Capture (cursor and the
 /// yellow capture border off where the OS allows it).
-fn grab_monitor(monitor: ::windows::Win32::Graphics::Gdi::HMONITOR) -> ::windows::core::Result<Frame> {
+fn grab(source: Source) -> ::windows::core::Result<Frame> {
     // SAFETY: D3D11/WinRT interop on objects created and used on this thread; the
     // mapped staging texture is read within its row pitch and unmapped before return.
     unsafe {
@@ -1100,7 +1214,10 @@ fn grab_monitor(monitor: ::windows::Win32::Graphics::Gdi::HMONITOR) -> ::windows
         let dxgi: IDXGIDevice = device.cast()?;
         let d3d: IDirect3DDevice = CreateDirect3D11DeviceFromDXGIDevice(&dxgi)?.cast()?;
         let interop = ::windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
-        let item: GraphicsCaptureItem = interop.CreateForMonitor(monitor)?;
+        let item: GraphicsCaptureItem = match source {
+            Source::Monitor(monitor) => interop.CreateForMonitor(monitor)?,
+            Source::Window(hwnd) => interop.CreateForWindow(hwnd)?,
+        };
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
             &d3d,
             DirectXPixelFormat::B8G8R8A8UIntNormalized,
@@ -1291,6 +1408,18 @@ mod tests {
     }
 
     #[test]
+    fn window_capture_origin_matches_the_image_size() {
+        let rect = |left, top, right, bottom| RECT { left, top, right, bottom };
+        let frame = rect(100, 50, 900, 650);
+        let outer = Some(rect(93, 50, 907, 657));
+        assert_eq!(window_capture_origin(frame, outer, 800, 600), (100, 50));
+        assert_eq!(window_capture_origin(frame, outer, 814, 607), (93, 50));
+        assert_eq!(window_capture_origin(frame, None, 810, 610), (95, 45));
+        assert_eq!(intersect(rect(0, 0, 10, 10), rect(5, 5, 20, 20)), Some(rect(5, 5, 10, 10)));
+        assert_eq!(intersect(rect(0, 0, 10, 10), rect(10, 0, 20, 10)), None);
+    }
+
+    #[test]
     fn crop_clamps_window_to_monitor() {
         let rect = |left, top, right, bottom| RECT { left, top, right, bottom };
         let monitor = rect(-1920, 0, 0, 1080);
@@ -1399,6 +1528,20 @@ mod tests {
         assert!(i64::from(capture.x) + i64::from(capture.width) <= i64::from(m.x) + i64::from(m.width));
         assert!(i64::from(capture.y) + i64::from(capture.height) <= i64::from(m.y) + i64::from(m.height));
         assert!(capture.rgba.chunks(4).all(|p| p[3] == 255));
+        // The capture is the target window's visible frame (on its monitor), not the
+        // monitor: GetCko's own windows above it cannot be in it.
+        let target = on_worker("test", WORKER_TIMEOUT, || topmost_window(std::process::id()).map(|t| t.bounds).ok_or(PlatformError::NoFocusedApp))
+            .expect("target window");
+        let visible = intersect(target, RECT {
+            left: m.x,
+            top: m.y,
+            right: m.x + m.width as i32,
+            bottom: m.y + m.height as i32,
+        })
+        .expect("window on its monitor");
+        eprintln!("target frame {:?}", (visible.left, visible.top, visible.right, visible.bottom));
+        assert_eq!((capture.x, capture.y), (visible.left, visible.top));
+        assert_eq!((capture.width as i32, capture.height as i32), (visible.right - visible.left, visible.bottom - visible.top));
         // Not a black frame (a failed capture often is).
         assert!(capture.rgba.chunks(4).any(|p| p[0] > 16 || p[1] > 16 || p[2] > 16));
     }

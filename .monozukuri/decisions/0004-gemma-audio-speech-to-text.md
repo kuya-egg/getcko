@@ -1,6 +1,6 @@
 # ADR 0004: Gemma audio speech-to-text
 
-- Status: accepted
+- Status: Superseded by 0005
 - Date: 2026-10-09
 - Deciders: GetCko team
 

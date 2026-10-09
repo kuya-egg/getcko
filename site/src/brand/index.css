@@ -1,0 +1,112 @@
+/*
+ * GetcKo brand entry. Import once, in src/main.tsx.
+ * Self-contained: any window entry (main, overlay) imports just this file.
+ * Fonts are bundled offline from fontsource. Never load fonts from a CDN.
+ */
+@import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque/standard.css";
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/geist-mono/index.css";
+@import "@fontsource/silkscreen/400.css";
+@import "@fontsource/silkscreen/700.css";
+@import "./tokens.css";
+@import "./theme.css";
+@import "./surfaces.css";
+@import "./icons.css";
+
+@layer base {
+  html {
+    background: var(--gc-bg);
+    color: var(--gc-text);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--gc-bg);
+    color: var(--gc-text);
+    font-family: var(--gc-font-ui);
+    font-size: 16px;
+    line-height: 24px;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--gc-font-display);
+    color: var(--gc-text);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  a {
+    color: var(--gc-accent-text);
+    text-underline-offset: 4px;
+  }
+
+  kbd,
+  code,
+  samp {
+    font-family: var(--gc-font-mono);
+  }
+
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"],
+  progress {
+    accent-color: var(--gc-focus);
+  }
+
+  /* Focus: accent border + wash ring (spec). Visible on every control. */
+  :focus-visible {
+    outline: 2px solid var(--gc-focus);
+    outline-offset: 2px;
+  }
+
+  /* Text-like controls only. Checkboxes/switches keep the 2px focus outline above.
+     Components re-state this with focus-visible: utilities so their border utilities do not win. */
+  input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 3px solid var(--gc-focus-wash);
+    outline-offset: 0;
+    border-color: var(--gc-focus);
+  }
+
+  ::selection {
+    background: var(--gc-selection);
+    color: var(--gc-text);
+  }
+
+  img,
+  svg,
+  canvas,
+  video {
+    display: block;
+    max-width: 100%;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

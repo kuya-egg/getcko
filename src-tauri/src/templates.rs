@@ -1,5 +1,5 @@
 //! Built-in agent templates.
-use crate::model::{AgentDraft, AnswerLength, BaseRulesMode, Language, Template, TemplateId};
+use crate::model::{AgentDraft, AnswerLength, BaseRulesMode, Template, TemplateId};
 
 /// Returns all built-in templates in stable display order.
 pub fn all() -> Vec<Template> {
@@ -7,7 +7,6 @@ pub fn all() -> Vec<Template> {
         TemplateId::OfficeHelper,
         TemplateId::Teacher,
         TemplateId::StudyBuddy,
-        TemplateId::TaglishExplainer,
     ]
     .into_iter()
     .map(get)
@@ -16,30 +15,21 @@ pub fn all() -> Vec<Template> {
 
 /// Returns the built-in template for `id`.
 pub fn get(id: TemplateId) -> Template {
-    let (name, instructions, language, answer_length) = match id {
+    let (name, instructions, answer_length) = match id {
         TemplateId::OfficeHelper => (
             "Office Helper",
             "Help me use new software at work by explaining where to click and why. Cite the office manual when relevant.",
-            Language::English,
             AnswerLength::Short,
         ),
         TemplateId::Teacher => (
             "Teacher",
             "Help with DepEd forms and grading. Explain forms clearly and show grade computations step by step, citing the guide.",
-            Language::Taglish,
             AnswerLength::Normal,
         ),
         TemplateId::StudyBuddy => (
             "Study Buddy",
             "Answer using my notes when available. Quiz me when I ask, and explain concepts clearly.",
-            Language::English,
             AnswerLength::Normal,
-        ),
-        TemplateId::TaglishExplainer => (
-            "Taglish Explainer",
-            "Explain what is on screen in simple Taglish. Point out the relevant screen element and keep the explanation approachable.",
-            Language::Taglish,
-            AnswerLength::Short,
         ),
     };
     Template {
@@ -50,7 +40,6 @@ pub fn get(id: TemplateId) -> Template {
             instructions: instructions.into(),
             base_rules: BaseRulesMode::Include,
             knowledge_base_ids: Vec::new(),
-            language,
             answer_length,
             voice_id: None,
             speech_rate: 1.0,

@@ -19,6 +19,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
+# ~2.7: 2.8 needs Rust 1.90 (rust-version above is 1.88). Matches @tauri-apps/plugin-dialog ~2.7.
+tauri-plugin-dialog = "~2.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -26,6 +28,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.40", features = ["bundled", "load_extension"] }
 sha2 = "0.11"
+ureq = { version = "3", features = ["rustls"] }
+hex = "0.4"
+libc = "0.2"
 ts-rs = "12"
 pdf-extract = "0.12"
 # `mtmd`: Gemma 4 E2B's own audio + vision encoder (mmproj) for speech-to-text and
@@ -38,6 +43,8 @@ tts = "0.26"
 cpal = "0.18"
 # Screenshot downscaling for screen tiers 2-3 (screenshot.rs).
 image = { version = "0.25", default-features = false }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
+quick-xml = "0.42"
 
 # GPU offload with automatic CPU fallback on both OSes (see engine::llama):
 # macOS → Metal (every Apple Silicon Mac); Windows → Vulkan (NVIDIA, AMD and Intel

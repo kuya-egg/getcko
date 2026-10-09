@@ -89,8 +89,15 @@ struct ScreenRead {
     capture_ms: Option<u32>,
 }
 
-/// Picks the tier for `snapshot` and takes the screenshot tiers 2-3 need.
-fn read_screen(app: &tauri::AppHandle, platform: &dyn Platform, snapshot: &ScreenSnapshot) -> ScreenRead {
+/// Picks the tier for `snapshot` and takes the screenshot tiers 2-3 need. With a
+/// `grounder`, tier 3 gets the unmarked screenshot (the grounder reads it itself)
+/// instead of the text read from it.
+fn read_screen(
+    app: &tauri::AppHandle,
+    platform: &dyn Platform,
+    snapshot: &ScreenSnapshot,
+    grounder: bool,
+) -> ScreenRead {
     let mut read = ScreenRead {
         mode: Some(screen_mode(snapshot)),
         ..ScreenRead::default()
@@ -101,7 +108,14 @@ fn read_screen(app: &tauri::AppHandle, platform: &dyn Platform, snapshot: &Scree
         let t = Instant::now();
         match capture_screen(app, platform) {
             Ok(capture) => {
-                if wanted == ScreenMode::ImageOnly {
+                if wanted == ScreenMode::ImageOnly && grounder {
+                    read.shot = Some(crate::screenshot::prepare(capture, None));
+                    read.text = Some(ScreenSnapshot {
+                        app_name: String::new(),
+                        window_title: None,
+                        elements: Vec::new(),
+                    });
+                } else if wanted == ScreenMode::ImageOnly {
                     let (shot, text) = read_screenshot(platform, capture);
                     read.shot = Some(shot);
                     read.text = Some(text);
@@ -130,6 +144,11 @@ const TARGET_MAX_TOKENS: u32 = 8;
 /// `[yyyy, xxxx]` can take one token per character; the grammar ends it sooner.
 const POINT_MAX_TOKENS: u32 = 16;
 
+/// Whether tier 3 uses the grounding model (the engine has loaded and has one).
+fn has_grounder(state: &AppState) -> bool {
+    state.engine.get().is_some_and(|engine| engine.grounder.is_some())
+}
+
 /// Reads the screen and evaluates the active agent's prompt prefix for it, so the turn
 /// only evaluates the question and passages. For a voice turn it also takes the
 /// screenshot tiers 2-3 need and evaluates it with the prefix, unless the overlay
@@ -149,7 +168,7 @@ pub fn prepare_turn(app: &tauri::AppHandle, state: &AppState, purpose: PrepareFo
     };
     let taken = Instant::now();
     let screen = (matches!(purpose, PrepareFor::Voice(_)) && !overlay_focused(app))
-        .then(|| read_screen(app, state.platform.as_ref(), &snapshot));
+        .then(|| read_screen(app, state.platform.as_ref(), &snapshot, has_grounder(state)));
     let shot = screen.as_ref().and_then(|s| s.shot.clone());
     if let PrepareFor::Voice(press) = purpose
         // A newer press has started reading the screen: this one is out of date.
@@ -303,6 +322,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             .active_agent()?
             .ok_or_else(|| AppError::invalid("no agent — pick a template first"))?,
     };
+    let grounder = engine.grounder.as_deref();
     // A voice turn uses the screen read (and evaluated) when its push-to-talk press
     // started. Anything else reads the screen now; the prompt prefix evaluated when
     // the composer opened is reused from the cache if the screen did not change.
@@ -326,7 +346,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                         capture_ms: None,
                         ..screen
                     },
-                    None => read_screen(app, state.platform.as_ref(), &p.snapshot),
+                    None => read_screen(app, state.platform.as_ref(), &p.snapshot, grounder.is_some()),
                 };
                 (Some(p.snapshot), screen)
             }
@@ -337,7 +357,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                     .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
                     .map_err(AppError::from)?;
                 screen_ms = Some(ms(t));
-                let screen = read_screen(app, state.platform.as_ref(), &s);
+                let screen = read_screen(app, state.platform.as_ref(), &s, grounder.is_some());
                 (Some(s), screen)
             }
         }
@@ -375,9 +395,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                 .transcriber
                 .as_ref()
                 .ok_or_else(|| AppError::unavailable("speech-to-text is not available"))?;
-            let text = trans
-                .transcribe(&pcm, agent.draft.language)
-                .map_err(AppError::from)?;
+            let hint = snapshot.as_ref().map(speech_hint).unwrap_or_default();
+            let text = trans.transcribe(&pcm, &hint).map_err(AppError::from)?;
             transcribe_ms = Some(ms(t));
             text.trim().to_owned()
         }
@@ -431,7 +450,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         })
         .collect();
 
-    let body = turn.body(&question, &passages);
+    let body = turn.body(&question);
 
     // Pass 1: where to point.
     let mut pointed = Pointed::Nothing;
@@ -446,7 +465,10 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             mode,
             screen,
             screenshot.as_ref(),
-            None,
+            grounder.map(|model| Grounding {
+                model,
+                question: &question,
+            }),
             &check,
         )? {
             Aim::Element(element) if mode == ScreenMode::ImageOnly => {
@@ -510,7 +532,6 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             && let Err(e) = speaker.speak(
                 &sentence,
                 agent.draft.voice_id.as_deref(),
-                agent.draft.language,
                 agent.draft.speech_rate,
             )
         {
@@ -518,7 +539,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         }
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
-    let answer_task = TurnPrompt::answer_task(pointed, !passages.is_empty());
+    let answer_task = TurnPrompt::answer_task(pointed, &passages);
     let (answer_user, answer_after) = split_at_image(&turn, &body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {
@@ -767,7 +788,66 @@ pub fn aim<'a>(
         shot,
         keep_going,
     )?;
-    Ok(prompt::target_element(&reply, screen).map_or(Aim::Nothing, Aim::Element))
+    let Some(pick) = prompt::target_element(&reply, screen) else {
+        return Ok(Aim::Nothing);
+    };
+    Ok(Aim::Element(tie_break(
+        chat, turn, body, screen, pick, shot, keep_going,
+    )?))
+}
+
+/// Longest tie-break reply: one listed label.
+const TIE_BREAK_MAX_TOKENS: u32 = 32;
+/// More look-alikes than this is a grid the first pass handles better than a list.
+const MAX_LOOK_ALIKES: usize = 8;
+
+/// A second pass when `pick` has look-alikes ([`prompt::look_alikes`]): the model
+/// chooses among their spelled-out labels, which keeps one-off neighbours apart
+/// (quarter columns, left/center/right). Returns `pick` when there is nothing to
+/// weigh or the reply names nothing listed.
+fn tie_break<'a>(
+    chat: &dyn ChatModel,
+    turn: &TurnPrompt,
+    body: &str,
+    screen: &'a ScreenSnapshot,
+    pick: &'a ScreenElement,
+    shot: Option<&Prepared>,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<&'a ScreenElement> {
+    let mut candidates = prompt::look_alikes(pick, screen);
+    candidates.sort_by_key(|e| e.id.as_str());
+    candidates.dedup_by_key(|e| e.id.as_str());
+    if candidates.len() < 2 || candidates.len() > MAX_LOOK_ALIKES {
+        return Ok(pick);
+    }
+    let labels: Vec<String> = candidates.iter().map(|e| e.label.clone()).collect();
+    let mut unique = labels.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    if unique.len() != labels.len() {
+        return Ok(pick);
+    }
+    let reply = target_reply(
+        chat,
+        turn,
+        body,
+        &prompt::tie_break_task(&labels),
+        &prompt::choices_grammar(&labels),
+        TIE_BREAK_MAX_TOKENS,
+        shot,
+        keep_going,
+    )?;
+    let chosen = candidates
+        .iter()
+        .find(|e| e.label == reply.trim())
+        .copied()
+        .unwrap_or(pick);
+    tracing::debug!(
+        candidates = candidates.len(),
+        changed = !std::ptr::eq(chosen, pick),
+        "tie-break among look-alikes"
+    );
+    Ok(chosen)
 }
 
 /// Tier 3: one point on the screenshot. A second pass on a crop around the first
@@ -847,6 +927,101 @@ const MIN_LABELLED: usize = 5;
 /// More controls than this sharing one label (look-alike cells, icons) makes the
 /// list ambiguous without a picture.
 const MAX_SAME_LABEL: usize = 3;
+/// Embeds again, with the configured model, the passages the store kept from another
+/// embedding model ([`Store::reembed_pending`]), then makes their documents searchable
+/// (or failed, asking for a new import, if embedding fails). Runs once the engine is
+/// loaded; emits [`crate::EVENT_DOCUMENT`] for each changed document.
+pub fn reembed_documents<R: tauri::Runtime>(
+    store: &Store,
+    engine: &Engine,
+    app: &tauri::AppHandle<R>,
+) {
+    let pending = match store.reembed_pending() {
+        Ok(pending) if pending.is_empty() => return,
+        Ok(pending) => pending,
+        Err(error) => {
+            tracing::warn!(%error, "could not list passages to re-embed");
+            return;
+        }
+    };
+    let started = Instant::now();
+    let result = engine
+        .embedder
+        .as_ref()
+        .ok_or_else(|| AppError::unavailable("embedding model is not available"))
+        .and_then(|embedder| {
+            for batch in pending.chunks(16) {
+                let texts: Vec<&str> = batch.iter().map(|(_, text)| text.as_str()).collect();
+                let vectors = embedder.embed_documents(&texts).map_err(AppError::from)?;
+                let rows: Vec<(i64, Vec<f32>)> =
+                    batch.iter().map(|(id, _)| *id).zip(vectors).collect();
+                store.reembed_store(&rows)?;
+            }
+            Ok(())
+        });
+    let failure = result.err().map(|error| {
+        tracing::warn!(%error, "re-embedding failed");
+        "could not re-index after a model update; import the file again"
+    });
+    match store.reembed_finish(failure) {
+        Ok(documents) => {
+            tracing::info!(
+                passages = pending.len(),
+                documents = documents.len(),
+                elapsed_ms = ms(started),
+                "passages re-embedded"
+            );
+            for document in documents {
+                let _ = app.emit(crate::EVENT_DOCUMENT, document);
+            }
+        }
+        Err(error) => tracing::warn!(%error, "could not finish re-embedding"),
+    }
+}
+
+/// Words the speaker may say, for speech recognition: the distinct pieces of the
+/// screen's labels and values ("Q1, Juan Dela Cruz" gives "Q1" and "Juan Dela Cruz"),
+/// control roles first, numbers left out, at most [`MAX_HINT_CHARS`]. Whole labels
+/// repeat names across a grid's cells and crowd them out; names in cell values were
+/// missed (the benchmark heard "Juan's" as "once" until the hint carried the name).
+pub fn speech_hint(snapshot: &ScreenSnapshot) -> String {
+    let mut hint = String::new();
+    let mut seen = std::collections::HashSet::new();
+    for preferred in [true, false] {
+        for element in &snapshot.elements {
+            let is_preferred = matches!(
+                element.role.as_str(),
+                "cell" | "textField" | "text" | "button"
+            );
+            if preferred != is_preferred {
+                continue;
+            }
+            let pieces = element
+                .label
+                .split(',')
+                .chain(element.value.as_deref().unwrap_or_default().split(','))
+                .map(str::trim)
+                .filter(|piece| piece.chars().any(char::is_alphabetic));
+            for piece in pieces {
+                if !seen.insert(piece.to_lowercase()) {
+                    continue;
+                }
+                let separator = if hint.is_empty() { 0 } else { 2 };
+                if hint.chars().count() + separator + piece.chars().count() > MAX_HINT_CHARS {
+                    continue;
+                }
+                if !hint.is_empty() {
+                    hint.push_str(", ");
+                }
+                hint.push_str(piece);
+            }
+        }
+    }
+    hint
+}
+
+/// Longest speech hint; Whisper's prompt holds about 224 tokens.
+const MAX_HINT_CHARS: usize = 400;
 
 /// Tier for a snapshot (architecture: three tiers). `GETCKO_SCREEN_MODE` =
 /// `elements` | `elementsWithImage` | `imageOnly` forces one, for measurement.
@@ -1034,7 +1209,7 @@ mod tests {
             }],
         };
         let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
-        let body = turn.body("where is save", &[]);
+        let body = turn.body("where is save");
         // With an image: the context (evaluated ahead, image included) comes first,
         // and the question and task follow the image.
         let (before, after) = split_at_image(&turn, &body, "TASK", true);
@@ -1085,6 +1260,28 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+    #[test]
+    fn speech_hint_splits_labels_takes_values_and_prefers_controls() {
+        let mut snapshot = screen(&["Other", "Q1, Juan Dela Cruz", "Q2, Juan Dela Cruz", "Save"]);
+        snapshot.elements[0].role = "menuItem".into();
+        snapshot.elements[1].role = "cell".into();
+        snapshot.elements[2].role = "cell".into();
+        snapshot.elements[2].value = Some("85".into());
+        snapshot.elements[3].role = "button".into();
+        snapshot.elements[3].value = Some("Maria Reyes".into());
+        assert_eq!(
+            speech_hint(&snapshot),
+            "Q1, Juan Dela Cruz, Q2, Save, Maria Reyes, Other"
+        );
+    }
+
+    #[test]
+    fn speech_hint_truncates_at_label_boundaries_and_handles_empty_snapshot() {
+        assert_eq!(speech_hint(&screen(&[])), "");
+        let long = "x".repeat(390);
+        let snapshot = screen(&[&long, "this piece must not be partially included", "short"]);
+        assert_eq!(speech_hint(&snapshot), format!("{long}, short"));
     }
     #[test]
     fn tier_follows_element_list_quality() {

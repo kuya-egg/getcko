@@ -25,8 +25,6 @@ export type TurnStatus =
 
 export type InputMode = "text" | "voice";
 
-/** How the halo is drawn: exact element box, or a softer marker for tier-3 best-guess points. */
-export type HaloVariant = "exact" | "soft";
 
 export interface OverlayState {
   status: TurnStatus;
@@ -63,7 +61,7 @@ export interface OverlayState {
 
 export type OverlayAction =
   | { type: "event"; event: TurnEvent }
-  /** Mic held (`pttStart()` called). */
+  /** Mic held (`pttStart(screenHelp)` called). */
   | { type: "listen" }
   /**
    * Local ask about to be sent; `question` is known for text input only. `task` holds the earlier

@@ -9,6 +9,12 @@ Build GetCko’s main React/Tauri experience for setup, local knowledge and edit
 - `src/assets/`, local font assets, Tailwind configuration and styles
 - Main-window Tauri capabilities/config changes, coordinated with overlay engineer
 
+Closing the main window (red button or Cmd+W) hides it while the app and the overlay session bar keep running. Cmd+W is a custom "Close Window" menu item (`src-tauri/src/app_menu.rs`) because Tauri's default item closes the key window, which is often the overlay. Use the agent chip ("Open GetCko") or the macOS Dock icon to reopen the main window.
+
+The overlay session bar floats like Wispr Flow: drag it by its grip, switch between compact and expanded, or hide it with ×; Option+Space or a new turn brings it back. Its position (as screen fractions) and its compact/hidden state persist in localStorage. The ask box and the answer card open attached to the bar (above it when there is room, else below, flush with the bar's edge nearer the screen side; `composerBesideBar` in `src/overlay/ui/sessionBarPosition.ts`); the card moves to a free screen corner only when that spot would cover the target or the gecko at it. The gecko follows the cursor (positioned every animation frame by a transform, without a React render), flies to the target when a turn points somewhere, draws the halo on landing, and returns to the cursor once the cursor has rested on the target for 300 ms, or 8 s after the answer finishes (`src/overlay/pointer/follow.ts`). The overlay engineer owns this behavior.
+
+Onboarding is decided once per launch: at the first setup read when a permission is missing, otherwise once the models have finished loading (a missing model is only known then); the main screens show meanwhile.
+
 ## Consumes
 - [IPC commands, events and generated types](../architecture.md#ipc-contract)
 - [Parity and model setup](../architecture.md#cross-platform-parity), [visual tokens](../getcko-design-system.md#2-color-tokens), [components](../getcko-design-system.md#5-components)
@@ -22,7 +28,7 @@ Build GetCko’s main React/Tauri experience for setup, local knowledge and edit
 4. Establish Tailwind design tokens and bundle Bricolage Grotesque, Geist, Geist Mono and Silkscreen locally. Acceptance: offline UI loads those fonts; implementation matches [design-system tokens and typography](../getcko-design-system.md#2-color-tokens) and controls have visible focus and ≥44px hit targets.
 
 ### P1 — 1–4 AM
-5. Add agent language, voice and speed fields, populated with `voiceList`; add “Try this agent” unsaved test chat. Acceptance: English/Filipino/Taglish follows A5; selected voice/speed is applied (A6); test conversation is not saved (A7). Commands/types: `voiceList`, `ask({input:{type:'text',text}, screenHelp:false, agentId})`, `TurnEvent`, `AgentDraft`.
+5. Add per-agent voice and speaking-speed fields, populated with `voiceList`; add “Try this agent” unsaved test chat. User-facing language is English only. Acceptance: answers are in English; selected voice/speed is applied (A6); test conversation is not saved (A7). Commands/types: `voiceList`, `ask({input:{type:'text',text}, screenHelp:false, agentId})`, `TurnEvent`, `AgentDraft`.
 6. Ensure component readiness and model-missing states remain truthful after refresh; communicate any failure states to overlay and backend. Never display unmeasured latency.
 
 ### P2

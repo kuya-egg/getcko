@@ -10,7 +10,9 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 use crate::error::{AppError, ErrorKind};
-use crate::model::{MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenSnapshot};
+use crate::model::{
+    MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenElement, ScreenSnapshot,
+};
 
 /// Upper bound on elements sent to the model; keeps the prompt within the
 /// 0.3 s screen+retrieval budget.
@@ -183,6 +185,37 @@ impl Platform for Unbuilt {
     }
 }
 
+/// Drops static text that only names a control: a form caption next to its field,
+/// a button's own title listed again as text, "Male" beside the radio "Sex, Male".
+/// The model picked such captions instead of the control (held-out forms), and the
+/// duplicate line costs prompt tokens. A caption is dropped when every one of its
+/// words is in one control's label. Both OS walks call this before ranking.
+pub fn drop_control_captions(elements: &mut Vec<ScreenElement>) {
+    let controls: Vec<std::collections::HashSet<String>> = elements
+        .iter()
+        .filter(|e| e.role != "text" && e.role != "other" && !e.label.trim().is_empty())
+        .map(|e| caption_words(&e.label).collect())
+        .collect();
+    if controls.is_empty() {
+        return;
+    }
+    elements.retain(|e| {
+        if e.role != "text" {
+            return true;
+        }
+        let words: Vec<String> = caption_words(&e.label).collect();
+        words.is_empty() || !controls.iter().any(|c| words.iter().all(|w| c.contains(w)))
+    });
+}
+
+/// A label's words for caption matching: lowercase, punctuation and `*` removed.
+fn caption_words(label: &str) -> impl Iterator<Item = String> + '_ {
+    label
+        .split(|c: char| c.is_whitespace() || c == ',' || c == ':' || c == '*')
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+}
+
 /// Checks one snapshot against the [`Platform::snapshot`] contract. OS
 /// implementations call this from their own `#[ignore]` tests run on a real
 /// desktop (`cargo test -- --ignored platform`), so both OSes are held to the same bar.
@@ -209,4 +242,54 @@ pub fn conformance(snapshot: &ScreenSnapshot, max_elements: usize) -> Result<(),
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captions_that_name_a_control_are_dropped() {
+        let make = |role: &str, label: &str| ScreenElement {
+            id: String::new(),
+            role: role.into(),
+            label: label.into(),
+            value: None,
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            },
+        };
+        let mut elements = vec![
+            make("text", "Last name *"),
+            make("textField", "Last name"),
+            make("text", "Place of birth:"),
+            make("textField", "place of birth"),
+            make("text", "Fill in every field"),
+            make("text", "Save"),
+            make("button", "Save"),
+            make("text", "Male"),
+            make("radio", "Sex, Male"),
+            make("text", "Field"),
+            make("text", "Other things"),
+            make("other", "Other things"),
+        ];
+        drop_control_captions(&mut elements);
+        let labels: Vec<&str> = elements.iter().map(|e| e.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "Last name",
+                "place of birth",
+                "Fill in every field",
+                "Save",
+                "Sex, Male",
+                "Field",
+                "Other things",
+                "Other things"
+            ]
+        );
+    }
 }
