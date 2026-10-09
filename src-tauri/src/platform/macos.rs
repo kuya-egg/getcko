@@ -110,7 +110,13 @@ impl Platform for MacPlatform {
 
     fn capture(&self) -> Result<ScreenCapture, PlatformError> {
         let own_pid = std::process::id();
-        let target = topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid))?;
+        let target =
+            match topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid)) {
+                Ok(target) => target,
+                // Only the desktop: the whole main display.
+                Err(PlatformError::NoFocusedApp) => return capture_display(None, None),
+                Err(error) => return Err(error),
+            };
         // Crop to the window the snapshot reads, so the screenshot and the element
         // list describe the same window; fall back to the topmost CG window.
         let window = Ax::application(target.pid)
@@ -677,11 +683,17 @@ fn describe(node: &Ax, window: Option<Rect>, displays: &[(CGRect, f64)]) -> Opti
         }
     }
     let raw_value = node.string("AXValue").filter(|v| !v.trim().is_empty());
+    // The selected tab is already open, so clicking it does nothing, and its name repeats
+    // the window title. Listed, it drew questions that echo the page title: "How do I
+    // create an account?" planned one action, Chrome's tab "Create your account".
+    if role == "tab" && matches!(raw_value.as_deref(), Some("1" | "on")) {
+        return None;
+    }
     let label = ["AXTitle", "AXDescription", "AXPlaceholderValue", "AXHelp"]
         .iter()
         .find_map(|attr| node.string(attr).filter(|s| !s.trim().is_empty()))
         .or_else(|| (role == "text").then(|| raw_value.clone()).flatten())
-        .map(|s| clip(&s))
+        .map(|s| clip(super::without_hover_details(&s)))
         .unwrap_or_default();
     let value = if role == "text" {
         None

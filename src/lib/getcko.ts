@@ -107,6 +107,8 @@ export const onTurn = (cb: (e: TurnEvent) => void): Promise<UnlistenFn> => liste
 export const onDocument = (cb: (d: Document) => void): Promise<UnlistenFn> => listen<Document>("document", (event) => cb(event.payload));
 /** Fires once when model loading finishes, with the final component readiness. */
 export const onEngine = (cb: (components: ComponentStatus[]) => void): Promise<UnlistenFn> => listen<ComponentStatus[]>("engine", (event) => cb(event.payload));
+/** The active agent (`null` when none), after every agent create, edit, delete or switch. */
+export const onAgent = (cb: (agent: Agent | null) => void): Promise<UnlistenFn> => listen<Agent | null>("agent", (event) => cb(event.payload));
 /** Read model download status. */
 export const modelsStatus = (): Promise<ModelsStatus> => command("models_status");
 /** Start downloading missing models. */

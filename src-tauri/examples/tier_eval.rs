@@ -403,17 +403,15 @@ fn main() {
             let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
             let mut right = 0;
             for question in questions {
-                let aim = pipeline::aim(
+                let aim = aim_like_app(
                     chat.as_ref() as &dyn ChatModel,
                     &turn,
-                    &turn.body(question),
+                    question,
                     ScreenMode::Elements,
                     &snapshot,
                     None,
                     None,
-                    &|| true,
-                )
-                .expect("target pass");
+                );
                 match aim {
                     Aim::Nothing => right += 1,
                     Aim::Element(e) => misses.push(format!(
@@ -480,19 +478,17 @@ fn main() {
                     app.name
                 );
                 let started = Instant::now();
-                let aim = pipeline::aim(
+                let aim = aim_like_app(
                     chat.as_ref() as &dyn ChatModel,
                     &turn,
-                    &turn.body(question),
+                    question,
                     mode,
                     screen,
                     shot.as_ref(),
                     grounder
                         .as_ref()
                         .map(|g| pipeline::Grounding { model: g, question }),
-                    &|| true,
-                )
-                .expect("target pass");
+                );
                 times.push(started.elapsed().as_millis());
                 let point = match aim {
                     Aim::Element(e) => Some(e.bounds.center()),
@@ -654,6 +650,39 @@ fn finder_folder() -> PathBuf {
     folder
 }
 
+/// The app's target pass for a new question (`pipeline::run`): with an element list, a
+/// guided-task plan of two or more actions not yet done points at its first action.
+fn aim_like_app<'a>(
+    chat: &dyn ChatModel,
+    turn: &TurnPrompt,
+    question: &str,
+    mode: ScreenMode,
+    screen: &'a ScreenSnapshot,
+    shot: Option<&screenshot::Prepared>,
+    grounding: Option<pipeline::Grounding<'_>>,
+) -> Aim<'a> {
+    let body = turn.body(question);
+    let actions = if pipeline::plans(mode) {
+        let actions = pipeline::plan(chat, &turn.system, &body, &|| true).expect("plan pass");
+        pipeline::without_done(actions, screen)
+    } else {
+        Vec::new()
+    };
+    let action_body = (actions.len() >= 2).then(|| turn.body(&actions[0]));
+    pipeline::aim_step(
+        chat,
+        &turn,
+        &body,
+        action_body.as_deref(),
+        mode,
+        screen,
+        shot,
+        grounding,
+        &|| true,
+    )
+    .expect("target pass")
+}
+
 fn run(program: &str, args: &[&str]) {
     let status = Command::new(program)
         .args(args)
@@ -759,17 +788,7 @@ fn survey(
         for pick in &picks {
             let question = format!("Where is the \"{}\" {}?", pick.label, pick.role);
             let started = Instant::now();
-            let aim = pipeline::aim(
-                chat,
-                &turn,
-                &turn.body(&question),
-                mode,
-                screen,
-                shot.as_ref(),
-                None,
-                &|| true,
-            )
-            .expect("target pass");
+            let aim = aim_like_app(chat, &turn, &question, mode, screen, shot.as_ref(), None);
             times.push(started.elapsed().as_millis());
             let point = match aim {
                 Aim::Element(e) => Some(e.bounds.center()),

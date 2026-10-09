@@ -162,8 +162,12 @@ impl Platform for WindowsPlatform {
             return Err(PlatformError::PermissionDenied(PermissionKind::ScreenRecording));
         }
         on_worker("getcko-capture", WORKER_TIMEOUT, move || {
-            let target = topmost_window(std::process::id()).ok_or(PlatformError::NoFocusedApp)?;
-            capture_window(&target)
+            match topmost_window(std::process::id()) {
+                Some(target) => capture_window(&target),
+                // Only the desktop: the whole primary monitor (tier 3 reads it), as
+                // `macos.rs` captures the main display.
+                None => capture_primary_monitor(),
+            }
         })
     }
 
@@ -729,13 +733,18 @@ fn describe(node: &IUIAutomationElement, window: Rect, own_pid: u32) -> Option<S
                 .filter(|v| !v.trim().is_empty())
                 .or_else(|| state_value(node, role))
         };
+        // The selected tab is already open: clicking it does nothing, and its name
+        // repeats the window title (same rule as `macos.rs`).
+        if role == "tab" && raw_value.as_deref() == Some("1") {
+            return None;
+        }
         let label = [node.CachedName().ok(), node.CachedHelpText().ok()]
             .into_iter()
             .flatten()
             .map(|s| s.to_string())
             .find(|s| !s.trim().is_empty())
             .or_else(|| (role == "text").then(|| raw_value.clone()).flatten())
-            .map(|s| clip(&s))
+            .map(|s| clip(super::without_hover_details(&s)))
             .unwrap_or_default();
         let value = if role == "text" { None } else { raw_value.map(|v| clip(&v)) };
         if label.is_empty() && value.is_none() && !actionable(role) {
@@ -1054,6 +1063,15 @@ fn capture_window(target: &TargetWindow) -> Result<ScreenCapture, PlatformError>
             scale_factor: scale,
         },
     })
+}
+
+/// The whole primary monitor (the one at the desktop origin).
+fn capture_primary_monitor() -> Result<ScreenCapture, PlatformError> {
+    if !GraphicsCaptureSession::IsSupported().unwrap_or(false) {
+        return Err(PlatformError::Unavailable("screen capture is not supported on this Windows version".into()));
+    }
+    let (_, primary, _) = monitor_of(RECT { left: 0, top: 0, right: 1, bottom: 1 })?;
+    capture_monitor(primary)
 }
 
 /// Desktop position of a window capture's top-left pixel. Windows.Graphics.Capture

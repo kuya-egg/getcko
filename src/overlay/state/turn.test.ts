@@ -91,6 +91,28 @@ describe("guided task (S5)", () => {
     expect(nextTaskSteps(noScreen)).toBeNull();
     expect(nextTaskSteps(run([askText(), { type: "askResolved", turnId: 1 }]))).toBeNull();
   });
+
+  it("follows the core plan: shows its step and stops offering next after the last one", () => {
+    const finishPlanned = (from: OverlayState, n: number, total: number, task: TaskStep[]) =>
+      run(
+        [
+          askText(`step ${n}`, task),
+          { type: "askResolved", turnId: n },
+          ev({ type: "step", turnId: n, number: n, total }),
+          ev({ type: "target", turnId: n, target }),
+          ev({ type: "finished", answer: { ...answer(n, target), question: `step ${n}`, text: `answer ${n}` } }),
+        ],
+        from,
+      );
+    const first = finishPlanned(initialOverlayState, 1, 2, []);
+    expect(first.planStep).toEqual({ number: 1, total: 2 });
+    const steps = nextTaskSteps(first);
+    expect(steps).toHaveLength(1);
+    const last = finishPlanned(first, 2, 2, steps ?? []);
+    expect(nextTaskSteps(last)).toBeNull();
+    // A new ask starts without the old plan's step.
+    expect(run([askText("unrelated")], last).planStep).toBeNull();
+  });
 });
 
 describe("reduceOverlay", () => {

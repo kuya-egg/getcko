@@ -180,22 +180,46 @@ pub async fn agent_get(id: AgentId, s: State<'_, Arc<AppState>>) -> AppResult<Ag
         .await
         .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
+/// After an agent change: sends the agent GetCko now uses ([`crate::EVENT_AGENT`]), so the
+/// overlay's bar names it at once instead of at the next question.
+fn announce_active(app: &tauri::AppHandle, store: &crate::store::Store) {
+    use tauri::Emitter;
+    match store.active_agent() {
+        Ok(agent) => {
+            if let Err(error) = app.emit(crate::EVENT_AGENT, agent) {
+                tracing::warn!("could not emit agent event: {error}");
+            }
+        }
+        Err(error) => tracing::warn!("could not read the active agent: {error}"),
+    }
+}
 #[tauri::command]
-pub async fn agent_create(draft: AgentDraft, s: State<'_, Arc<AppState>>) -> AppResult<Agent> {
+pub async fn agent_create(
+    draft: AgentDraft,
+    app: tauri::AppHandle,
+    s: State<'_, Arc<AppState>>,
+) -> AppResult<Agent> {
     let x = Arc::clone(&s.store);
-    tauri::async_runtime::spawn_blocking(move || x.agent_create(&draft, None))
-        .await
-        .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = x.agent_create(&draft, None)?;
+        announce_active(&app, &x);
+        Ok(agent)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
 pub async fn agent_create_from_template(
     template_id: TemplateId,
+    app: tauri::AppHandle,
     s: State<'_, Arc<AppState>>,
 ) -> AppResult<Agent> {
     let x = Arc::clone(&s.store);
     tauri::async_runtime::spawn_blocking(move || {
         let t = crate::templates::get(template_id);
-        x.agent_create(&t.draft, Some(template_id))
+        let agent = x.agent_create(&t.draft, Some(template_id))?;
+        announce_active(&app, &x);
+        Ok(agent)
     })
     .await
     .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
@@ -204,12 +228,17 @@ pub async fn agent_create_from_template(
 pub async fn agent_update(
     id: AgentId,
     draft: AgentDraft,
+    app: tauri::AppHandle,
     s: State<'_, Arc<AppState>>,
 ) -> AppResult<Agent> {
     let x = Arc::clone(&s.store);
-    tauri::async_runtime::spawn_blocking(move || x.agent_update(id, &draft))
-        .await
-        .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = x.agent_update(id, &draft)?;
+        announce_active(&app, &x);
+        Ok(agent)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
 pub async fn agent_duplicate(id: AgentId, s: State<'_, Arc<AppState>>) -> AppResult<Agent> {
@@ -219,11 +248,19 @@ pub async fn agent_duplicate(id: AgentId, s: State<'_, Arc<AppState>>) -> AppRes
         .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
-pub async fn agent_delete(id: AgentId, s: State<'_, Arc<AppState>>) -> AppResult<()> {
+pub async fn agent_delete(
+    id: AgentId,
+    app: tauri::AppHandle,
+    s: State<'_, Arc<AppState>>,
+) -> AppResult<()> {
     let x = Arc::clone(&s.store);
-    tauri::async_runtime::spawn_blocking(move || x.agent_delete(id))
-        .await
-        .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        x.agent_delete(id)?;
+        announce_active(&app, &x);
+        Ok(())
+    })
+    .await
+    .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
 pub async fn agent_active(s: State<'_, Arc<AppState>>) -> AppResult<Option<Agent>> {
@@ -233,11 +270,19 @@ pub async fn agent_active(s: State<'_, Arc<AppState>>) -> AppResult<Option<Agent
         .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
-pub async fn agent_set_active(id: AgentId, s: State<'_, Arc<AppState>>) -> AppResult<Agent> {
+pub async fn agent_set_active(
+    id: AgentId,
+    app: tauri::AppHandle,
+    s: State<'_, Arc<AppState>>,
+) -> AppResult<Agent> {
     let x = Arc::clone(&s.store);
-    tauri::async_runtime::spawn_blocking(move || x.set_active_agent(id))
-        .await
-        .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = x.set_active_agent(id)?;
+        announce_active(&app, &x);
+        Ok(agent)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
 pub async fn ptt_start(

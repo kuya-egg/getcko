@@ -7,7 +7,7 @@ import type { GeckoPose, OverlayAction, OverlayState } from "../types";
 /** PRD S5: a guided task keeps context for at most this many steps (core `MAX_TASK_STEPS`). */
 export const MAX_TASK_STEPS = 5;
 
-type TurnFields = Pick<OverlayState, "question" | "target" | "sentences" | "answer" | "error">;
+type TurnFields = Pick<OverlayState, "question" | "target" | "sentences" | "answer" | "error" | "planStep">;
 
 const freshTurn: TurnFields = {
   question: null,
@@ -15,6 +15,7 @@ const freshTurn: TurnFields = {
   sentences: [],
   answer: null,
   error: null,
+  planStep: null,
 };
 
 export const initialOverlayState: OverlayState = {
@@ -35,10 +36,12 @@ export function turnIdOf(event: TurnEvent): TurnId {
 
 /**
  * Earlier steps to send when the user asks for the next step, or `null` when this answer cannot
- * be continued: it is not a finished screen-help answer, or the task already has MAX_TASK_STEPS.
+ * be continued: it is not a finished screen-help answer, it was the plan's last step, or the task
+ * already has MAX_TASK_STEPS.
  */
 export function nextTaskSteps(state: OverlayState): TaskStep[] | null {
   if (state.status !== "finished" || !state.screenHelp || state.answer === null) return null;
+  if (state.planStep !== null && state.planStep.number >= state.planStep.total) return null;
   if (state.task.length + 1 >= MAX_TASK_STEPS) return null;
   const step: TaskStep = {
     question: state.answer.question,
@@ -76,6 +79,8 @@ function applyEvent(state: OverlayState, event: TurnEvent): OverlayState {
       return { ...s, status: event.phase };
     case "question":
       return { ...s, question: event.text };
+    case "step":
+      return { ...s, planStep: { number: event.number, total: event.total } };
     case "target":
       return { ...s, target: event.target };
     case "sentence":

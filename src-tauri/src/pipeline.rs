@@ -47,6 +47,30 @@ pub struct AppState {
     pub turns: Arc<TurnControl>,
     /// Screen read when push-to-talk started; the voice turn of that press uses it.
     pub prepared: Mutex<Option<PreparedScreen>>,
+    /// The plan of the guided task in progress, if any ([`Guide`]).
+    pub guide: Mutex<Option<Guide>>,
+}
+
+/// A guided task's plan (PRD S5): the actions from the plan pass, in plain words, and
+/// how many have been shown. Each "next step" request grounds the next action on the
+/// screen as it is then; any other question replaces the plan.
+pub struct Guide {
+    actions: Vec<String>,
+    shown: usize,
+    /// Task steps answered before this plan was made (a plan made at "next step").
+    before: usize,
+}
+
+/// What a guided-task turn shows.
+enum GuideStep {
+    /// Step `number` of the `total` steps of the task: `action`, in plain words.
+    Action {
+        number: usize,
+        total: usize,
+        action: String,
+    },
+    /// "Next step" planned the task again and nothing is left to do on the screen.
+    Done,
 }
 
 /// The screen read when push-to-talk started, whose prompt prefix (screenshot
@@ -143,6 +167,8 @@ const PREPARED_MAX_AGE: Duration = Duration::from_secs(60);
 const TARGET_MAX_TOKENS: u32 = 8;
 /// `[yyyy, xxxx]` can take one token per character; the grammar ends it sooner.
 const POINT_MAX_TOKENS: u32 = 16;
+/// App name in the prompt when no app is focused, only the desktop.
+const DESKTOP: &str = "Desktop (no app open)";
 
 /// Whether tier 3 uses the grounding model (the engine has loaded and has one).
 fn has_grounder(state: &AppState) -> bool {
@@ -359,10 +385,21 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             }
             None => {
                 let t = Instant::now();
-                let s = state
+                let s = match state
                     .platform
                     .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
-                    .map_err(AppError::from)?;
+                {
+                    Ok(snapshot) => snapshot,
+                    // Only the desktop is showing: no element list, so tier 3 reads a
+                    // screenshot of the whole display (Platform::capture), and with no
+                    // screenshot either the answer comes without a pointer.
+                    Err(crate::platform::PlatformError::NoFocusedApp) => ScreenSnapshot {
+                        app_name: DESKTOP.into(),
+                        window_title: None,
+                        elements: Vec::new(),
+                    },
+                    Err(error) => return Err(AppError::from(error)),
+                };
                 screen_ms = Some(ms(t));
                 let screen = read_screen(app, state.platform.as_ref(), &s, grounder.is_some());
                 (Some(s), screen)
@@ -464,16 +501,49 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
 
     let body = turn.body(&question);
 
+    // Guided task (PRD S5): the action this turn shows. A "next step" without a stored
+    // plan plans the task's first question again, on the screen as it is now.
+    let task = request.task.as_deref().unwrap_or_default();
+    let resume = task.first().map(|first| {
+        (
+            TurnPrompt::new(&agent.draft, snapshot.as_ref(), &[]).body(&first.question),
+            task.len(),
+        )
+    });
+    let step = guide_step(
+        state,
+        chat.as_ref(),
+        &turn.system,
+        &body,
+        snapshot.as_ref(),
+        request.next_step.unwrap_or(false).then(|| {
+            resume
+                .as_ref()
+                .map(|(body, before)| (body.as_str(), *before))
+        }),
+        request.screen_help && mode.is_some_and(plans),
+        &check,
+    )?;
+    // The target pass grounds the step's action alone, on the screen as it is now.
+    let step_body = match &step {
+        Some(GuideStep::Action { action, .. }) => {
+            Some(TurnPrompt::new(&agent.draft, snapshot.as_ref(), &[]).body(action))
+        }
+        _ => None,
+    };
+    let task_done = matches!(step, Some(GuideStep::Done));
+
     // Pass 1: where to point.
     let mut pointed = Pointed::Nothing;
     let mut target = None;
     let mut confidence = Confidence::Normal;
     let screen = screen_text.as_ref().or(snapshot.as_ref());
-    if let (Some(mode), Some(screen)) = (mode, screen) {
-        match aim(
+    if let (Some(mode), Some(screen), false) = (mode, screen, task_done) {
+        let aimed = aim_step(
             chat.as_ref(),
             &turn,
             &body,
+            step_body.as_deref(),
             mode,
             screen,
             screenshot.as_ref(),
@@ -482,7 +552,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                 question: &question,
             }),
             &check,
-        )? {
+        )?;
+        match aimed {
             Aim::Element(element) if mode == ScreenMode::ImageOnly => {
                 // Text read from a screenshot: its box is exact, but whether it is
                 // the control to use is a guess (BR-18), so no element id.
@@ -510,6 +581,16 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     if !check() {
         emit(app, TurnEvent::Cancelled { turn_id: id });
         return Ok(());
+    }
+    if let Some(GuideStep::Action { number, total, .. }) = &step {
+        emit(
+            app,
+            TurnEvent::Step {
+                turn_id: id,
+                number: u32::try_from(*number).unwrap_or(u32::MAX),
+                total: u32::try_from(*total).unwrap_or(u32::MAX),
+            },
+        );
     }
     emit(
         app,
@@ -551,7 +632,23 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         }
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
-    let answer_task = TurnPrompt::answer_task(pointed, &passages);
+    let answer_task = match &step {
+        Some(GuideStep::Action {
+            number,
+            total,
+            action,
+        }) => format!(
+            "{}{}",
+            prompt::step_note(*number, *total, action),
+            TurnPrompt::answer_task(pointed, &passages)
+        ),
+        Some(GuideStep::Done) => format!(
+            "{}{}",
+            prompt::TASK_DONE_NOTE,
+            TurnPrompt::answer_task(pointed, &passages)
+        ),
+        None => TurnPrompt::answer_task(pointed, &passages),
+    };
     let (answer_user, answer_after) = split_at_image(&turn, &body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {
@@ -714,6 +811,198 @@ pub enum Aim<'a> {
         monitor: MonitorFrame,
     },
     Nothing,
+}
+
+/// Screen modes a guided-task plan is made in: the plan names elements by label, so
+/// tier 3 (the screenshot alone) has none.
+#[must_use]
+pub fn plans(mode: ScreenMode) -> bool {
+    matches!(mode, ScreenMode::Elements | ScreenMode::ElementsWithImage)
+}
+
+/// Target pass for a turn: the guided-task action alone (`action_body`, from
+/// [`plan`]) when there is one, else the question (`body`); an action that matches
+/// nothing on screen falls back to the question.
+#[allow(clippy::too_many_arguments)] // mirrors `aim`
+pub fn aim_step<'a>(
+    chat: &dyn ChatModel,
+    turn: &TurnPrompt,
+    body: &str,
+    action_body: Option<&str>,
+    mode: ScreenMode,
+    screen: &'a ScreenSnapshot,
+    shot: Option<&Prepared>,
+    grounding: Option<Grounding<'_>>,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Aim<'a>> {
+    if let Some(action_body) = action_body {
+        let found = aim(
+            chat,
+            turn,
+            action_body,
+            mode,
+            screen,
+            shot,
+            grounding,
+            keep_going,
+        )?;
+        if !matches!(found, Aim::Nothing) {
+            return Ok(found);
+        }
+    }
+    aim(
+        chat, turn, body, mode, screen, shot, grounding, keep_going,
+    )
+}
+
+/// Plan pass (PRD S5): the actions that answer `body`'s question, in plain words and
+/// in order ([`prompt::PLAN_TASK`]); empty when the question needs no actions.
+pub fn plan(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Vec<String>> {
+    let mut reply = String::new();
+    chat.generate(
+        &ChatRequest {
+            system,
+            user: &format!("{body}{}", prompt::PLAN_TASK),
+            max_tokens: prompt::PLAN_MAX_TOKENS,
+            grammar: None,
+            image: None,
+        },
+        &mut |piece| {
+            reply.push_str(piece);
+            if keep_going() {
+                Flow::Continue
+            } else {
+                Flow::Stop
+            }
+        },
+    )
+    .map_err(AppError::from)?;
+    let actions = prompt::plan_actions(&reply);
+    // The actions quote the question: log their number only.
+    tracing::debug!(actions = actions.len(), "plan pass");
+    Ok(actions)
+}
+
+/// `actions` without those the screen shows as done: an action naming a text field
+/// that already holds a value, or a checkbox already ticked (the longest label the
+/// action contains names its element). Told to leave such actions out, the plan pass
+/// copied the values into them instead (task_eval: resumed at the right step 0/15).
+#[must_use]
+pub fn without_done(actions: Vec<String>, screen: &ScreenSnapshot) -> Vec<String> {
+    let is_done = |element: &ScreenElement| match element.role.as_str() {
+        "textField" => element
+            .value
+            .as_deref()
+            .is_some_and(|v| !v.trim().is_empty()),
+        "checkbox" => matches!(element.value.as_deref(), Some("1" | "on")),
+        _ => false,
+    };
+    actions
+        .into_iter()
+        .filter(|action| {
+            let action = action.to_lowercase();
+            !screen
+                .elements
+                .iter()
+                .filter(|e| !e.label.trim().is_empty() && action.contains(&e.label.to_lowercase()))
+                .max_by_key(|e| e.label.len())
+                .is_some_and(is_done)
+        })
+        .collect()
+}
+
+/// The guided-task step this turn shows, and the stored plan updated.
+///
+/// `next` is set for a "next step" request; it holds the task's first question as a
+/// prompt body and the number of steps answered so far, when known. With a stored plan
+/// the next action is taken (none left: `None`). Without one (the question was a single
+/// action, or asked on another screen) that question is planned again on `screen` as it
+/// is now, leaving out what it shows as done ([`without_done`]); every action done is
+/// [`GuideStep::Done`]. Otherwise the plan is replaced: when `plan_on`, a plan with two
+/// or more actions not yet done starts at its first.
+#[allow(clippy::too_many_arguments)]
+fn guide_step(
+    state: &AppState,
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    screen: Option<&ScreenSnapshot>,
+    next: Option<Option<(&str, usize)>>,
+    plan_on: bool,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Option<GuideStep>> {
+    let lock = || {
+        state
+            .guide
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    };
+    let not_done = |actions: Vec<String>| match screen {
+        Some(screen) => without_done(actions, screen),
+        None => actions,
+    };
+    if let Some(resume) = next {
+        if let Some(guide) = lock().as_mut() {
+            let Some(action) = guide.actions.get(guide.shown).cloned() else {
+                return Ok(None);
+            };
+            guide.shown += 1;
+            return Ok(Some(GuideStep::Action {
+                number: guide.before + guide.shown,
+                total: guide.before + guide.actions.len(),
+                action,
+            }));
+        }
+        let Some((original, before)) = resume.filter(|_| plan_on) else {
+            return Ok(None);
+        };
+        let planned = plan(chat, system, original, keep_going)?;
+        if planned.is_empty() {
+            return Ok(None);
+        }
+        let mut actions = not_done(planned);
+        // A task has at most MAX_TASK_STEPS steps in all.
+        actions.truncate(crate::model::MAX_TASK_STEPS.saturating_sub(before));
+        let Some(action) = actions.first().cloned() else {
+            return Ok(Some(GuideStep::Done));
+        };
+        let total = before + actions.len();
+        *lock() = Some(Guide {
+            actions,
+            shown: 1,
+            before,
+        });
+        return Ok(Some(GuideStep::Action {
+            number: before + 1,
+            total,
+            action,
+        }));
+    }
+    *lock() = None;
+    if !plan_on {
+        return Ok(None);
+    }
+    let actions = not_done(plan(chat, system, body, keep_going)?);
+    if actions.len() < 2 {
+        return Ok(None);
+    }
+    let action = actions[0].clone();
+    let total = actions.len();
+    *lock() = Some(Guide {
+        actions,
+        shown: 1,
+        before: 0,
+    });
+    Ok(Some(GuideStep::Action {
+        number: 1,
+        total,
+        action,
+    }))
 }
 
 /// The user prompt for a pass (`body` then `task`) as the text before the image and
@@ -1272,6 +1561,51 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn done_actions_are_filled_fields_and_ticked_boxes_only() {
+        let mut snapshot = screen(&[
+            "Full name",
+            "Password",
+            "Confirm password",
+            "I agree",
+            "Search",
+            "Create account",
+        ]);
+        let set = |s: &mut ScreenSnapshot, i: usize, role: &str, value: Option<&str>| {
+            s.elements[i].role = role.into();
+            s.elements[i].value = value.map(Into::into);
+        };
+        set(&mut snapshot, 0, "textField", Some("Juan"));
+        set(&mut snapshot, 1, "textField", Some("secret"));
+        set(&mut snapshot, 2, "textField", Some("  "));
+        set(&mut snapshot, 3, "checkbox", Some("1"));
+        set(&mut snapshot, 4, "textField", None);
+        let actions = [
+            "Type your name in Full name",
+            "Type your password in Password",
+            // Names "Password" too; the longer label is its element, still empty.
+            "Type it again in Confirm password",
+            "Tick I agree",
+            "Type in Search",
+            "Click Create account",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            without_done(actions, &snapshot),
+            [
+                "Type it again in Confirm password",
+                "Type in Search",
+                "Click Create account"
+            ]
+        );
+        snapshot.elements[3].value = Some("0".into());
+        assert_eq!(
+            without_done(vec!["Tick I agree".into()], &snapshot),
+            ["Tick I agree"]
+        );
     }
     #[test]
     fn speech_hint_splits_labels_takes_values_and_prefers_controls() {
