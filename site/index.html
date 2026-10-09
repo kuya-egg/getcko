@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>GetCko · Your manual. Your screen.</title>
+    <meta name="description" content="GetCko is a private desktop copilot. It reads your documents and your screen, answers out loud, and points at where to click. Every model runs on your laptop." />
+    <meta name="theme-color" content="#FFFFFF" />
+    <script>
+      // Decide before first paint whether the logo intro plays (once per session; ?intro forces it).
+      try {
+        var force = /[?&]intro\b/.test(location.search);
+        var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (!reduce && (force || !sessionStorage.getItem("gc-intro"))) document.documentElement.classList.add("intro-pending");
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

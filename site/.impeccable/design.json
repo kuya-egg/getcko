@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T00:00:00Z",
+  "title": "Design System: GetCko",
+  "extensions": {
+    "colorMeta": {
+      "gecko": {
+        "role": "primary",
+        "displayName": "Gecko Green",
+        "canonical": "#39D86F",
+        "tonalRamp": [
+          "#0E5E2E",
+          "#0F7A3D",
+          "#1FA855",
+          "#39D86F",
+          "#9BF2B6",
+          "#D6F8E0",
+          "#EAFBEF",
+          "#F6FDF8"
+        ]
+      },
+      "gecko-deep": {
+        "role": "primary",
+        "displayName": "Deep Gecko",
+        "canonical": "#0F7A3D",
+        "tonalRamp": [
+          "#0E5E2E",
+          "#0F7A3D",
+          "#1FA855",
+          "#39D86F",
+          "#9BF2B6",
+          "#D6F8E0",
+          "#EAFBEF",
+          "#F6FDF8"
+        ]
+      },
+      "gecko-wash": {
+        "role": "primary",
+        "displayName": "Gecko Wash",
+        "canonical": "#EAFBEF",
+        "tonalRamp": [
+          "#0E5E2E",
+          "#0F7A3D",
+          "#1FA855",
+          "#39D86F",
+          "#9BF2B6",
+          "#D6F8E0",
+          "#EAFBEF",
+          "#F6FDF8"
+        ]
+      },
+      "sun": {
+        "role": "tertiary",
+        "displayName": "Sun",
+        "canonical": "#FFC83D",
+        "tonalRamp": [
+          "oklch(25% 0.16 85)",
+          "oklch(35% 0.16 85)",
+          "oklch(45% 0.16 85)",
+          "oklch(55% 0.16 85)",
+          "oklch(65% 0.16 85)",
+          "oklch(75% 0.16 85)",
+          "oklch(85% 0.16 85)",
+          "oklch(95% 0.16 85)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "canonical": "#F6F7F4",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "canonical": "#E6E8E3",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Line Strong",
+        "canonical": "#C9CCC4",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#0E0F0C",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#4A4D46",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "#73776E",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "ink-raised": {
+        "role": "neutral",
+        "displayName": "Ink Raised",
+        "canonical": "#1E201B",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "ink-key": {
+        "role": "neutral",
+        "displayName": "Ink Key",
+        "canonical": "#2A2C27",
+        "tonalRamp": [
+          "#0E0F0C",
+          "#1E201B",
+          "#2A2C27",
+          "#4A4D46",
+          "#73776E",
+          "#C9CCC4",
+          "#E6E8E3",
+          "#F6F7F4"
+        ]
+      },
+      "alert": {
+        "role": "error",
+        "displayName": "Alert",
+        "canonical": "#B3321D",
+        "tonalRamp": [
+          "oklch(15% 0.14 32)",
+          "oklch(27% 0.14 32)",
+          "oklch(39% 0.14 32)",
+          "oklch(51% 0.14 32)",
+          "oklch(63% 0.14 32)",
+          "oklch(75% 0.14 32)",
+          "oklch(87% 0.14 32)",
+          "oklch(95% 0.14 32)"
+        ]
+      },
+      "alert-wash": {
+        "role": "error",
+        "displayName": "Alert Wash",
+        "canonical": "#FDECEA",
+        "tonalRamp": [
+          "oklch(15% 0.14 32)",
+          "oklch(27% 0.14 32)",
+          "oklch(39% 0.14 32)",
+          "oklch(51% 0.14 32)",
+          "oklch(63% 0.14 32)",
+          "oklch(75% 0.14 32)",
+          "oklch(87% 0.14 32)",
+          "oklch(95% 0.14 32)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Section headings; hero/payoff/closing scale it via --u or clamp."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": ".h1"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card and principle titles; speech bubble."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default UI text."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "Section intros, ink-2, max 34em."
+      },
+      "label": {
+        "displayName": "Eyebrow",
+        "purpose": "Uppercase eyebrows and table headers."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Meta text, ink-3."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Keycaps, file tags, references."
+      },
+      "pixel": {
+        "displayName": "Pixel",
+        "purpose": "Closing pixel badge only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "gc-shadow-1",
+        "value": "0 1px 2px rgba(14, 15, 12, .06), 0 4px 12px rgba(14, 15, 12, .06)",
+        "purpose": "Agent-card hover lift."
+      },
+      {
+        "name": "gc-shadow-2",
+        "value": "0 2px 4px rgba(14, 15, 12, .06), 0 16px 40px rgba(14, 15, 12, .12)",
+        "purpose": "Floating windows: sheet, manual, answer card, demo dialog."
+      },
+      {
+        "name": "halo",
+        "value": "0 0 0 3px #FFC83D",
+        "purpose": "Single pointed target on light surfaces."
+      },
+      {
+        "name": "halo-on-dark",
+        "value": "0 0 0 6px #FFFFFF, 0 0 0 10px #FFC83D",
+        "purpose": "Single pointed target on dark surfaces."
+      },
+      {
+        "name": "focus",
+        "value": "outline 3px #EAFBEF offset 2px + 0 0 0 2px #0F7A3D",
+        "purpose": "Default keyboard focus."
+      },
+      {
+        "name": "focus-over-halo",
+        "value": "0 0 0 2px #0F7A3D, 0 0 0 5px #FFC83D",
+        "purpose": "Focus on a lit target; focus border stays visible inside the sun."
+      },
+      {
+        "name": "keycap-bevel",
+        "value": "inset 0 -2px 0 #E6E8E3",
+        "purpose": "Keycaps and inline kbd."
+      }
+    ],
+    "motion": [
+      {
+        "name": "gc-ease-out",
+        "value": "cubic-bezier(.2, .8, .2, 1)",
+        "purpose": "All CSS state transitions."
+      },
+      {
+        "name": "button-press",
+        "value": "transform 150ms",
+        "purpose": "Button hover -1px."
+      },
+      {
+        "name": "halo-in",
+        "value": "box-shadow 250ms, 80ms after landing",
+        "purpose": "Sun halo follows the gecko."
+      },
+      {
+        "name": "morph",
+        "value": "easeInOutCubic; delay row/27*420ms + 0-260ms; dur 760-1180ms; quadratic arc",
+        "purpose": "Dissolve/re-form between slots."
+      },
+      {
+        "name": "passage-trail",
+        "value": "2 squares / 45ms, 6px lattice, 1300-1800ms each",
+        "purpose": "Stepped pour from passage to target."
+      },
+      {
+        "name": "flow",
+        "value": "7 px/target, 6-10px, 650-1000ms, 45ms stagger",
+        "purpose": "Fill passage cells."
+      },
+      {
+        "name": "blink",
+        "value": "140ms every 2.6-5.8s",
+        "purpose": "Idle pointing pose."
+      },
+      {
+        "name": "hero-scroll",
+        "value": "--s 0.04-0.42, --dock 0.16-0.40, --q 0.32-0.60, --t 0.42-0.58 of 250svh",
+        "purpose": "Sticky hero scroll-morph."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "no particles/trail/blink; settle in slot; transitions off",
+        "purpose": "prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "xs",
+        "value": "359px"
+      },
+      {
+        "name": "flat",
+        "value": "899px"
+      },
+      {
+        "name": "md",
+        "value": "1099px"
+      },
+      {
+        "name": "lg",
+        "value": "1399px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ink CTA with 2px ink border; lifts 1px on hover.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Download for Mac</button>",
+      "css": ":root{--gc-paper:#FFFFFF;--gc-canvas:#F6F7F4;--gc-line:#E6E8E3;--gc-line-strong:#C9CCC4;--gc-ink:#0E0F0C;--gc-ink-2:#4A4D46;--gc-ink-3:#73776E;--gc-ink-raised:#1E201B;--gc-gecko:#39D86F;--gc-gecko-deep:#0F7A3D;--gc-gecko-wash:#EAFBEF;--gc-sun:#FFC83D;--gc-shadow-1:0 1px 2px rgba(14,15,12,.06),0 4px 12px rgba(14,15,12,.06);} .ds-btn{display:inline-flex;align-items:center;gap:10px;height:48px;padding:0 20px;border:2px solid #0E0F0C;border-radius:14px;font-family:'Geist Sans',system-ui,sans-serif;font-weight:600;font-size:16px;line-height:20px;cursor:pointer;transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .25s cubic-bezier(.2,.8,.2,1)}.ds-btn-primary{background:#0E0F0C;color:#FFFFFF}.ds-btn:hover{transform:translateY(-1px)}.ds-btn:active{transform:none}.ds-btn:focus-visible{outline:3px solid #EAFBEF;outline-offset:2px;box-shadow:0 0 0 2px #0F7A3D}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Paper button, same ink border.",
+      "html": "<button class=\"ds-btn-secondary\">Watch the demo</button>",
+      "css": ".ds-btn-secondary{display:inline-flex;align-items:center;height:48px;padding:0 20px;border:2px solid #0E0F0C;border-radius:14px;background:#FFFFFF;color:#0E0F0C;font-family:'Geist Sans',system-ui,sans-serif;font-weight:600;font-size:16px;cursor:pointer;transition:transform .15s cubic-bezier(.2,.8,.2,1)}.ds-btn-secondary:hover{transform:translateY(-1px)}.ds-btn-secondary:focus-visible{outline:3px solid #EAFBEF;outline-offset:2px;box-shadow:0 0 0 2px #0F7A3D}"
+    },
+    {
+      "name": "Keycap",
+      "kind": "custom",
+      "refersTo": "keycap",
+      "description": "Mono key with bottom bevel.",
+      "html": "<span class=\"ds-key\">⌥</span><span class=\"ds-key\">Space</span>",
+      "css": ".ds-key{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 8px;margin-right:4px;font:500 13px/1 'Geist Mono',ui-monospace,monospace;color:#0E0F0C;background:#FFFFFF;border:1px solid #C9CCC4;border-radius:7px;box-shadow:inset 0 -2px 0 #E6E8E3}"
+    },
+    {
+      "name": "Status Chips",
+      "kind": "chip",
+      "refersTo": "chip-ready",
+      "description": "Pill status chips: ready, processing, queued, offline.",
+      "html": "<span class=\"ds-chip ds-ready\"><i class=\"ds-dot\"></i>Ready</span> <span class=\"ds-chip ds-proc\">Processing</span> <span class=\"ds-chip ds-queued\">Queued</span> <span class=\"ds-chip ds-off\">Offline</span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;font-family:'Geist Sans',system-ui,sans-serif;font-weight:500;font-size:13px;line-height:16px}.ds-ready{background:#EAFBEF;color:#0F7A3D}.ds-proc{background:#F6F7F4;color:#4A4D46}.ds-queued{background:#FFFFFF;color:#73776E;box-shadow:inset 0 0 0 1px #E6E8E3}.ds-off{background:#0E0F0C;color:#FFFFFF}.ds-dot{width:8px;height:8px;border-radius:50%;background:#39D86F}"
+    },
+    {
+      "name": "Citation Chip",
+      "kind": "chip",
+      "refersTo": "chip-cite",
+      "description": "Source reference; fills with wash when lit.",
+      "html": "<span class=\"ds-cite\">manual.pdf · p.14</span>",
+      "css": ".ds-cite{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:999px;background:#FFFFFF;color:#0F7A3D;box-shadow:inset 0 0 0 1.5px #0F7A3D;font-family:'Geist Sans',system-ui,sans-serif;font-weight:500;font-size:13px;transition:background .3s}.ds-cite:hover{background:#EAFBEF}"
+    },
+    {
+      "name": "Answer Card",
+      "kind": "card",
+      "refersTo": "answer-card",
+      "description": "Floating answer window with question well.",
+      "html": "<div class=\"ds-answer\"><div class=\"ds-ah\">Gecko <span class=\"ds-chip-r\">Ready</span></div><div class=\"ds-q\">Which row breaks the budget?</div><p>Row 12, column F. See <span class=\"ds-cite2\">manual p.14</span>.</p></div>",
+      "css": ".ds-answer{width:340px;background:#FFFFFF;border:1px solid #E6E8E3;border-radius:20px;box-shadow:0 2px 4px rgba(14,15,12,.06),0 16px 40px rgba(14,15,12,.12);padding:22px;display:grid;gap:12px;font-family:'Geist Sans',system-ui,sans-serif;color:#0E0F0C;line-height:1.55}.ds-ah{display:flex;align-items:center;font-weight:600}.ds-chip-r{margin-left:auto;height:24px;padding:0 10px;border-radius:999px;background:#EAFBEF;color:#0F7A3D;font-size:13px;display:inline-flex;align-items:center}.ds-q{background:#F6F7F4;border-radius:8px;padding:10px 14px;color:#4A4D46}.ds-cite2{color:#0F7A3D;box-shadow:inset 0 0 0 1.5px #0F7A3D;border-radius:999px;padding:2px 8px;font-size:13px}"
+    },
+    {
+      "name": "Agent Card",
+      "kind": "card",
+      "refersTo": "agent-card",
+      "description": "Agent with wash tile; lifts with shadow-1 on hover.",
+      "html": "<div class=\"ds-agent\" tabindex=\"0\"><div class=\"ds-tile\">◆</div><strong>Spreadsheet agent</strong><span class=\"ds-line\">Reads your sheets locally.</span></div>",
+      "css": ".ds-agent{width:260px;display:flex;flex-direction:column;gap:10px;padding:20px;border:1px solid #E6E8E3;border-radius:20px;background:#FFFFFF;font-family:'Geist Sans',system-ui,sans-serif;color:#0E0F0C;transition:box-shadow .25s cubic-bezier(.2,.8,.2,1),transform .25s cubic-bezier(.2,.8,.2,1)}.ds-agent:hover{box-shadow:0 1px 2px rgba(14,15,12,.06),0 4px 12px rgba(14,15,12,.06);transform:translateY(-2px)}.ds-agent:focus-visible{outline:3px solid #EAFBEF;outline-offset:2px}.ds-tile{display:grid;place-items:center;width:44px;height:44px;border-radius:8px;background:#EAFBEF;color:#0F7A3D}.ds-line{color:#4A4D46}"
+    },
+    {
+      "name": "Session Bar",
+      "kind": "custom",
+      "refersTo": "session-bar",
+      "description": "Dark pill voice session with agent chip and waveform.",
+      "html": "<div class=\"ds-sb\"><span class=\"ds-sa\">Spreadsheet agent</span><span class=\"ds-wave\"><i></i><i></i><i></i><i></i></span><span class=\"ds-hint\">Hold ⌥ Space</span></div>",
+      "css": ".ds-sb{display:inline-flex;align-items:center;gap:8px;padding:10px;background:#0E0F0C;border-radius:999px;color:#FFFFFF;font-family:'Geist Sans',system-ui,sans-serif;}.ds-sa{height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;background:#1E201B;font-weight:500;font-size:14px}.ds-hint{color:#C9CCC4;font-size:13px;padding:0 10px 0 4px}.ds-wave{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 6px}.ds-wave i{width:3px;height:8px;border-radius:2px;background:#FFFFFF;animation:dsw .9s ease-in-out infinite}.ds-wave i:nth-child(2){animation-delay:-70ms}.ds-wave i:nth-child(3){animation-delay:-140ms}.ds-wave i:nth-child(4){animation-delay:-210ms}@keyframes dsw{0%,100%{height:6px}50%{height:26px}}"
+    },
+    {
+      "name": "Target Halo",
+      "kind": "custom",
+      "refersTo": "sheet-window",
+      "description": "Sheet cell lit by the sun halo while the gecko points at it; focus ring stacks inside.",
+      "html": "<span class=\"ds-cell\" tabindex=\"0\">$4,280</span>",
+      "css": ".ds-cell{display:inline-flex;align-items:center;padding:6px 12px;background:#FFFFFF;border:1px solid #E6E8E3;font-family:'Geist Sans',system-ui,sans-serif;box-shadow:0 0 0 3px #FFC83D}.ds-cell:focus-visible{outline:none;box-shadow:0 0 0 2px #0F7A3D,0 0 0 5px #FFC83D}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Pointing Gecko",
+    "overview": "A calm, paper-white product world where one pixel gecko is the only animated, colorful character. Everything else is ink on paper: real app chrome (spreadsheet window, PDF manual, session bar, agent cards) drawn flat and legible, so the gecko can travel between them and point at the exact cell, button, or citation that answers the question. Color is spent on meaning: green means \"the gecko / ready / cited\", sun yellow means \"this exact thing, right now\".\n\nDensity is product-like, not marketing-like: real UI at real sizes, integer pixel art, no decoration. Depth comes from 1px lines and two ambient shadows; motion comes almost entirely from the gecko's single canvas.",
+    "keyCharacteristics": [
+      "One persistent canvas gecko per screen, moving between registered slots by dissolving and re-forming.",
+      "Sun halo lights only the single target the gecko is pointing at.",
+      "Ink-black primary buttons, 14px corners, 2px ink border.",
+      "Flat paper surfaces, hairline `line` borders, no gradients or glows.",
+      "Integer sprite cell sizes (3–7px) snapped to device pixels."
+    ],
+    "rules": [
+      {
+        "name": "The Sun Is A Pointer Rule",
+        "body": "Sun yellow appears on at most one element per screen: the target the gecko points at, via `data-gc-target=\"on\"`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Green Means Gecko Rule",
+        "body": "Green is reserved for the gecko, readiness, and citations. It is never decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Weight Carries Display Rule",
+        "body": "Headlines get size and 700–800 weight with negative tracking; never color or gradient text.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Glow Rule",
+        "body": "No gradients, blurred glows, or colored shadows anywhere. Emphasis is a solid ring, never a bloom.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** render the gecko only through the director canvas; add a new appearance by registering a `GeckoSlot` with an integer `--cell`.",
+      "**Do** give every slot at most one target, and let the director own `data-gc-target`.",
+      "**Do** keep sprite cells integer (3, 4, 5, 6, 7px) and size layout around `22 × cell` by `27 × cell`.",
+      "**Do** keep the focus ring visible over a lit halo: 2px gecko-deep border then sun (`0 0 0 2px focus-border, 0 0 0 5px sun`; dark adds a 5px paper gap before a 9px sun ring). Default focus: 3px wash outline, 2px offset, 2px deep shadow.",
+      "**Do** collapse to the flat stack below 900px and under reduced motion; the gecko still points, it just doesn't travel.",
+      "**Do** use ink primary buttons with 2px ink borders and 14px corners."
+    ],
+    "donts": [
+      "**Don't** show more than one gecko on screen, or a second static gecko image beside the canvas.",
+      "**Don't** use sun yellow anywhere except the single pointed target's halo.",
+      "**Don't** use gradients, glows, blur, or colored shadows.",
+      "**Don't** scale the sprite by fractional factors or smooth it.",
+      "**Don't** color the sheet window's traffic lights; chrome stays neutral.",
+      "**Don't** set green text on white; use gecko-deep for text and strokes."
+    ]
+  }
+}

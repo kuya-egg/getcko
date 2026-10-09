@@ -51,6 +51,7 @@ cargo test -- --ignored
 | `src/bindings/` | Generated TypeScript types from Rust |
 | `docs/architecture.md` | Architecture, IPC contract, setup, and runtime details |
 | `docs/team/` | Team ownership and implementation briefs |
+| `site/` | Landing page (Vite + React), its `PRODUCT.md` / `DESIGN.md`, and approved design mocks in `site/.impeccable/` |
 
 ## Team briefs
 
@@ -72,10 +73,27 @@ cargo test -- --ignored
 | Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
 | Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |
 
+## Landing page (`site/`)
+
+The marketing site is a separate Vite + React app that follows `docs/getcko-design-system.md`. Live at https://getcko.vercel.app.
+
+```sh
+cd site
+bun install
+bun run dev           # http://localhost:5180 (append ?intro to replay the logo intro)
+bun run build         # typecheck and build into site/dist
+vercel deploy --prod  # deploy to Vercel (project: getcko)
+```
+
+Before launch, set the flags in `site/src/config.ts`:
+
+- `DEMO_VIDEO_URL`: the hosted 1-minute demo video. Until it's set, "Watch the 1-min demo" opens a "being recorded" notice.
+- `REPO_PUBLIC`: set to `true` once the repo is public under an OSI license. This shows the GitHub links and the "Open source" line.
+
 ## Licenses and disclosure
 
 - **sqlite-vector 1.1.2:** Apache-2.0; vendored binaries are in `src-tauri/vendor/sqlite-vector`.
 - **Gemma 4 E2B and EmbeddingGemma 300M:** both are Gemma models; review and comply with the applicable [Gemma Terms of Use](https://ai.google.dev/gemma/terms) for each model.
 - **llama.cpp:** MIT, used through `llama-cpp-2`.
 - **Tauri:** Tauri 2 framework and associated crates; see [Tauri’s licensing information](https://tauri.app/).
-- **AI development tools:** Claude Code was used during development.
+- **AI development tools:** Claude Code was used during development. The landing page's design mocks were generated with OpenAI Codex image generation, and its code was written and reviewed with Claude and Codex.

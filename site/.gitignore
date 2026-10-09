@@ -1,0 +1,6 @@
+.vercel
+.env*
+tsconfig.tsbuildinfo
+# Regenerable design QA output (captures, diffs, build-phase state)
+.impeccable/review/
+.impeccable/build/
