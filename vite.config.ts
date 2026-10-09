@@ -9,21 +9,15 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
 
-  // Main window. (The Screen Help overlay entry is added with the overlay work.)
-  build: {
-    rollupOptions: {
-      // GC_SHEETS=1 also builds the brand QA sheets (scripts/brand/*.html) for `vite preview`.
-      input: {
-        main: "index.html",
-        ...(process.env.GC_SHEETS ? { iconsSheet: "scripts/brand/icons-sheet.html" } : {}),
-      },
-    },
-  },
-
   // Two windows, two pages: `main` (index.html) and `overlay` (overlay.html).
+  // GC_SHEETS=1 also builds the brand QA sheets (scripts/brand/*.html) for `vite preview`.
   build: {
     rolldownOptions: {
-      input: { main: "index.html", overlay: "overlay.html" },
+      input: {
+        main: "index.html",
+        overlay: "overlay.html",
+        ...(process.env.GC_SHEETS ? { iconsSheet: "scripts/brand/icons-sheet.html" } : {}),
+      },
     },
   },
 
