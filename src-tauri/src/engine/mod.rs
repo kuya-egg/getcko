@@ -8,7 +8,7 @@
 //! | [`Embedder`]  | `llama::LlamaEmbedder` (EmbeddingGemma) | core (done)      |
 //! | [`Transcriber`] | `llama::LlamaChat`: Gemma 4 E2B's own audio encoder (mmproj) | macOS engineer |
 //! | [`Speaker`]   | `speaker::OsSpeaker`: OS voices via the `tts` crate | macOS engineer |
-//! | [`Microphone`]| `cpal`, 16 kHz mono           | Windows engineer |
+//! | [`Microphone`]| `microphone::CpalMicrophone`: default input, 16 kHz mono | macOS engineer |
 //!
 //! Speech-to-text uses Gemma rather than whisper.cpp: whisper-rs bundles its own ggml,
 //! which collides with llama.cpp's at link time (duplicate `ggml_*` symbols), and the
@@ -18,6 +18,7 @@
 //! async runtime.
 
 pub mod llama;
+pub mod microphone;
 pub mod speaker;
 
 use std::path::Path;
@@ -222,6 +223,8 @@ impl Engine {
         };
         let chat = chat.map(|m| m as Arc<dyn ChatModel>);
         let speaker = speaker::OsSpeaker::new().map(|s| Arc::new(s) as Arc<dyn Speaker>);
+        let microphone =
+            microphone::CpalMicrophone::new().map(|m| Arc::new(m) as Arc<dyn Microphone>);
         record(
             EngineComponent::Chat,
             chat.as_ref().map(|_| ()).map_err(ToString::to_string),
@@ -240,7 +243,7 @@ impl Engine {
         );
         record(
             EngineComponent::Microphone,
-            Err("microphone capture is not built yet".into()),
+            microphone.as_ref().map(|_| ()).map_err(ToString::to_string),
         );
 
         Self {
@@ -248,7 +251,7 @@ impl Engine {
             embedder: embedder.ok(),
             transcriber: transcriber.ok(),
             speaker: speaker.ok(),
-            microphone: None,
+            microphone: microphone.ok(),
             status,
         }
     }

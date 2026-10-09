@@ -34,6 +34,8 @@ pdf-extract = "0.12"
 llama-cpp-2 = { version = "0.1.159", default-features = false, features = ["mtmd"] }
 # Text-to-speech through OS voices; same crate on both OSes.
 tts = "0.26"
+# Push-to-talk capture (engine/microphone.rs), shared by both OSes.
+cpal = "0.18"
 
 # GPU offload with automatic CPU fallback on both OSes (see engine::llama):
 # macOS → Metal (every Apple Silicon Mac); Windows → Vulkan (NVIDIA, AMD and Intel
