@@ -110,8 +110,23 @@ impl Platform for MacPlatform {
     fn capture(&self) -> Result<ScreenCapture, PlatformError> {
         let own_pid = std::process::id();
         let target = topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid))?;
-        capture_display(target.bounds)
+        // Crop to the window the snapshot reads, so the screenshot and the element
+        // list describe the same window; fall back to the topmost CG window.
+        let window = Ax::application(target.pid)
+            .as_ref()
+            .and_then(focused_window)
+            .and_then(|w| w.frame())
+            .map(|f| CGRect::new(&CGPoint::new(f.x, f.y), &CGSize::new(f.width, f.height)))
+            .or(target.bounds);
+        capture_display(window)
     }
+}
+
+/// The window an app's accessibility tree treats as current.
+fn focused_window(app: &Ax) -> Option<Ax> {
+    app.element("AXFocusedWindow")
+        .or_else(|| app.element("AXMainWindow"))
+        .or_else(|| app.elements("AXWindows").into_iter().next())
 }
 
 fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot, PlatformError> {
@@ -124,11 +139,7 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
     let started = Instant::now();
     let app = Ax::application(target.pid)
         .ok_or_else(|| PlatformError::Os("could not open the app's accessibility tree".into()))?;
-    let window = app
-        .element("AXFocusedWindow")
-        .or_else(|| app.element("AXMainWindow"))
-        .or_else(|| app.elements("AXWindows").into_iter().next())
-        .ok_or(PlatformError::NoFocusedApp)?;
+    let window = focused_window(&app).ok_or(PlatformError::NoFocusedApp)?;
     let window_title = window.string("AXTitle").filter(|t| !t.is_empty());
     let window_rect = window.frame();
     let displays = displays();
@@ -155,9 +166,9 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
             candidates.push(el);
         }
         if depth < MAX_DEPTH {
-            let mut children = node.elements("AXVisibleChildren");
+            let mut children = node.elements("AXChildren");
             if children.is_empty() {
-                children = node.elements("AXChildren");
+                children = node.elements("AXVisibleChildren");
             }
             queue.extend(children.into_iter().map(|child| (child, depth + 1)));
         }
@@ -664,9 +675,20 @@ fn to_physical(rect: Rect, displays: &[(CGRect, f64)]) -> Rect {
     }
 }
 
-/// Keeps actionable elements first when over budget, then orders the kept set
+/// Drops exact duplicates (tables list each cell under both a row and a column),
+/// keeps actionable elements first when over budget, then orders the kept set
 /// top-to-bottom, left-to-right and assigns ids `e1..`.
 fn rank_and_assign(mut elements: Vec<ScreenElement>, max_elements: usize) -> Vec<ScreenElement> {
+    let mut seen = std::collections::HashSet::new();
+    elements.retain(|e| {
+        let b = &e.bounds;
+        seen.insert((
+            e.role.clone(),
+            e.label.clone(),
+            e.value.clone(),
+            [b.x, b.y, b.width, b.height].map(f64::to_bits),
+        ))
+    });
     elements.sort_by_key(|e| !actionable(&e.role));
     elements.truncate(max_elements);
     elements.sort_by(|a, b| {
@@ -717,6 +739,10 @@ mod tests {
         );
         assert_eq!(result.len(), 2);
         assert!(result.iter().all(|e| e.role == "button"));
+        // The same cell reached twice (via its row and its column) counts once.
+        let cell = make("cell", 0.0, 0.0);
+        let deduped = rank_and_assign(vec![cell.clone(), cell.clone(), make("cell", 1.0, 0.0)], 9);
+        assert_eq!(deduped.len(), 2);
         assert_eq!((result[0].id.as_str(), result[0].bounds.x), ("e1", 0.0));
         assert_eq!(result[1].id, "e2");
     }

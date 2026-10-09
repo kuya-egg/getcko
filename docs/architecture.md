@@ -94,7 +94,7 @@ The model points by **element ID** whenever it can. A small local model picks an
 
 | Tier | `ScreenMode` | When the core picks it | Model input | Model answers | Pointer | `Confidence` |
 |---|---|---|---|---|---|---|
-| 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 elements | Element list only | element ID (target pass) | exact element bounds | `normal` |
+| 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 controls (static `text` elements don't count) | Element list only | element ID (target pass) | exact element bounds | `normal` |
 | 2 | `elementsWithImage` | Snapshot non-empty but fails the tier-1 test (unlabelled icons, look-alike cells) | Element list **plus** a screenshot with a numbered box drawn on every listed element, labelled with the same IDs | element ID (target pass) | exact element bounds | `normal` |
 | 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot only | `[y, x]` normalized to 0–1000, Gemma's native pointing format (target-pass grammar allows a point, or `none`, only in this tier) | point mapped to the monitor | `bestGuess` (BR-18) |
 
@@ -113,7 +113,7 @@ Contract additions (one PR containing both OS implementations, per the parity ru
 | Core | `pipeline.rs` tier choice, `screenshot.rs` resize (long side 1024 px), set-of-mark boxes with element IDs, `[y, x]` → image px → desktop px → `PointerTarget` (24 CSS px square); target-pass grammar allows a point only in tier 3 | macOS engineer (done) |
 | IPC types | `PointerTarget.elementId` is `string \| null` (null for tier-3 points); `Answer.screenMode: ScreenMode \| null` (null when screen help is off); `Latency.captureMs` (null when no screenshot) | macOS engineer (done); consumed by frontend |
 
-Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 scripted tasks × 3 demo apps, each run in all three forced tiers, on the demo Mac and on a Windows machine. Record per tier: correct element out of 10 (target ≥ 8/10, S2), first-token and total latency (budget ≈ 3 s end to end), into `docs/MODELS.md`. Tier 2 stays enabled only if it raises accuracy on the screens that trigger it without breaking the budget; otherwise those screens fall back to tier 1.
+Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 scripted tasks × 3 demo apps, each run in all three forced tiers, on the demo Mac and on a Windows machine. Record per tier: correct element out of 10 (target ≥ 8/10, S2), first-token and total latency (budget ≈ 3 s end to end), into `docs/MODELS.md`. Tier 2 stays enabled only if it raises accuracy on the screens that trigger it without breaking the budget; otherwise those screens fall back to tier 1. macOS results (`./scripts/tier-eval.sh`, Oct 9): tier 1 29/30, tier 2 29/30 at 2–3× the time, tier 3 0/30; see [MODELS.md](MODELS.md#tier-measurement-protocol). Windows: not measured yet.
 
 ## Cross-platform parity
 

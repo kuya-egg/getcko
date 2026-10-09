@@ -95,7 +95,7 @@ Before this design the typed English question pointed correctly 0/10 times.
 
 ## Screen tiers 2–3 (vision)
 
-Measured Oct 9 on the M4 Pro, Metal, Gemma 4 E2B Q4_0 + `mmproj-gemma-4-E2B-it-Q8_0.gguf`. Single runs, not the tier protocol (10 tasks × 3 apps per forced tier, still to do).
+Measured Oct 9 on the M4 Pro, Metal, Gemma 4 E2B Q4_0 + `mmproj-gemma-4-E2B-it-Q8_0.gguf`. First single-run checks; the tier protocol results follow below.
 
 | Check | Result |
 |---|---|
@@ -108,3 +108,31 @@ Measured Oct 9 on the M4 Pro, Metal, Gemma 4 E2B Q4_0 + `mmproj-gemma-4-E2B-it-Q
 
 8. **Gemma points as `[y, x]` normalized to 0–1000**, not image pixels: asked for `x,y` pixels it replied `398,677` for a 640×400 image. Tier 3 asks for and parses its native format.
 9. **Crop to the target window.** The image is downscaled to a 1024 px long side; a whole Retina display leaves app controls a few pixels wide. Cropping to the window fixed the menu-bar miss above.
+
+### Tier measurement (protocol)
+
+`./scripts/tier-eval.sh` (`src-tauri/examples/tier_eval.rs`): 10 scripted questions in each of three apps, run in every forced tier through the same `pipeline::aim` the app uses. Apps: Safari on `scripts/fixtures/class-record.html` (stands in for the spreadsheet demo; Numbers and Excel are not installed on the demo Mac), Finder on a folder of demo files, Calculator. A pointer is **correct** when it lands inside the expected element, which is taken from the app's own accessibility tree, so all tiers are scored the same way. **Touched by the guess circle**: the overlay's 36 CSS px best-guess circle reaches the element (tier 3 only; elements are exact in tiers 1–2). No knowledge base, so passages do not help. Oct 9, M4 Pro, release build, one run each.
+
+| App | Tier | Correct | Touched by the guess circle | Target pass median | Capture + prepare |
+|---|---|---|---|---|---|
+| Safari | 1 `elements` | 10/10 | 10/10 | 455 ms | — |
+| Safari | 2 `elementsWithImage` | 10/10 | 10/10 | 1240 ms | 79 ms |
+| Safari | 3 `imageOnly` | 0/10 | 0/10 | 1080 ms | 75 ms |
+| Finder | 1 `elements` | 10/10 | 10/10 | 484 ms | — |
+| Finder | 2 `elementsWithImage` | 9/10 | 9/10 | 979 ms | 37 ms |
+| Finder | 3 `imageOnly` | 0/10 | 0/10 | 800 ms | 36 ms |
+| Calculator | 1 `elements` | 9/10 | 9/10 | 306 ms | — |
+| Calculator | 2 `elementsWithImage` | 10/10 | 10/10 | 690 ms | 35 ms |
+| Calculator | 3 `imageOnly` | 0/10 | 4/10 | 695 ms | 35 ms |
+
+Totals: tier 1 29/30 (S2 target ≥ 8/10 met in every app), tier 2 29/30 at 2–3× the target-pass time, tier 3 0/30 correct and 4/30 touched. The core now picks tier 1 for all three apps.
+
+10. **Tier 2 does not pay for itself on these apps.** Same accuracy as tier 1, 2–3× slower. It stays as the automatic choice only for screens with look-alike controls (none of the three apps after the rule fix below); those screens are unmeasured.
+11. **Tier 3 is not reliable with Gemma 4 E2B.** Points cluster on a few spots (`[831, 831]`, `[850, 850]`) and miss by one control or more. It stays labelled "best guess" (BR-18); whether to show a pointer at all in tier 3 is a product decision.
+12. **Tried and removed: a zoom pass.** Pointing again on a crop around the first guess (40 % of the window) dropped Calculator from 2/10 to 0/10: the model pointed at the crop's top edge.
+13. **Fixed: Safari web content was invisible.** The accessibility walk preferred `AXVisibleChildren`, which on Safari's tab group lists only the tabs; the page (inputs, buttons) never appeared. It now walks `AXChildren` first (Safari: 24 → 96 elements).
+14. **Fixed: tables listed every cell two or three times** (under rows, columns and the table), pushing rows past the 150-element cap. Exact duplicates are dropped.
+15. **Fixed: screenshot and element list could describe different windows.** The capture cropped to the topmost CoreGraphics window, the snapshot read the accessibility focused window; the capture now crops to the same accessibility window.
+16. **Fixed: repeated static text forced tier 2.** "—" down a table column or "Zero bytes" in a file list counted as look-alike controls; the rule now counts only non-text elements.
+
+17. **Fixed: answers without a knowledge base leaked markers.** With no passages the prompt said `(no documents)` and still asked for `[n]` citations, so answers ended in "[no documents]", "[e15]", "(e15)" or "(Screen: Calculator)". The prompt now omits the passages block when empty and asks for no source; the answer parser drops element ids in `[]` or `()` as a backstop. Checked on Calculator: four answers, none with a marker.

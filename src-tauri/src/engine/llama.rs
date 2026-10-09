@@ -933,7 +933,7 @@ mod tests {
                 height: 400,
                 scale_factor: 1.0,
             },
-            origin: (0, 0),
+            origin: (0.0, 0.0),
             scale: 1.0,
         };
         let ask = |question: &str, task: &str, grammar: &str| {

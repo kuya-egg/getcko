@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Class Record - Grade 7 Sampaguita</title>
+<style>
+  body { font: 15px -apple-system, sans-serif; margin: 24px; color: #222; }
+  header { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0 16px 0 0; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #bbb; padding: 4px 8px; }
+  td input { width: 56px; font: inherit; }
+  footer { margin-top: 16px; display: flex; gap: 12px; }
+</style>
+</head>
+<body>
+<!-- Scripted fixture for scripts/tier-eval.sh: labels are what the tasks look for. -->
+<header>
+  <h1>Class Record</h1>
+  <label>Section <select aria-label="Section"><option>Sampaguita</option><option>Ilang-Ilang</option></select></label>
+  <input type="search" aria-label="Search students" placeholder="Search students">
+  <button>Add student</button>
+</header>
+<table>
+  <thead><tr><th>Learner</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th>Final</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Juan Dela Cruz</th>
+      <td><input aria-label="Q1, Juan Dela Cruz"></td><td><input aria-label="Q2, Juan Dela Cruz"></td>
+      <td><input aria-label="Q3, Juan Dela Cruz"></td><td><input aria-label="Q4, Juan Dela Cruz"></td><td>—</td></tr>
+    <tr><th scope="row">Ana Santos</th>
+      <td><input aria-label="Q1, Ana Santos"></td><td><input aria-label="Q2, Ana Santos"></td>
+      <td><input aria-label="Q3, Ana Santos"></td><td><input aria-label="Q4, Ana Santos"></td><td>—</td></tr>
+    <tr><th scope="row">Maria Reyes</th>
+      <td><input aria-label="Q1, Maria Reyes"></td><td><input aria-label="Q2, Maria Reyes"></td>
+      <td><input aria-label="Q3, Maria Reyes"></td><td><input aria-label="Q4, Maria Reyes"></td><td>—</td></tr>
+    <tr><th scope="row">Jose Rizal Mercado</th>
+      <td><input aria-label="Q1, Jose Rizal Mercado"></td><td><input aria-label="Q2, Jose Rizal Mercado"></td>
+      <td><input aria-label="Q3, Jose Rizal Mercado"></td><td><input aria-label="Q4, Jose Rizal Mercado"></td><td>—</td></tr>
+  </tbody>
+</table>
+<footer>
+  <button>Compute final grades</button>
+  <button>Save</button>
+  <button>Print</button>
+</footer>
+</body>
+</html>

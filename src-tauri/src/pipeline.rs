@@ -1,9 +1,10 @@
 use crate::{
-    engine::{ChatRequest, Engine, Flow, ImagePart},
+    engine::{ChatModel, ChatRequest, Engine, Flow, ImagePart},
     error::{AppError, AppResult},
     model::*,
     platform::Platform,
     prompt::{self, AnswerParser, Pointed, RetrievedPassage, TurnPrompt},
+    screenshot::Prepared,
     store::{NewPassage, Store},
 };
 use std::sync::{
@@ -333,65 +334,31 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         .collect();
 
     let body = turn.body(&question, &passages);
-    // Without an image the task ends the user text; with one it follows the image.
-    let user_text = |task: &str| match &screenshot {
-        Some(_) => body.clone(),
-        None => format!("{body}{task}"),
-    };
 
-    // Pass 1: where to point. Element ids (tiers 1-2) or a screenshot point (tier 3),
-    // constrained by a grammar.
+    // Pass 1: where to point.
     let mut pointed = Pointed::Nothing;
     let mut target = None;
     let mut confidence = Confidence::Normal;
-    if let (Some(mode), Some(screen)) = (mode, snapshot.as_ref())
-        && (mode == ScreenMode::ImageOnly || !screen.elements.is_empty())
-    {
-        let task = TurnPrompt::target_task(mode);
-        let grammar = match mode {
-            ScreenMode::ImageOnly => crate::screenshot::POINT_GRAMMAR.to_owned(),
-            _ => prompt::target_grammar(screen),
-        };
-        let user = user_text(&task);
-        let mut reply = String::new();
-        chat.generate(
-            &ChatRequest {
-                system: &turn.system,
-                user: &user,
-                max_tokens: if mode == ScreenMode::ImageOnly {
-                    POINT_MAX_TOKENS
-                } else {
-                    TARGET_MAX_TOKENS
-                },
-                grammar: Some(&grammar),
-                image: screenshot.as_ref().map(|s| ImagePart {
-                    image: &s.image,
-                    text_after: &task,
-                }),
-            },
-            &mut |piece| {
-                reply.push_str(piece);
-                if check() { Flow::Continue } else { Flow::Stop }
-            },
-        )
-        .map_err(AppError::from)?;
-        // An element id, `[y, x]` or `none`: never user text.
-        tracing::debug!(?mode, reply = %reply, "target pass");
-        match (mode, screenshot.as_ref()) {
-            (ScreenMode::ImageOnly, Some(shot)) => {
-                if let Some((x, y)) = crate::screenshot::parse_point(shot, &reply) {
-                    let (px, py) = crate::screenshot::to_physical(shot, x, y);
-                    target = Some(crate::pointer::locate_point(px, py, shot.monitor));
-                    pointed = Pointed::Guess;
-                    confidence = Confidence::BestGuess;
-                }
+    if let (Some(mode), Some(screen)) = (mode, snapshot.as_ref()) {
+        match aim(
+            chat.as_ref(),
+            &turn.system,
+            &body,
+            mode,
+            screen,
+            screenshot.as_ref(),
+            &check,
+        )? {
+            Aim::Element(element) => {
+                target = crate::pointer::locate(element, &crate::pointer::monitors(app));
+                pointed = Pointed::Element(element);
             }
-            _ => {
-                if let Some(element) = prompt::target_element(&reply, screen) {
-                    target = crate::pointer::locate(element, &crate::pointer::monitors(app));
-                    pointed = Pointed::Element(element);
-                }
+            Aim::Point { x, y, monitor } => {
+                target = Some(crate::pointer::locate_point(x, y, monitor));
+                pointed = Pointed::Guess;
+                confidence = Confidence::BestGuess;
             }
+            Aim::Nothing => {}
         }
     }
     if !check() {
@@ -439,8 +406,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         }
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
-    let answer_task = TurnPrompt::answer_task(pointed);
-    let answer_user = user_text(&answer_task);
+    let answer_task = TurnPrompt::answer_task(pointed, !passages.is_empty());
+    let answer_user = with_task(&body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {
             system: &turn.system,
@@ -525,9 +492,137 @@ fn ms(t: Instant) -> u32 {
     u32::try_from(t.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
+/// Where the target pass says to point.
+#[derive(Debug, Clone, Copy)]
+pub enum Aim<'a> {
+    Element(&'a ScreenElement),
+    /// Tier 3: a desktop physical point on `monitor`.
+    Point {
+        x: f64,
+        y: f64,
+        monitor: MonitorFrame,
+    },
+    Nothing,
+}
+
+/// The user prompt for a pass: `body` then `task`, unless an image is attached, in
+/// which case the task follows the image ([`ImagePart::text_after`]).
+fn with_task(body: &str, task: &str, has_image: bool) -> String {
+    if has_image {
+        body.to_owned()
+    } else {
+        format!("{body}{task}")
+    }
+}
+
+/// Target pass (pass 1) for `mode`: element ids for tiers 1-2, a screenshot point
+/// for tier 3, each constrained by a grammar. `shot` is required for tier 3 and
+/// adds the marked screenshot in tier 2. `keep_going` stops generation early.
+pub fn aim<'a>(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    mode: ScreenMode,
+    screen: &'a ScreenSnapshot,
+    shot: Option<&Prepared>,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Aim<'a>> {
+    if mode == ScreenMode::ImageOnly {
+        let Some(shot) = shot else {
+            return Ok(Aim::Nothing);
+        };
+        return point(chat, system, body, shot, keep_going);
+    }
+    if screen.elements.is_empty() {
+        return Ok(Aim::Nothing);
+    }
+    let reply = target_reply(
+        chat,
+        system,
+        body,
+        &TurnPrompt::target_task(mode),
+        &prompt::target_grammar(screen),
+        TARGET_MAX_TOKENS,
+        shot,
+        keep_going,
+    )?;
+    Ok(prompt::target_element(&reply, screen).map_or(Aim::Nothing, Aim::Element))
+}
+
+/// Tier 3: one point on the screenshot. A second pass on a crop around the first
+/// guess was measured and made accuracy worse (the model pointed at the crop's top
+/// edge), so there is none.
+fn point(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    shot: &Prepared,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Aim<'static>> {
+    let reply = target_reply(
+        chat,
+        system,
+        body,
+        &TurnPrompt::target_task(ScreenMode::ImageOnly),
+        crate::screenshot::POINT_GRAMMAR,
+        POINT_MAX_TOKENS,
+        Some(shot),
+        keep_going,
+    )?;
+    Ok(
+        crate::screenshot::parse_point(shot, &reply).map_or(Aim::Nothing, |(x, y)| {
+            let (x, y) = crate::screenshot::to_physical(shot, x, y);
+            Aim::Point {
+                x,
+                y,
+                monitor: shot.monitor,
+            }
+        }),
+    )
+}
+
+/// One grammar-constrained target-pass generation; returns the raw reply.
+#[allow(clippy::too_many_arguments)]
+fn target_reply(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    task: &str,
+    grammar: &str,
+    max_tokens: u32,
+    shot: Option<&Prepared>,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<String> {
+    let mut reply = String::new();
+    chat.generate(
+        &ChatRequest {
+            system,
+            user: &with_task(body, task, shot.is_some()),
+            max_tokens,
+            grammar: Some(grammar),
+            image: shot.map(|s| ImagePart {
+                image: &s.image,
+                text_after: task,
+            }),
+        },
+        &mut |piece| {
+            reply.push_str(piece);
+            if keep_going() {
+                Flow::Continue
+            } else {
+                Flow::Stop
+            }
+        },
+    )
+    .map_err(AppError::from)?;
+    // An element id, `[y, x]` or `none`: never user text.
+    tracing::debug!(reply = %reply, "target pass");
+    Ok(reply)
+}
+
 /// Labelled elements needed before the element list alone is trusted.
 const MIN_LABELLED: usize = 5;
-/// More elements than this sharing one label (look-alike cells, icons) makes the
+/// More controls than this sharing one label (look-alike cells, icons) makes the
 /// list ambiguous without a picture.
 const MAX_SAME_LABEL: usize = 3;
 
@@ -542,19 +637,26 @@ fn screen_mode(snapshot: &ScreenSnapshot) -> ScreenMode {
     }
 }
 
-fn tier_for(snapshot: &ScreenSnapshot) -> ScreenMode {
+/// The tier the core picks for `snapshot` when nothing forces one.
+pub fn tier_for(snapshot: &ScreenSnapshot) -> ScreenMode {
     if snapshot.elements.is_empty() {
         return ScreenMode::ImageOnly;
     }
+    let labelled = snapshot
+        .elements
+        .iter()
+        .filter(|e| !e.label.trim().is_empty())
+        .count();
+    // Only controls can be confused with each other: repeated static text ("—" in
+    // a table, "Zero bytes" in a file list) is not something the user acts on.
     let mut counts = std::collections::HashMap::new();
     for element in snapshot
         .elements
         .iter()
-        .filter(|e| !e.label.trim().is_empty())
+        .filter(|e| e.role != "text" && !e.label.trim().is_empty())
     {
         *counts.entry(element.label.trim()).or_insert(0usize) += 1;
     }
-    let labelled: usize = counts.values().sum();
     if labelled >= MIN_LABELLED && counts.values().all(|&n| n <= MAX_SAME_LABEL) {
         ScreenMode::Elements
     } else {
@@ -746,5 +848,11 @@ mod tests {
             tier_for(&screen(&["a", "x", "x", "x", "x"])),
             ScreenMode::ElementsWithImage
         );
+        // Repeated static text ("—" down a table column) is not a look-alike control.
+        let mut table = screen(&["a", "b", "c", "d", "e", "—", "—", "—", "—"]);
+        for cell in &mut table.elements[5..] {
+            cell.role = "text".into();
+        }
+        assert_eq!(tier_for(&table), ScreenMode::Elements);
     }
 }

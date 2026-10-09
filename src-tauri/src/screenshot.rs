@@ -14,7 +14,7 @@ pub struct Prepared {
     /// RGB image supplied to the model.
     pub image: RgbImage,
     /// Physical desktop position of the capture's top-left pixel.
-    pub origin: (i32, i32),
+    pub origin: (f64, f64),
     /// Display holding the capture (where the overlay draws).
     pub monitor: MonitorFrame,
     /// Image pixels per physical desktop pixel.
@@ -78,7 +78,7 @@ pub fn prepare(capture: ScreenCapture, marks: Option<&[ScreenElement]>) -> Prepa
     }
     Prepared {
         image,
-        origin: (capture.x, capture.y),
+        origin: (f64::from(capture.x), f64::from(capture.y)),
         monitor: capture.monitor,
         scale,
     }
@@ -88,8 +88,8 @@ pub fn prepare(capture: ScreenCapture, marks: Option<&[ScreenElement]>) -> Prepa
 #[must_use]
 pub fn to_image(prepared: &Prepared, rect: &Rect) -> Rect {
     Rect {
-        x: (rect.x - f64::from(prepared.origin.0)) * prepared.scale,
-        y: (rect.y - f64::from(prepared.origin.1)) * prepared.scale,
+        x: (rect.x - prepared.origin.0) * prepared.scale,
+        y: (rect.y - prepared.origin.1) * prepared.scale,
         width: rect.width * prepared.scale,
         height: rect.height * prepared.scale,
     }
@@ -99,11 +99,11 @@ pub fn to_image(prepared: &Prepared, rect: &Rect) -> Rect {
 #[must_use]
 pub fn to_physical(prepared: &Prepared, x: f64, y: f64) -> (f64, f64) {
     if prepared.scale == 0.0 {
-        return (f64::from(prepared.origin.0), f64::from(prepared.origin.1));
+        return (prepared.origin.0, prepared.origin.1);
     }
     (
-        f64::from(prepared.origin.0) + x / prepared.scale,
-        f64::from(prepared.origin.1) + y / prepared.scale,
+        prepared.origin.0 + x / prepared.scale,
+        prepared.origin.1 + y / prepared.scale,
     )
 }
 

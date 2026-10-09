@@ -22,7 +22,10 @@ pub const NO_TARGET: &str = "none";
 const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. Reply with the element id only, or none if nothing on the screen fits.";
 const MARKS_NOTE: &str = "The screenshot shows the same screen; each listed element has a box with its id written at its top-left corner. ";
 const POINT_TASK: &str = "Task: the screenshot shows the user's screen. Point to the one place where the user should act to do what the question asks. Reply with the point as [y, x] normalized to 0-1000, or none if nothing on the screen fits.";
-const ANSWER_TASK: &str = "Task: answer the question. Cite the passages you use inline as [n].";
+const ANSWER_TASK: &str = "Task: answer the question.";
+const CITE_TASK: &str = " Cite the passages you use inline as [n].";
+const NO_SOURCE_TASK: &str =
+    " There are no passages: do not add a source or any reference after the answer.";
 
 /// One retrieved passage and its display location.
 pub struct RetrievedPassage<'a> {
@@ -136,7 +139,9 @@ impl TurnPrompt {
     }
 
     /// The last part of the answer-pass prompt: what the pointer shows, then the task.
-    pub fn answer_task(pointed: Pointed<'_>) -> String {
+    /// `cite`: passages were supplied, so ask for `[n]` citations (asking without
+    /// passages makes the model cite element ids or app names instead).
+    pub fn answer_task(pointed: Pointed<'_>, cite: bool) -> String {
         use std::fmt::Write;
         let mut task = String::new();
         match pointed {
@@ -158,6 +163,7 @@ impl TurnPrompt {
             Pointed::Nothing => {}
         }
         task.push_str(ANSWER_TASK);
+        task.push_str(if cite { CITE_TASK } else { NO_SOURCE_TASK });
         task
     }
 
@@ -166,9 +172,9 @@ impl TurnPrompt {
     pub fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
         use std::fmt::Write;
         let mut user = format!("{}{}Question: {question}\n\n", self.context, self.task);
-        if passages.is_empty() {
-            user.push_str("(no documents)\n\n");
-        } else {
+        // No passages: say nothing. A marker here gets echoed into the answer
+        // ("[no documents]", "(No passage found)").
+        if !passages.is_empty() {
             user.push_str("Passages:");
             for (index, passage) in passages.iter().enumerate() {
                 let _ = write!(
@@ -325,10 +331,32 @@ fn is_protected_period(text: &str, byte: usize) -> bool {
         "p." | "pp." | "e.g." | "i.e." | "vs."
     )
 }
+/// `e` followed by digits: the ids [`TurnPrompt`] gives screen elements.
+fn is_element_id(text: &str) -> bool {
+    text.strip_prefix('e')
+        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+}
+
 fn clean_markers(text: &str, passage_count: u32, cited: &mut Vec<u32>) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.char_indices().peekable();
     while let Some((index, ch)) = chars.next() {
+        // A screen element id such as (e15) must never reach the user.
+        if ch == '('
+            && let Some(relative) = text[index + 1..].find(')')
+        {
+            let end = index + 1 + relative;
+            let inside = &text[index + 1..end];
+            if !inside.is_empty() && inside.split(',').all(|part| is_element_id(part.trim())) {
+                while chars.peek().is_some_and(|(offset, _)| *offset <= end) {
+                    chars.next();
+                }
+                if out.ends_with(' ') {
+                    out.pop();
+                }
+                continue;
+            }
+        }
         if ch == '['
             && let Some(relative) = text[index + 1..].find(']')
         {
@@ -351,6 +379,17 @@ fn clean_markers(text: &str, passage_count: u32, cited: &mut Vec<u32>) -> String
                 }
                 while chars.peek().is_some_and(|(offset, _)| *offset <= end) {
                     chars.next();
+                }
+                continue;
+            }
+            // A screen element id such as [e15] must never reach the user.
+            if !inside.is_empty() && inside.split(',').all(|part| is_element_id(part.trim())) {
+                while chars.peek().is_some_and(|(offset, _)| *offset <= end) {
+                    chars.next();
+                }
+                // Drop the space the marker leaned on: "button [e15]." -> "button."
+                if out.ends_with(' ') {
+                    out.pop();
                 }
                 continue;
             }
@@ -435,6 +474,12 @@ mod tests {
         assert_eq!(answer.cited, vec![1, 2]);
     }
     #[test]
+    fn element_ids_never_reach_the_answer() {
+        let (_, answer) =
+            finish_text(&["Click \"All Clear\" [e15]. Then (e25) [e3, e4] or [Ctrl] (eat)."]);
+        assert_eq!(answer.text, "Click \"All Clear\". Then or [Ctrl] (eat).");
+    }
+    #[test]
     fn abbreviations_and_decimal_do_not_split() {
         let (sentences, answer) = finish_text(&["See p. 4 and e.g. 3.5 items."]);
         assert_eq!(answer.text, "See p. 4 and e.g. 3.5 items.");
@@ -464,11 +509,13 @@ mod tests {
         assert!(body.starts_with(turn.warm_user()));
         assert!(body.contains("[1] Manual, p. 4: Enter grades"));
         assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
-        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]));
+        let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), true);
         assert!(answer_task.contains("\"Q1, Juan Dela Cruz\""));
         assert!(!answer_task.contains("e2"));
-        assert!(TurnPrompt::answer_task(Pointed::Guess).contains("best guess"));
-        assert!(!TurnPrompt::answer_task(Pointed::Nothing).contains("pointer"));
+        assert!(TurnPrompt::answer_task(Pointed::Guess, true).contains("best guess"));
+        assert!(!TurnPrompt::answer_task(Pointed::Nothing, true).contains("pointer"));
+        assert!(answer_task.contains("[n]"));
+        assert!(!TurnPrompt::answer_task(Pointed::Nothing, false).contains("[n]"));
         // Tier 2 explains the drawn ids; tier 3 asks for a point, not an id.
         assert!(TurnPrompt::target_task(ScreenMode::ElementsWithImage).contains("id written"));
         assert!(TurnPrompt::target_task(ScreenMode::ImageOnly).contains("[y, x]"));

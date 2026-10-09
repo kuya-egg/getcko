@@ -71,8 +71,9 @@ pub trait Platform: Send + Sync {
     fn capture(&self) -> Result<ScreenCapture, PlatformError>;
 }
 
-/// One monitor's pixels, top row first, 4 bytes per pixel in RGBA order, no row
+/// Captured pixels (the target window's area), top row first, 4 bytes per pixel in RGBA order, no row
 /// padding (`rgba.len() == width * height * 4`).
+#[derive(Debug, Clone)]
 pub struct ScreenCapture {
     pub width: u32,
     pub height: u32,

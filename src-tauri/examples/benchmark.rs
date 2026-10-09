@@ -181,7 +181,10 @@ fn main() {
         chat.generate(
             &ChatRequest {
                 system: &prompts.system,
-                user: &format!("{body}{}", TurnPrompt::answer_task(pointed)),
+                user: &format!(
+                    "{body}{}",
+                    TurnPrompt::answer_task(pointed, !retrieved.is_empty())
+                ),
                 max_tokens: prompts.max_tokens,
                 grammar: None,
                 image: None,
