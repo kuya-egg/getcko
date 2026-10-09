@@ -19,7 +19,7 @@ import type { ScreenSnapshot } from "../../bindings/ScreenSnapshot";
 import type { SetupStatus } from "../../bindings/SetupStatus";
 import type { TemplateId } from "../../bindings/TemplateId";
 import type { TurnEvent } from "../../bindings/TurnEvent";
-import { linesFor } from "../../brand/lexicon";
+import { say } from "../../brand/lexicon";
 import type { MockOptions } from "./params";
 import * as seed from "./seed";
 
@@ -66,7 +66,7 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
   let activeAgentId: number | null = null;
   let permissions: PermissionState[] = seed.permissions(opts.setup);
   let components: ComponentStatus[] = seed.components(opts.setup);
-  const voices = seed.voices(opts.filipinoVoice);
+  const voices = seed.voices();
   /** Requests per permission; a denied one turns on at the second ask ("Check again" after System Settings). */
   const asks = new Map<PermissionKind, number>();
 
@@ -184,16 +184,16 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
     const agent = req.agentId != null ? agentRow(req.agentId) : agents.find((a) => a.id === activeAgentId);
     if (!agent) throw fail("invalid", "no agent — pick a template first");
     const question =
-      req.input.type === "text" ? req.input.text.trim() : canned(agent.templateId, agent.language).voiceQuestion;
+      req.input.type === "text" ? req.input.text.trim() : canned(agent.templateId).voiceQuestion;
     if (!question) throw fail("invalid", "question must not be empty");
     if (!components.find((c) => c.component === "chat")?.ready) throw fail("unavailable", "chat model not loaded");
 
     cancelLive();
     const turnId = ++turnSeq;
     const ready = docs.filter((d) => agent.knowledgeBaseIds.includes(d.knowledgeBaseId) && d.status === "ready");
-    const c = canned(agent.templateId, agent.language);
+    const c = canned(agent.templateId);
     const grounded = ready.length > 0;
-    const sentences = grounded ? c.sentences : [linesFor(langWord(agent.language)).dontKnow];
+    const sentences = grounded ? c.sentences : [say.en.dontKnow];
     const citations: Citation[] = grounded
       ? [{ marker: 1, passageId: 1000 + ready[0].id, documentId: ready[0].id, documentName: ready[0].fileName, location: ready[0].pageCount ? "p. 4" : "Overview" }]
       : [];
@@ -392,34 +392,23 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
   };
 }
 
-function langWord(l: Agent["language"]) {
-  return l === "english" ? "English" : l === "filipino" ? "Filipino" : "Taglish";
-}
-
 /** Short grounded answers per template, action → reason → source marker. */
-function canned(templateId: TemplateId | null, language: Agent["language"]) {
-  const tl = language !== "english";
+function canned(templateId: TemplateId | null) {
   switch (templateId) {
     case "teacher":
       return {
-        voiceQuestion: "Saan ko ilalagay ang final grade?",
-        sentences: tl
-          ? ["Ilagay mo sa cell D7 ang final grade.", "Average ito ng tatlong quarter, ayon sa guide [1]."]
-          : ["Put the final grade in cell D7.", "It's the average of the three quarters, per the guide [1]."],
+        voiceQuestion: "Where do I put the final grade?",
+        sentences: ["Put the final grade in cell D7.", "It's the average of the three quarters, per the guide [1]."],
       };
     case "studyBuddy":
       return {
         voiceQuestion: "What does the mitochondria do?",
-        sentences: tl
-          ? ["Ang mitochondria ang gumagawa ng enerhiya ng cell.", "Sabi ng notes mo, ito ang powerhouse ng cell [1]."]
-          : ["The mitochondria makes most of the cell's energy.", "Your notes call it the powerhouse of the cell [1]."],
+        sentences: ["The mitochondria makes most of the cell's energy.", "Your notes call it the powerhouse of the cell [1]."],
       };
     default:
       return {
-        voiceQuestion: tl ? "Paano mag-add ng bagong record?" : "How do I add a new record?",
-        sentences: tl
-          ? ["I-click mo ang New entry sa taas, kaliwa.", "Doon nagsisimula ang bagong record, ayon sa manual [1]."]
-          : ["Click New entry at the top left.", "That starts a new record, per the office manual [1]."],
+        voiceQuestion: "How do I add a new record?",
+        sentences: ["Click New entry at the top left.", "That starts a new record, per the office manual [1]."],
       };
   }
 }

@@ -2,38 +2,29 @@ import { describe, expect, it } from "vitest";
 import { AGENTS_COPY, sampleQuestions, tryGreeting } from "./copy";
 
 describe("sampleQuestions", () => {
-  it("asks in the agent's language: English stays English", () => {
-    expect(sampleQuestions("teacher", "English")[0]).toBe("Where do I put the final grade?");
-  });
-
-  it("Taglish and Filipino agents get the Taglish questions", () => {
-    expect(sampleQuestions("teacher", "Taglish")[0]).toBe("Saan ko ilalagay ang final grade?");
-    expect(sampleQuestions("teacher", "Filipino")).toEqual(sampleQuestions("teacher", "Taglish"));
+  it("asks the template's questions", () => {
+    expect(sampleQuestions("teacher")[0]).toBe("Where do I put the final grade?");
   });
 
   it("a custom agent (no template) still gets two questions", () => {
-    expect(sampleQuestions(null, "English")).toHaveLength(2);
-    expect(sampleQuestions(null, "Taglish")).toHaveLength(2);
+    expect(sampleQuestions(null)).toHaveLength(2);
   });
 
-  it("every template has two questions in both languages, sentence case, no emoji", () => {
-    for (const id of ["officeHelper", "teacher", "studyBuddy", "taglishExplainer"] as const) {
-      for (const lang of ["English", "Taglish"] as const) {
-        const qs = sampleQuestions(id, lang);
-        expect(qs).toHaveLength(2);
-        for (const q of qs) {
-          expect(q[0]).toBe(q[0]!.toUpperCase());
-          expect(q).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
-        }
+  it("every template has two questions, sentence case, no emoji", () => {
+    for (const id of ["officeHelper", "teacher", "studyBuddy"] as const) {
+      const qs = sampleQuestions(id);
+      expect(qs).toHaveLength(2);
+      for (const q of qs) {
+        expect(q[0]).toBe(q[0]!.toUpperCase());
+        expect(q).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
       }
     }
   });
 });
 
 describe("Try it copy", () => {
-  it("GetcKo greets in the agent's language (Taglish agents in Taglish)", () => {
-    expect(tryGreeting("English")).not.toBe(tryGreeting("Taglish"));
-    expect(tryGreeting("Filipino")).toBe(tryGreeting("Taglish"));
+  it("GetcKo greets in plain English", () => {
+    expect(tryGreeting()).toBe("Ask me. I'll check your documents.");
   });
 
   it("the empty list's action names the template it makes", () => {

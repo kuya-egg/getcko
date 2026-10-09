@@ -8,26 +8,24 @@ import type { TemplateId } from "../../bindings/TemplateId";
 import type { Voice } from "../../bindings/Voice";
 import type { MockSetup } from "./params";
 
-const draft = (name: string, instructions: string, language: AgentDraft["language"], answerLength: AgentDraft["answerLength"]): AgentDraft => ({
+const draft = (name: string, instructions: string, answerLength: AgentDraft["answerLength"]): AgentDraft => ({
   name,
   description: "",
   instructions,
   baseRules: "include",
   knowledgeBaseIds: [],
-  language,
   answerLength,
   voiceId: null,
   speechRate: 1.0,
 });
 
-/** Same four as the Rust templates, same order. */
+/** Same three as the Rust templates, same order. */
 export const TEMPLATES: Template[] = [
   {
     id: "officeHelper",
     draft: draft(
       "Office Helper",
       "Help me use new software at work by explaining where to click and why. Cite the office manual when relevant.",
-      "english",
       "short",
     ),
   },
@@ -36,7 +34,6 @@ export const TEMPLATES: Template[] = [
     draft: draft(
       "Teacher",
       "Help with DepEd forms and grading. Explain forms clearly and show grade computations step by step, citing the guide.",
-      "taglish",
       "normal",
     ),
   },
@@ -45,29 +42,17 @@ export const TEMPLATES: Template[] = [
     draft: draft(
       "Study Buddy",
       "Answer using my notes when available. Quiz me when I ask, and explain concepts clearly.",
-      "english",
       "normal",
-    ),
-  },
-  {
-    id: "taglishExplainer",
-    draft: draft(
-      "Taglish Explainer",
-      "Explain what is on screen in simple Taglish. Point out the relevant screen element and keep the explanation approachable.",
-      "taglish",
-      "short",
     ),
   },
 ];
 
-export function voices(filipino: boolean): Voice[] {
-  const v: Voice[] = [
+export function voices(): Voice[] {
+  return [
     { id: "com.apple.voice.compact.en-US.Samantha", name: "Samantha", language: "en-US" },
     { id: "com.apple.voice.compact.en-GB.Daniel", name: "Daniel", language: "en-GB" },
     { id: "com.apple.voice.compact.en-AU.Karen", name: "Karen", language: "en-AU" },
   ];
-  if (filipino) v.push({ id: "com.apple.voice.compact.fil-PH.Rosa", name: "Rosa", language: "fil-PH" });
-  return v;
 }
 
 export interface SeedDoc {
@@ -124,7 +109,7 @@ export const KNOWLEDGE_BASES: SeedKb[] = [
 /** Agents made from templates, attached to KBs by index into KNOWLEDGE_BASES. First one is active. */
 export const AGENTS: { template: TemplateId; kbs: number[]; voiceId?: string }[] = [
   { template: "officeHelper", kbs: [0] },
-  { template: "teacher", kbs: [1], voiceId: "com.apple.voice.compact.fil-PH.Rosa" },
+  { template: "teacher", kbs: [1], voiceId: "com.apple.voice.compact.en-GB.Daniel" },
   { template: "studyBuddy", kbs: [2] },
 ];
 

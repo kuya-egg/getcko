@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Agent } from "../../bindings/Agent";
 import { T } from "../../brand/lexicon";
 import { removeAgent, upsertAgent, type AgentsData } from "./data";
-import { AGENTS_COPY } from "./copy";
 import {
   MAX_KNOWLEDGE_BASES,
   blankDraft,
@@ -12,9 +11,6 @@ import {
   draftOf,
   hasProblems,
   isDirty,
-  isFilipinoVoice,
-  languageOf,
-  languageWord,
   liveKnowledgeBases,
   normalizeDraft,
   sameDraft,
@@ -33,15 +29,7 @@ const agent = (over: Partial<Agent> = {}): Agent => ({
   name: "Teacher",
   instructions: "Help with DepEd forms.",
   knowledgeBaseIds: [2, 1],
-  language: "taglish",
   ...over,
-});
-
-describe("language mapping", () => {
-  it("round-trips every backend language through the lexicon word", () => {
-    for (const l of ["english", "filipino", "taglish"] as const) expect(languageOf(languageWord(l))).toBe(l);
-    expect(languageWord("taglish")).toBe("Taglish");
-  });
 });
 
 describe("drafts and dirty check", () => {
@@ -150,17 +138,6 @@ describe("voice and speed", () => {
     expect(clampSpeed(3)).toBe(1.5);
     expect(clampSpeed(0.1)).toBe(0.75);
     expect(clampSpeed(Number.NaN)).toBe(1);
-  });
-
-  it("knows Filipino voices by BCP-47 tag", () => {
-    expect(isFilipinoVoice("fil-PH")).toBe(true);
-    expect(isFilipinoVoice("tl-PH")).toBe(true);
-    expect(isFilipinoVoice("en-US")).toBe(false);
-  });
-
-  it("no-Filipino-voice line names the right computer", () => {
-    expect(AGENTS_COPY.noFilipinoVoice("win")).toContain("this PC");
-    expect(AGENTS_COPY.noFilipinoVoice("mac")).toBe(T.agent.noFilipinoVoice);
   });
 });
 

@@ -11,7 +11,7 @@ import { Icon } from "../../brand/icons";
 import { T } from "../../brand/lexicon";
 import { Button, EmptyState, GeckoDot, IconButton, Panel, Surface, Tag } from "../../components/ui";
 import { AGENTS_COPY, sampleQuestions } from "./copy";
-import { cardLine, languageWord, templateCopy } from "./model";
+import { cardLine, templateCopy } from "./model";
 
 /** The hero gecko: 3x, pointing right at the agent name. */
 const HERO_POSE = pointPoseFor("right");
@@ -62,7 +62,7 @@ export function AgentList({ agents, activeId, knowledgeBases, templates, busy, o
         {/* Empty, the empty state above already says it. */}
         {!empty && <p className="text-label text-text-2">{AGENTS_COPY.templatesHint}</p>}
       </div>
-      <ul className="grid grid-cols-2 gap-4">
+      <ul className="grid grid-cols-3 gap-4">
         {templates.map((t) => (
           <li key={t.id} className="flex">
             <TemplateCard template={t} disabled={busy} onUse={() => onUseTemplate(t.id)} />
@@ -135,8 +135,8 @@ export function AgentList({ agents, activeId, knowledgeBases, templates, busy, o
   );
 }
 
-/** Knowledge base names, then the answer language. */
-function AgentTags({ knowledgeBases, language }: { knowledgeBases: string[]; language: string }) {
+/** Knowledge base names. */
+function AgentTags({ knowledgeBases }: { knowledgeBases: string[] }) {
   return (
     <ul className="flex min-w-0 flex-wrap gap-1.5" aria-label={T.aria.agentTags}>
       {knowledgeBases.map((kb) => (
@@ -144,9 +144,6 @@ function AgentTags({ knowledgeBases, language }: { knowledgeBases: string[]; lan
           <Tag>{kb}</Tag>
         </li>
       ))}
-      <li>
-        <Tag>{language}</Tag>
-      </li>
     </ul>
   );
 }
@@ -200,7 +197,7 @@ function ActiveAgent({
         </div>
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            <AgentTags knowledgeBases={knowledgeBases} language={T.languages[languageWord(agent.language)]} />
+            <AgentTags knowledgeBases={knowledgeBases} />
           </div>
           <IconButton icon={Icon.edit} label={AGENTS_COPY.editAria(agent.name)} size="sm" onClick={onEdit} />
           <Button size="sm" icon={Icon.tryThisAgent} onClick={onTry} aria-label={AGENTS_COPY.tryAria(agent.name)}>
@@ -239,7 +236,7 @@ function AgentRow({
             {line}
           </p>
         </div>
-        <AgentTags knowledgeBases={knowledgeBases} language={T.languages[languageWord(agent.language)]} />
+        <AgentTags knowledgeBases={knowledgeBases} />
       </div>
       <IconButton icon={Icon.edit} label={AGENTS_COPY.editAria(agent.name)} size="sm" onClick={onEdit} />
       <Button variant="secondary" size="sm" icon={Icon.start} disabled={busy} onClick={onStart} aria-label={T.aria.startAgent(agent.name)}>
@@ -250,14 +247,12 @@ function AgentRow({
 }
 
 /**
- * A template: name and language, then the first question it answers, in its own language (Taglish
- * templates ask in Taglish). One line per element so every card is the same height, even at 900px.
+ * A template: name, then the first question it answers (up to two lines at 900px).
  * The whole card is the "Use template" hit area, so the button itself stays a quiet text link.
  */
 function TemplateCard({ template, disabled, onUse }: { template: Template; disabled: boolean; onUse: () => void }) {
   const c = templateCopy(template.id);
-  const lang = languageWord(template.draft.language);
-  const [sample] = sampleQuestions(template.id, lang);
+  const [sample] = sampleQuestions(template.id);
   return (
     <article
       className={
@@ -271,13 +266,12 @@ function TemplateCard({ template, disabled, onUse }: { template: Template; disab
         <h3 className="min-w-0 truncate font-display text-title text-text" title={`${c.name}: ${c.line}`}>
           {c.name}
         </h3>
-        <Tag className="shrink-0">{T.languages[lang]}</Tag>
       </div>
       {sample && (
         <p
           aria-label={`${AGENTS_COPY.sampleAria}: ${sample}`}
           title={sample}
-          className="max-w-full self-end truncate rounded-bubble rounded-br-code bg-surface-2 px-3 py-2 text-label font-normal text-text"
+          className="max-w-full self-end line-clamp-2 rounded-bubble rounded-br-code bg-surface-2 px-3 py-2 text-label font-normal text-text"
         >
           {sample}
         </p>

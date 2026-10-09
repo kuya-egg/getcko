@@ -2,23 +2,14 @@
 import type { Agent } from "../../bindings/Agent";
 import type { AgentDraft } from "../../bindings/AgentDraft";
 import type { KnowledgeBaseId } from "../../bindings/KnowledgeBaseId";
-import type { Language } from "../../bindings/Language";
 import type { TemplateId } from "../../bindings/TemplateId";
-import { T, type AgentLanguage } from "../../brand/lexicon";
+import { T } from "../../brand/lexicon";
 
 /** MAX_AGENT_KNOWLEDGE_BASES in the backend (PRD A3). */
 export const MAX_KNOWLEDGE_BASES = 5;
 
 /** Speaking speed range on the slider. 1.0 is normal. */
 export const SPEED = { min: 0.75, max: 1.5, step: 0.25 } as const;
-
-const TO_WORD: Record<Language, AgentLanguage> = { english: "English", filipino: "Filipino", taglish: "Taglish" };
-const FROM_WORD: Record<AgentLanguage, Language> = { English: "english", Filipino: "filipino", Taglish: "taglish" };
-
-/** Backend language → the lexicon word (LanguagePicker, linesFor, tags). */
-export const languageWord = (l: Language): AgentLanguage => TO_WORD[l];
-/** Lexicon word → backend language. */
-export const languageOf = (w: AgentLanguage): Language => FROM_WORD[w];
 
 /** Template line from the lexicon (T.templates.*). */
 export function templateCopy(id: TemplateId): { name: string; line: string } {
@@ -33,7 +24,6 @@ export function draftOf(a: Agent): AgentDraft {
     instructions: a.instructions,
     baseRules: a.baseRules,
     knowledgeBaseIds: [...a.knowledgeBaseIds],
-    language: a.language,
     answerLength: a.answerLength,
     voiceId: a.voiceId,
     speechRate: a.speechRate,
@@ -48,7 +38,6 @@ export function blankDraft(): AgentDraft {
     instructions: "",
     baseRules: "include",
     knowledgeBaseIds: [],
-    language: "english",
     answerLength: "short",
     voiceId: null,
     speechRate: 1,
@@ -69,7 +58,6 @@ export function sameDraft(a: AgentDraft, b: AgentDraft): boolean {
     a.instructions === b.instructions &&
     a.baseRules === b.baseRules &&
     ids(a) === ids(b) &&
-    a.language === b.language &&
     a.answerLength === b.answerLength &&
     a.voiceId === b.voiceId &&
     Math.abs(a.speechRate - b.speechRate) < 1e-9
@@ -134,9 +122,6 @@ export function clampSpeed(rate: number): number {
   const snapped = Math.round(rate / SPEED.step) * SPEED.step;
   return Math.min(SPEED.max, Math.max(SPEED.min, snapped));
 }
-
-/** Filipino-capable OS voice (fil-PH, tl-PH). */
-export const isFilipinoVoice = (lang: string): boolean => /^(fil|tl)\b/i.test(lang);
 
 /** Citation.location → CitationChip page: "p. 4" → 4, a heading stays text. */
 export function citationWhere(location: string): number | string {

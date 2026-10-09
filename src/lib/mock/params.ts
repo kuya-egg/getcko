@@ -7,13 +7,11 @@ export interface MockOptions {
   setup: MockSetup;
   /** ?empty=1: no agents, no knowledge bases. */
   empty: boolean;
-  /** ?filipino=0: no Filipino-capable voice installed. */
-  filipinoVoice: boolean;
   /** ?slow=1: every command waits ~600ms (to see loading moments). */
   slow: boolean;
 }
 
-export const DEFAULT_OPTIONS: MockOptions = { setup: "ready", empty: false, filipinoVoice: true, slow: false };
+export const DEFAULT_OPTIONS: MockOptions = { setup: "ready", empty: false, slow: false };
 
 export function readMockOptions(search: string): MockOptions {
   const q = new URLSearchParams(search);
@@ -21,7 +19,6 @@ export function readMockOptions(search: string): MockOptions {
   return {
     setup: setup === "missing" || setup === "denied" || setup === "loading" ? setup : "ready",
     empty: q.get("empty") === "1",
-    filipinoVoice: q.get("filipino") !== "0",
     slow: q.get("slow") === "1",
   };
 }

@@ -14,21 +14,18 @@ import {
   Dialog,
   ErrorNotice,
   GeckoDot,
-  LanguagePicker,
   Notice,
   PageHeader,
   Panel,
   SegmentedControl,
   Slider,
   Surface,
-  Tag,
   TextField,
   Toggle,
   VoicePicker,
 } from "../../components/ui";
 import { errorCopy } from "../../app/errors";
 import { useAppNav } from "../../app/nav";
-import { PLATFORM } from "../../app/platform";
 import { AGENTS_COPY } from "./copy";
 import {
   MAX_KNOWLEDGE_BASES,
@@ -38,9 +35,6 @@ import {
   draftOf,
   hasProblems,
   isDirty,
-  isFilipinoVoice,
-  languageOf,
-  languageWord,
   liveKnowledgeBases,
   normalizeDraft,
   toggleKnowledgeBase,
@@ -110,8 +104,6 @@ export function AgentEditor({
   const dirty = isDirty(draft, saved);
   const set = <K extends keyof AgentDraft>(k: K, v: AgentDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const full = draft.knowledgeBaseIds.length >= MAX_KNOWLEDGE_BASES;
-  const lang = languageWord(draft.language);
-  const hasFilipino = voices.some((v) => isFilipinoVoice(v.language));
 
   const runBusy = async (kind: NonNullable<typeof busy>, f: () => Promise<void>) => {
     setBusy(kind);
@@ -296,7 +288,6 @@ export function AgentEditor({
 
         <Panel eyebrow={T.agent.sectionVoice}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-            <LanguagePicker value={lang} onChange={(w) => set("language", languageOf(w))} />
             <Field label={T.agent.lengthLabel}>
               <SegmentedControl<AnswerLength>
                 label={T.agent.lengthLabel}
@@ -312,8 +303,6 @@ export function AgentEditor({
               ]}
               value={draft.voiceId ?? ""}
               onChange={(id) => set("voiceId", id || null)}
-              language={lang}
-              hasFilipinoVoice
             />
             <Slider
               label={T.agent.speedLabel}
@@ -324,24 +313,14 @@ export function AgentEditor({
               format={fmtSpeed}
               onChange={(v) => set("speechRate", v)}
             />
-            {lang !== "English" && !hasFilipino && (
-              <Notice tone="info" className="col-span-2">
-                {AGENTS_COPY.noFilipinoVoice(PLATFORM)}
-              </Notice>
-            )}
           </div>
         </Panel>
 
         <Panel ref={tryRef} className="scroll-mt-8">
-          <PanelHead
-            label={T.agent.sectionTry}
-            // GetcKo answers in the saved language: say which, so Taglish reads as a choice, not a glitch.
-            aside={<Tag>{T.languages[languageWord(agent?.language ?? draft.language)]}</Tag>}
-          />
+          <PanelHead label={T.agent.sectionTry} />
           <TryAgent
             agentId={agent?.id ?? null}
             agentName={agent?.name ?? title}
-            language={agent?.language ?? draft.language}
             templateId={agent?.templateId ?? null}
             dirty={dirty && agent !== null}
             onOpenSettings={() => leave(() => go("settings"))}

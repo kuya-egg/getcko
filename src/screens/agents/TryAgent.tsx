@@ -1,27 +1,24 @@
 // "Try it": an unsaved test chat with one agent (PRD A7). Streams sentences from 'turn' events into
 // a GetcKo bubble; GetcKo (3x) stands beside the latest answer, thinking, then talking, then done.
-// Empty, it teaches: GetcKo points at two questions this agent answers, in the agent's language.
+// Empty, it teaches: GetcKo points at two questions this agent answers.
 // The only gecko on the agents screen.
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { AgentId } from "../../bindings/AgentId";
-import type { Language } from "../../bindings/Language";
 import type { TemplateId } from "../../bindings/TemplateId";
 import { GetCkoSprite, MOMENT_POSE, pointPoseFor, speakLoop, thinkingLoop, type Moment, type Pose } from "../../brand";
 import { Icon } from "../../brand/icons";
-import { T, linesFor } from "../../brand/lexicon";
+import { T, say } from "../../brand/lexicon";
 import { Button, ChatBubble, CitationChip, Composer, ErrorNotice } from "../../components/ui";
 import { errorCopy } from "../../app/errors";
 import { ask, onTurn, pttStart, stop } from "../../lib/getcko";
 import { AGENTS_COPY, sampleQuestions, tryGreeting } from "./copy";
-import { citationWhere, languageWord, shortSource } from "./model";
+import { citationWhere, shortSource } from "./model";
 import { TRY_INITIAL, isLive, isModelMissing, isWaiting, lastTurn, momentFor, stopKind, tryReducer, type TryTurn } from "./tryChat";
 
 export interface TryAgentProps {
   /** The saved agent to try. null = not saved yet (the chat is disabled). */
   agentId: AgentId | null;
   agentName: string;
-  /** Saved language: GetcKo's own lines follow it. */
-  language: Language;
   /** The agent's template: picks the suggested questions. null = a custom agent. */
   templateId?: TemplateId | null;
   /** The editor has unsaved changes: say Try it uses the saved version. */
@@ -34,7 +31,7 @@ export interface TryAgentProps {
 const modelMissing = (t: TryTurn | undefined): boolean =>
   !!t && t.stage === "failed" && (isModelMissing(t.error) || errorCopy(t.error).body === T.errors.modelNotLoaded);
 
-export function TryAgent({ agentId, agentName, language, templateId = null, dirty, onOpenSettings }: TryAgentProps) {
+export function TryAgent({ agentId, agentName, templateId = null, dirty, onOpenSettings }: TryAgentProps) {
   const [state, dispatch] = useReducer(tryReducer, TRY_INITIAL);
   const [text, setText] = useState("");
   const keySeq = useRef(0);
@@ -42,7 +39,7 @@ export function TryAgent({ agentId, agentName, language, templateId = null, dirt
   /** Hold to talk could not start (mic blocked): the release asks nothing. */
   const talkFailed = useRef(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const lines = linesFor(languageWord(language));
+  const lines = say.en;
   const current = lastTurn(state);
   const busy = isLive(current);
   liveRef.current = busy;
@@ -108,9 +105,9 @@ export function TryAgent({ agentId, agentName, language, templateId = null, dirt
       <div className="flex flex-col gap-4" aria-live="polite">
         {state.turns.length === 0 && !disabled && (
           <EmptyTry
-            title={tryGreeting(languageWord(language))}
+            title={tryGreeting()}
             body={T.agent.tryNotSaved}
-            questions={sampleQuestions(templateId, languageWord(language))}
+            questions={sampleQuestions(templateId)}
             onAsk={(q) => void run(false, q)}
           />
         )}
@@ -264,7 +261,7 @@ function TurnView({
   turn: TryTurn;
   latest: boolean;
   agentName: string;
-  lines: ReturnType<typeof linesFor>;
+  lines: typeof say.en;
   onStop: () => void;
   /** Ask the same question again (typed turns only). */
   onRetry?: () => void;

@@ -1,7 +1,7 @@
 // Agents screen strings that have no key in src/brand/lexicon.ts yet. Same voice rules as T:
 // sentence case, short, verbs on buttons, no emoji, "on this Mac" / "on this PC" for place.
 import type { TemplateId } from "../../bindings/TemplateId";
-import { PLACE, T, type AgentLanguage, type Platform } from "../../brand/lexicon";
+import { T } from "../../brand/lexicon";
 import { APP_COPY } from "../../app/copy";
 
 export const AGENTS_COPY = {
@@ -70,47 +70,22 @@ export const AGENTS_COPY = {
   /** Name is empty on Save. */
   nameRequired: APP_COPY.errors.emptyName.title,
 
-  /** T.agent.noFilipinoVoice with the right place for this computer. */
-  noFilipinoVoice: (p: Platform) => T.agent.noFilipinoVoice.replace("this Mac", PLACE[p].thisDevice),
 } as const;
 
-/**
- * Questions a coworker would ask each template, in the agent's answer language. GetcKo's
- * world, not UI chrome, so Taglish agents get Taglish questions. First one is the card sample.
- */
-const QUESTIONS: Record<TemplateId | "custom", { en: readonly string[]; tl: readonly string[] }> = {
-  officeHelper: {
-    en: ["How do I add a new record?", "Where is the Save button?"],
-    tl: ["Paano mag-add ng bagong record?", "Nasaan ang Save button?"],
-  },
-  teacher: {
-    en: ["Where do I put the final grade?", "How is the quarterly grade computed?"],
-    tl: ["Saan ko ilalagay ang final grade?", "Paano kinukuwenta ang quarterly grade?"],
-  },
-  studyBuddy: {
-    en: ["What does the mitochondria do?", "Quiz me on the parts of a cell."],
-    tl: ["Ano ang ginagawa ng mitochondria?", "I-quiz mo ako sa parts ng cell."],
-  },
-  taglishExplainer: {
-    en: ["What does this button do?", "Where do I click to print?"],
-    tl: ["Ano ang ginagawa ng button na ito?", "Saan ako magki-click para mag-print?"],
-  },
-  custom: {
-    en: ["What can you help me with?", "Where do I start?"],
-    tl: ["Ano ang kaya mong itulong sa akin?", "Saan ako magsisimula?"],
-  },
+/** Questions a coworker would ask each template. First one is the card sample. Answers are English only. */
+const QUESTIONS: Record<TemplateId | "custom", readonly string[]> = {
+  officeHelper: ["How do I add a new record?", "Where is the Save button?"],
+  teacher: ["Where do I put the final grade?", "How is the quarterly grade computed?"],
+  studyBuddy: ["What does the mitochondria do?", "Quiz me on the parts of a cell."],
+  custom: ["What can you help me with?", "Where do I start?"],
 };
 
-/** Suggested questions for an agent: its template's, in its language (Filipino uses the Taglish set). */
-export function sampleQuestions(templateId: TemplateId | null, language: AgentLanguage): readonly string[] {
-  const set = QUESTIONS[templateId ?? "custom"];
-  return language === "English" ? set.en : set.tl;
+/** Suggested questions for an agent: its template's, or a general pair for a custom agent. */
+export function sampleQuestions(templateId: TemplateId | null): readonly string[] {
+  return QUESTIONS[templateId ?? "custom"];
 }
 
-/**
- * GetcKo's own first line in an empty Try it, in the agent's language (GetcKo's world, so Taglish
- * agents greet in Taglish). Filipino uses the Taglish line, like linesFor().
- */
-export function tryGreeting(language: AgentLanguage): string {
-  return language === "English" ? "Ask me. I'll check your documents." : "Itanong mo lang. Hahanapin ko sa mga document mo.";
+/** GetcKo's own first line in an empty Try it. */
+export function tryGreeting(): string {
+  return "Ask me. I'll check your documents.";
 }

@@ -19,7 +19,7 @@ describe("mock backend", () => {
   afterEach(() => vi.useRealTimers());
 
   it("reads URL params", () => {
-    expect(readMockOptions("?setup=denied&empty=1&filipino=0")).toEqual({ setup: "denied", empty: true, filipinoVoice: false, slow: false });
+    expect(readMockOptions("?setup=denied&empty=1")).toEqual({ setup: "denied", empty: true, slow: false });
     expect(readMockOptions("?setup=nope").setup).toBe("ready");
   });
 
@@ -63,7 +63,7 @@ describe("mock backend", () => {
   it("agents: template create, five-KB limit, duplicate, delete moves active", async () => {
     const { call } = backend({ empty: true });
     const a = (await call("agent_create_from_template", { templateId: "teacher" })) as Agent;
-    expect([a.name, a.language, a.templateId]).toEqual(["Teacher", "taglish", "teacher"]);
+    expect([a.name, a.templateId]).toEqual(["Teacher", "teacher"]);
     expect(((await call("agent_active")) as Agent).id).toBe(a.id);
     const ids: number[] = [];
     for (let i = 0; i < 6; i++) ids.push(((await call("kb_create", { name: `kb ${i}` })) as KnowledgeBase).id);
