@@ -34,7 +34,7 @@ const NO_SOURCE_TASK: &str =
 /// Plan pass of a guided task (PRD S5): the actions in plain words, grounded one at a
 /// time later. Plain words beat element ids or labels here: listing ids or labels, the
 /// model mixed up digits and order (task_eval 10/20 and 5/20 steps; words 16/20).
-pub const PLAN_TASK: &str = "Task: list the actions that do what the question asks, in the order the user does them, one short line per action; think of exactly what the user presses or types first, then next. Write each line as \"N. action\", naming the one screen element the action uses by its label (for example \"1. Click Save\"). When a value is entered with separate keys, one action per key. Use only elements on the screen. At most 5 lines. If the question asks for a fact or an explanation rather than actions, reply none.";
+pub const PLAN_TASK: &str = "Task: list the actions that do what the question asks, in the order the user does them, one short line per action; think of exactly what the user presses or types first, then next. Write each line as \"N. action\", naming the one screen element the action uses by its label (for example \"1. Click Save\"). When a value is entered with separate keys, one action per key. Use the fewest actions: when one element on the screen does it directly, that is the only action. Use only elements on the screen. At most 5 lines. If the question asks for a fact or an explanation rather than actions, reply none.";
 /// Longest plan reply: five short numbered lines.
 pub const PLAN_MAX_TOKENS: u32 = 96;
 /// Most actions kept from a plan: a guided task has at most this many steps.
