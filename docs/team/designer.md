@@ -21,7 +21,13 @@ Define the visible, calm GetCko experience and deliver assets that make the user
 4. Produce a usable demo manual PDF for R1: 20 pages with text/page locations suitable for import, citations, and demo questions; review import result Ready within <60 s on M4 Pro (Wi-Fi off). Commands/events: `doc_import`, `document`.
 
 ### P1 — 1–4 AM
-5. Refine the visual states for targetless answer and “best guess” fallback without implying certainty (S4); keep panel clear of target. Use `TurnEvent.target` null and `Confidence`.
+5. Design the visual states for the three screen tiers ([three tiers](../architecture.md#screen-understanding-three-tiers), S4) and hand them to frontend 2 (overlay):
+   - **Tiers 1–2 (element ID, exact bounds):** the existing halo `0 0 0 3px #FFC83D` on the element box; tier 2 looks identical to tier 1 (the screenshot is internal, not shown to the user).
+   - **Tier 3 (`screenMode: imageOnly`, `Confidence` `bestGuess`, no element box, only a point):** a softer point marker instead of the box halo, the gecko in Pointing pose beside it, and a "best guess" chip in the answer card. Must read as approximate, never as certain (BR-18).
+   - **Targetless answer** (empty element list and no screenshot, or Screen Recording denied): no halo, gecko stays near the cursor, answer card copy such as "I can't read this app" (BR-16).
+   - **Screenshot moment:** the core hides the overlay for an instant while capturing; specify how the gecko's Thinking state should look so the brief disappearance doesn't read as a glitch (e.g. no fade-out, state kept on re-show).
+   - **Onboarding copy for Screen Recording:** optional; without it GetCko still points from the element list but can't use screenshots on hard screens.
+   Acceptance: specs for all four states, using design-system §2/§5/§6 tokens only; copy in sentence case, no emoji (§7); frontend 2 confirms each state maps to `PointerTarget.elementId` (null for tier 3), `Answer.screenMode` and `Confidence`.
 6. Deliver pitch visuals and a one-minute demo video that truthfully show offline operation, local documents, pointer, spoken answer, and measured numbers from `MODELS.md` (BR-24). Include model/license disclosures supplied by engineers.
 
 ### P2
@@ -35,7 +41,8 @@ Define the visible, calm GetCko experience and deliver assets that make the user
 ## Done
 - [ ] Four sprite states and documented React-renderer-ready exports delivered.
 - [ ] Target halo, panel, answer card, session bar and composer specs meet design system.
-- [ ] Agent, KB and onboarding screens specified.
+- [ ] Agent, KB and onboarding screens specified, including optional Screen Recording copy.
+- [ ] Tier 1–2 halo, tier-3 "best guess" point, targetless and capture-moment states specified and handed to frontend 2.
 - [ ] Demo manual PDF imports and has citeable page locations.
 - [ ] Pitch visuals and one-minute demo video show only verified claims.
 - [ ] UI fonts Bricolage Grotesque, Geist, Geist Mono and Silkscreen are available bundled offline.
