@@ -111,15 +111,28 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
+        .run(|app, event| match event {
             // Clicking the Dock icon (macOS only) brings the main window back.
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = event
-                && let Err(error) = commands::show_main_window(app)
-            {
-                tracing::warn!("could not reopen main window: {error}");
+            tauri::RunEvent::Reopen { .. } => {
+                if let Err(error) = commands::show_main_window(app) {
+                    tracing::warn!("could not reopen main window: {error}");
+                }
             }
-            #[cfg(not(target_os = "macos"))]
-            let _ = (app, event);
+            tauri::RunEvent::Exit => exit_now(app, 0),
+            _ => {}
         });
+}
+
+/// Ends the process without running C++ static destructors. At exit, llama.cpp's
+/// Metal device destructor asserts that no model buffers are still registered
+/// (`ggml-metal-device.m`: `GGML_ASSERT([rsets->data count] == 0)`), but the loaded
+/// models live until the process ends, so every quit and restart aborted with a
+/// crash report. Nothing needs those destructors: SQLite commits are already durable
+/// and the OS frees the GPU memory.
+pub(crate) fn exit_now(app: &tauri::AppHandle, code: i32) -> ! {
+    app.cleanup_before_exit();
+    // SAFETY: `_exit` only ends the process; it skips atexit handlers and static
+    // destructors, which is the point (see above). No Rust state is observed after it.
+    unsafe { libc::_exit(code) }
 }

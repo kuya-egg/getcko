@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barangay San Isidro resident services</title>
+<style>
+  :root { --ink: #0e0f0c; --muted: #4a4d46; --line: #d9dcd4; --soft: #f6f7f4; --green: #0f7a3d; --accent: #39d86f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--soft); }
+  header { display: flex; align-items: center; gap: 32px; padding: 14px 32px; background: #fff; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; }
+  nav a { margin-right: 20px; color: var(--muted); text-decoration: none; }
+  nav a[aria-current] { color: var(--green); font-weight: 600; }
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; padding: 24px 32px; max-width: 1280px; }
+  main { display: grid; gap: 24px; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 20px 24px; }
+  h2 { font-size: 18px; margin: 0 0 14px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button.primary { background: var(--green); color: #fff; border-color: var(--green); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 14px; }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+  label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+  input, select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
+  .wide { grid-column: 1 / -1; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 16px; }
+  .note { color: var(--green); font-weight: 600; min-height: 1.5em; margin: 10px 0 0; }
+  .settings { display: flex; gap: 24px; align-items: end; flex-wrap: wrap; }
+  aside { background: var(--ink); color: #fff; border-radius: 12px; padding: 20px; align-self: start; position: sticky; top: 24px; }
+  aside h2 { color: var(--accent); }
+  aside ol { padding-left: 20px; margin: 0; display: grid; gap: 12px; }
+  aside q { display: block; font-weight: 600; }
+  aside small { color: #c9ccc4; }
+  aside kbd { background: #fff; color: var(--ink); border-radius: 4px; padding: 0 5px; font-size: 13px; }
+  body.large { font-size: 19px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Barangay San Isidro</h1>
+  <nav aria-label="Main">
+    <a href="#" aria-current="page">Residents</a>
+    <a href="#">Requests</a>
+    <a href="#">Reports</a>
+    <a href="#">Help</a>
+  </nav>
+</header>
+
+<div class="layout">
+  <main>
+    <section aria-labelledby="residents-title">
+      <h2 id="residents-title">Residents</h2>
+      <div class="toolbar">
+        <button type="button" class="primary" id="add">Add resident</button>
+        <button type="button" id="print">Print list</button>
+        <button type="button" id="pdf">Export to PDF</button>
+        <button type="button">Filter</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Purok</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Juan Dela Cruz</td><td>Purok 1</td><td>Active</td></tr>
+          <tr><td>Maria Reyes</td><td>Purok 3</td><td>Active</td></tr>
+          <tr><td>Jose Rizal Mercado</td><td>Purok 2</td><td>Moved out</td></tr>
+        </tbody>
+      </table>
+      <p class="note" id="toolbar-note" role="status"></p>
+    </section>
+
+    <section aria-labelledby="clearance-title">
+      <h2 id="clearance-title">Request a barangay clearance</h2>
+      <form id="clearance">
+        <label>Full name<input id="name" name="name" autocomplete="off" required></label>
+        <label>Address<input id="address" name="address" autocomplete="off" required></label>
+        <label>Purpose
+          <select id="purpose" name="purpose" required>
+            <option value="">Choose a purpose</option>
+            <option>Employment</option>
+            <option>School</option>
+            <option>Travel</option>
+          </select>
+        </label>
+        <label>Date needed<input id="date" name="date" type="date" required></label>
+        <label class="check wide"><input id="confirm" type="checkbox" required> I confirm the details are correct</label>
+        <div class="wide"><button type="submit" class="primary">Submit request</button></div>
+      </form>
+      <p class="note" id="clearance-note" role="status"></p>
+    </section>
+
+    <section aria-labelledby="settings-title">
+      <h2 id="settings-title">Display settings</h2>
+      <div class="settings">
+        <label>Text size
+          <select id="text-size">
+            <option>Normal</option>
+            <option>Large</option>
+          </select>
+        </label>
+        <button type="button" id="save-settings">Save settings</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Hidden from screen readers and from GetCko on purpose: GetCko reads the page's
+       accessibility tree, and a hint that repeats a question ("export as PDF") would
+       compete with the real button for the pointer. The audience still sees it. -->
+  <aside aria-hidden="true">
+    <h2>Try GetCko</h2>
+    <ol>
+      <li><q>How do I export the resident list as a PDF?</q><small>Points at one button.</small></li>
+      <li><q>How do I request a barangay clearance?</q><small>Guided steps: fill a field, then press Next step.</small></li>
+      <li><q>How do I make the text bigger?</q><small>Points at a setting.</small></li>
+      <li><q>How do I add a new resident?</q><small>Points at the toolbar.</small></li>
+      <li><q>How do I turn up the volume?</q><small>Hide every window first: GetCko reads the whole screen.</small></li>
+    </ol>
+    <p><small>Tap <kbd>⌥ Space</kbd> to type, hold it to talk.</small></p>
+  </aside>
+</div>
+
+<script>
+  const say = (id, text) => { document.getElementById(id).textContent = text; };
+  document.getElementById("add").onclick = () => say("toolbar-note", "New resident form opened.");
+  document.getElementById("print").onclick = () => say("toolbar-note", "Sent to the printer.");
+  document.getElementById("pdf").onclick = () => say("toolbar-note", "Resident list saved as PDF.");
+  document.getElementById("clearance").onsubmit = (event) => {
+    event.preventDefault();
+    say("clearance-note", "Request submitted. Claim your clearance at the barangay hall.");
+    event.target.reset();
+  };
+  document.getElementById("save-settings").onclick = () => {
+    document.body.classList.toggle("large", document.getElementById("text-size").value === "Large");
+  };
+</script>
+</body>
+</html>

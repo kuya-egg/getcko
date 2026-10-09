@@ -3,13 +3,14 @@
 use crate::engine::RgbImage;
 use crate::model::{MonitorFrame, Rect, ScreenElement};
 use crate::platform::ScreenCapture;
+use image::GenericImageView;
 use image::imageops::FilterType;
 
 /// Longest side of the image given to the model.
 pub const MAX_SIDE: u32 = 1024;
 
 /// A capture scaled for the model, and how to map between its pixels and the desktop.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Prepared {
     /// RGB image supplied to the model.
     pub image: RgbImage,
@@ -19,6 +20,68 @@ pub struct Prepared {
     pub monitor: MonitorFrame,
     /// Image pixels per physical desktop pixel.
     pub scale: f64,
+    /// The capture at full resolution, unmarked, for [`close_up`].
+    pub source: image::RgbaImage,
+}
+
+impl std::fmt::Debug for Prepared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Prepared")
+            .field("image", &self.image)
+            .field("origin", &self.origin)
+            .field("monitor", &self.monitor)
+            .field("scale", &self.scale)
+            .field("source", &self.source.dimensions())
+            .finish()
+    }
+}
+
+/// Side of a [`close_up`] in capture pixels: a few menu-bar icons around the point on
+/// a Retina display.
+const CLOSE_UP_SIDE: u32 = 320;
+
+/// The capture around physical desktop point (`x`, `y`) at full resolution, the point
+/// ringed in yellow: what a tier-3 guess shows, for the answer pass. In the downscaled
+/// screenshot a menu-bar icon is a few pixels wide; told only that the pointer was a
+/// guess, the answer pass said "I don't know" to 4 of 4 menu-bar questions, and named
+/// the icon in 4 of 5 with this close-up (the ring keeps a neighbouring icon from being
+/// named instead). `None` for an empty capture.
+#[must_use]
+pub fn close_up(prepared: &Prepared, x: f64, y: f64) -> Option<RgbImage> {
+    let (width, height) = prepared.source.dimensions();
+    let side = CLOSE_UP_SIDE.min(width).min(height);
+    if side == 0 {
+        return None;
+    }
+    let at = |value: f64, origin: f64, size: u32| {
+        (value - origin).round().clamp(0.0, f64::from(size - 1)) as u32
+    };
+    let (px, py) = (
+        at(x, prepared.origin.0, width),
+        at(y, prepared.origin.1, height),
+    );
+    let left = px.saturating_sub(side / 2).min(width - side);
+    let top = py.saturating_sub(side / 2).min(height - side);
+    let crop = image::imageops::crop_imm(&prepared.source, left, top, side, side);
+    let mut image = RgbImage {
+        width: side,
+        height: side,
+        rgb: crop
+            .pixels()
+            .flat_map(|(_, _, pixel)| [pixel[0], pixel[1], pixel[2]])
+            .collect(),
+    };
+    let (cx, cy) = (f64::from(px - left), f64::from(py - top));
+    let radius = f64::from(side) / 10.0;
+    for yy in 0..side {
+        for xx in 0..side {
+            let distance = (f64::from(xx) - cx).hypot(f64::from(yy) - cy);
+            if (distance - radius).abs() < 2.5 {
+                set_pixel(&mut image, xx, yy, [255, 200, 0]);
+            }
+        }
+    }
+    Some(image)
 }
 
 /// GBNF for a tier-3 reply: `[y, x]` normalized to 0-1000 (Gemma's pointing
@@ -45,11 +108,11 @@ pub fn prepare(capture: ScreenCapture, marks: Option<&[ScreenElement]>) -> Prepa
             .clamp(1.0, f64::from(MAX_SIDE)) as u32;
         (width, height)
     };
-    let mut rgba = image::RgbaImage::from_raw(capture.width, capture.height, capture.rgba)
+    let source = image::RgbaImage::from_raw(capture.width, capture.height, capture.rgba)
         .unwrap_or_else(|| image::RgbaImage::new(capture.width, capture.height));
-    if (width, height) != (capture.width, capture.height) && width > 0 && height > 0 {
-        rgba = image::imageops::resize(&rgba, width, height, FilterType::Triangle);
-    }
+    let scaled = ((width, height) != (capture.width, capture.height) && width > 0 && height > 0)
+        .then(|| image::imageops::resize(&source, width, height, FilterType::Triangle));
+    let rgba = scaled.as_ref().unwrap_or(&source);
     let mut rgb = image::RgbImage::new(width, height);
     for (x, y, pixel) in rgb.enumerate_pixels_mut() {
         let source = rgba.get_pixel(x, y);
@@ -81,6 +144,7 @@ pub fn prepare(capture: ScreenCapture, marks: Option<&[ScreenElement]>) -> Prepa
         origin: (f64::from(capture.x), f64::from(capture.y)),
         monitor: capture.monitor,
         scale,
+        source,
     }
 }
 
@@ -262,6 +326,25 @@ mod tests {
                 scale_factor: 1.0,
             },
         }
+    }
+
+    #[test]
+    fn close_up_keeps_a_corner_point_inside_at_full_resolution() {
+        // A 3600-wide capture whose desktop origin is (100, 50); one red pixel near its
+        // top-right corner, where menu-bar icons sit.
+        let mut shot = capture(3600, 2338, 100, 50, [0, 0, 0, 255]);
+        let (px, py) = (3590_usize, 4_usize);
+        let at = (py * 3600 + px) * 4;
+        shot.rgba[at..at + 4].copy_from_slice(&[255, 0, 0, 255]);
+        let prepared = prepare(shot, None);
+        let close = close_up(&prepared, 100.0 + 3590.0, 50.0 + 4.0).expect("close-up");
+        assert_eq!((close.width, close.height), (CLOSE_UP_SIDE, CLOSE_UP_SIDE));
+        // The crop stops at the right edge: the point is 10 px from the crop's right side.
+        let (x, y) = (CLOSE_UP_SIDE - 10, 4);
+        let i = ((y * close.width + x) * 3) as usize;
+        assert_eq!(&close.rgb[i..i + 3], &[255, 0, 0]);
+        let empty = prepare(capture(0, 0, 0, 0, [0, 0, 0, 255]), None);
+        assert!(close_up(&empty, 0.0, 0.0).is_none());
     }
 
     #[test]
