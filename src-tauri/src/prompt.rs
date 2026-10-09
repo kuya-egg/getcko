@@ -8,8 +8,7 @@
 //! The screen part can be evaluated while the user is still speaking
 //! ([`TurnPrompt::warm_user`]), before the question is known.
 use crate::model::{
-    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenMode, ScreenSnapshot,
-    TaskStep,
+    AgentDraft, AnswerLength, BaseRulesMode, ScreenElement, ScreenMode, ScreenSnapshot, TaskStep,
 };
 
 /// General grounding and answer-quality rules (BR-6).
@@ -59,12 +58,7 @@ impl TurnPrompt {
             system.push_str("\n\nAgent instructions: ");
             system.push_str(&agent.instructions);
         }
-        system.push_str("\n\nLanguage: ");
-        system.push_str(match agent.language {
-            Language::English => "English.",
-            Language::Filipino => "Filipino.",
-            Language::Taglish => "Taglish: use a natural mix of Filipino and English.",
-        });
+        system.push_str("\n\nAnswer in English. Keep screen labels exactly as shown, never name element roles, and only give the steps the question asks for.");
         let max_tokens = match agent.answer_length {
             AnswerLength::Short => {
                 system.push_str("\nLength: 1-2 sentences.");
@@ -85,7 +79,8 @@ impl TurnPrompt {
                 context.push('\n');
                 context.push_str(&element.id);
                 context.push_str(" | ");
-                context.push_str(&element.role);
+                // Plain words (field, drop-down): the answer pass copied raw roles.
+                context.push_str(plain_role(&element.role));
                 context.push_str(" | ");
                 context.push_str(&truncate_chars(&element.label, 60));
                 context.push_str(" | ");
@@ -168,7 +163,7 @@ impl TurnPrompt {
                 let _ = write!(
                     task,
                     "The pointer is showing the user this {}: \"{}\"",
-                    element.role,
+                    plain_role(&element.role),
                     truncate_chars(&element.label, 60)
                 );
                 if let Some(value) = &element.value {
@@ -245,6 +240,34 @@ pub fn choices_grammar(choices: &[String]) -> String {
 pub fn target_element<'a>(reply: &str, snapshot: &'a ScreenSnapshot) -> Option<&'a ScreenElement> {
     let id = reply.trim();
     snapshot.elements.iter().find(|element| element.id == id)
+}
+
+/// A shared role ([`crate::platform::ROLES`]) as a user would say it: the answer
+/// pass repeats the word it is given ("this textField" became "sa textField na").
+fn plain_role(role: &str) -> &'static str {
+    match role {
+        "button" => "button",
+        "checkbox" => "checkbox",
+        "radio" => "option",
+        "textField" => "field",
+        "textArea" => "text box",
+        "comboBox" => "drop-down",
+        "list" => "list",
+        "listItem" | "row" => "item",
+        "menu" => "menu",
+        "menuItem" => "menu item",
+        "menuBar" => "menu bar",
+        "tab" => "tab",
+        "link" => "link",
+        "cell" => "cell",
+        "table" => "table",
+        "image" => "picture",
+        "text" => "text",
+        "slider" => "slider",
+        "toolbar" => "toolbar",
+        "window" => "window",
+        _ => "item",
+    }
 }
 
 fn truncate_chars(text: &str, limit: usize) -> String {
@@ -531,6 +554,25 @@ mod tests {
         assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
         let answer_task = TurnPrompt::answer_task(Pointed::Element(&screen.elements[1]), true);
         assert!(answer_task.contains("\"Q1, Juan Dela Cruz\""));
+        // Roles in the user's words: the answer repeats them.
+        let field = ScreenElement {
+            role: "textField".into(),
+            ..screen.elements[1].clone()
+        };
+        let field_task = TurnPrompt::answer_task(Pointed::Element(&field), true);
+        assert!(field_task.contains("this field: "), "{field_task}");
+        assert!(!field_task.contains("textField"));
+        let listed = ScreenSnapshot {
+            elements: vec![field.clone()],
+            ..screen.clone()
+        };
+        let listed_prompt = TurnPrompt::new(&draft, Some(&listed), &[]);
+        assert!(
+            listed_prompt
+                .warm_user()
+                .contains("e2 | field | Q1, Juan Dela Cruz")
+        );
+        assert!(!listed_prompt.warm_user().contains("textField"));
         assert!(!answer_task.contains("e2"));
         assert!(TurnPrompt::answer_task(Pointed::Guess, true).contains("best guess"));
         assert!(!TurnPrompt::answer_task(Pointed::Nothing, true).contains("pointer"));
@@ -548,6 +590,12 @@ mod tests {
         assert!(turn.system.contains(GUARANTEES));
         assert!(!turn.system.contains(BASE_RULES));
         assert_eq!(turn.warm_user(), "(no screen)\n\n");
+    }
+    #[test]
+    fn system_prompt_requires_english_and_hides_element_roles() {
+        let turn = TurnPrompt::new(&templates_draft(), None, &[]);
+        assert!(turn.system.contains("Answer in English."));
+        assert!(turn.system.contains("never name element roles"));
     }
     #[test]
     fn target_grammar_and_reply_mapping() {

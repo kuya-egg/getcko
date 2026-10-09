@@ -226,6 +226,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     } else {
         None
     };
+    let grounder = engine.grounder.as_deref();
     // Tiers 2-3: a screenshot when the element list is weak or empty.
     let mut capture_ms = None;
     let mut mode = snapshot.as_ref().map(screen_mode);
@@ -238,7 +239,15 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         let t = Instant::now();
         match capture_screen(app, state.platform.as_ref()) {
             Ok(capture) => {
-                if wanted == ScreenMode::ImageOnly {
+                if wanted == ScreenMode::ImageOnly && grounder.is_some() {
+                    // The grounder reads the screenshot itself, unmarked.
+                    screenshot = Some(crate::screenshot::prepare(capture, None));
+                    screen_text = Some(ScreenSnapshot {
+                        app_name: String::new(),
+                        window_title: None,
+                        elements: Vec::new(),
+                    });
+                } else if wanted == ScreenMode::ImageOnly {
                     let (shot, text) = read_screenshot(state.platform.as_ref(), capture);
                     screenshot = Some(shot);
                     screen_text = Some(text);
@@ -284,9 +293,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                 .transcriber
                 .as_ref()
                 .ok_or_else(|| AppError::unavailable("speech-to-text is not available"))?;
-            let text = trans
-                .transcribe(&pcm, agent.draft.language)
-                .map_err(AppError::from)?;
+            let hint = snapshot.as_ref().map(speech_hint).unwrap_or_default();
+            let text = trans.transcribe(&pcm, &hint).map_err(AppError::from)?;
             transcribe_ms = Some(ms(t));
             text.trim().to_owned()
         }
@@ -355,7 +363,10 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             mode,
             screen,
             screenshot.as_ref(),
-            None,
+            grounder.map(|model| Grounding {
+                model,
+                question: &question,
+            }),
             &check,
         )? {
             Aim::Element(element) if mode == ScreenMode::ImageOnly => {
@@ -419,7 +430,6 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             && let Err(e) = speaker.speak(
                 &sentence,
                 agent.draft.voice_id.as_deref(),
-                agent.draft.language,
                 agent.draft.speech_rate,
             )
         {
@@ -751,6 +761,101 @@ const MIN_LABELLED: usize = 5;
 /// More controls than this sharing one label (look-alike cells, icons) makes the
 /// list ambiguous without a picture.
 const MAX_SAME_LABEL: usize = 3;
+/// Embeds again, with the configured model, the passages the store kept from another
+/// embedding model ([`Store::reembed_pending`]), then makes their documents searchable
+/// (or failed, asking for a new import, if embedding fails). Runs once the engine is
+/// loaded; emits [`crate::EVENT_DOCUMENT`] for each changed document.
+pub fn reembed_documents<R: tauri::Runtime>(
+    store: &Store,
+    engine: &Engine,
+    app: &tauri::AppHandle<R>,
+) {
+    let pending = match store.reembed_pending() {
+        Ok(pending) if pending.is_empty() => return,
+        Ok(pending) => pending,
+        Err(error) => {
+            tracing::warn!(%error, "could not list passages to re-embed");
+            return;
+        }
+    };
+    let started = Instant::now();
+    let result = engine
+        .embedder
+        .as_ref()
+        .ok_or_else(|| AppError::unavailable("embedding model is not available"))
+        .and_then(|embedder| {
+            for batch in pending.chunks(16) {
+                let texts: Vec<&str> = batch.iter().map(|(_, text)| text.as_str()).collect();
+                let vectors = embedder.embed_documents(&texts).map_err(AppError::from)?;
+                let rows: Vec<(i64, Vec<f32>)> =
+                    batch.iter().map(|(id, _)| *id).zip(vectors).collect();
+                store.reembed_store(&rows)?;
+            }
+            Ok(())
+        });
+    let failure = result.err().map(|error| {
+        tracing::warn!(%error, "re-embedding failed");
+        "could not re-index after a model update; import the file again"
+    });
+    match store.reembed_finish(failure) {
+        Ok(documents) => {
+            tracing::info!(
+                passages = pending.len(),
+                documents = documents.len(),
+                elapsed_ms = ms(started),
+                "passages re-embedded"
+            );
+            for document in documents {
+                let _ = app.emit(crate::EVENT_DOCUMENT, document);
+            }
+        }
+        Err(error) => tracing::warn!(%error, "could not finish re-embedding"),
+    }
+}
+
+/// Words the speaker may say, for speech recognition: the distinct pieces of the
+/// screen's labels and values ("Q1, Juan Dela Cruz" gives "Q1" and "Juan Dela Cruz"),
+/// control roles first, numbers left out, at most [`MAX_HINT_CHARS`]. Whole labels
+/// repeat names across a grid's cells and crowd them out; names in cell values were
+/// missed (the benchmark heard "Juan's" as "once" until the hint carried the name).
+pub fn speech_hint(snapshot: &ScreenSnapshot) -> String {
+    let mut hint = String::new();
+    let mut seen = std::collections::HashSet::new();
+    for preferred in [true, false] {
+        for element in &snapshot.elements {
+            let is_preferred = matches!(
+                element.role.as_str(),
+                "cell" | "textField" | "text" | "button"
+            );
+            if preferred != is_preferred {
+                continue;
+            }
+            let pieces = element
+                .label
+                .split(',')
+                .chain(element.value.as_deref().unwrap_or_default().split(','))
+                .map(str::trim)
+                .filter(|piece| piece.chars().any(char::is_alphabetic));
+            for piece in pieces {
+                if !seen.insert(piece.to_lowercase()) {
+                    continue;
+                }
+                let separator = if hint.is_empty() { 0 } else { 2 };
+                if hint.chars().count() + separator + piece.chars().count() > MAX_HINT_CHARS {
+                    continue;
+                }
+                if !hint.is_empty() {
+                    hint.push_str(", ");
+                }
+                hint.push_str(piece);
+            }
+        }
+    }
+    hint
+}
+
+/// Longest speech hint; Whisper's prompt holds about 224 tokens.
+const MAX_HINT_CHARS: usize = 400;
 
 /// Tier for a snapshot (architecture: three tiers). `GETCKO_SCREEN_MODE` =
 /// `elements` | `elementsWithImage` | `imageOnly` forces one, for measurement.
@@ -952,6 +1057,28 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+    #[test]
+    fn speech_hint_splits_labels_takes_values_and_prefers_controls() {
+        let mut snapshot = screen(&["Other", "Q1, Juan Dela Cruz", "Q2, Juan Dela Cruz", "Save"]);
+        snapshot.elements[0].role = "menuItem".into();
+        snapshot.elements[1].role = "cell".into();
+        snapshot.elements[2].role = "cell".into();
+        snapshot.elements[2].value = Some("85".into());
+        snapshot.elements[3].role = "button".into();
+        snapshot.elements[3].value = Some("Maria Reyes".into());
+        assert_eq!(
+            speech_hint(&snapshot),
+            "Q1, Juan Dela Cruz, Q2, Save, Maria Reyes, Other"
+        );
+    }
+
+    #[test]
+    fn speech_hint_truncates_at_label_boundaries_and_handles_empty_snapshot() {
+        assert_eq!(speech_hint(&screen(&[])), "");
+        let long = "x".repeat(390);
+        let snapshot = screen(&[&long, "this piece must not be partially included", "short"]);
+        assert_eq!(speech_hint(&snapshot), format!("{long}, short"));
     }
     #[test]
     fn tier_follows_element_list_quality() {

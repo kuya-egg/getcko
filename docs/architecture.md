@@ -11,7 +11,7 @@ flowchart TB
   IPC --> CORE[Rust core: commands]
   CORE --> PIPE[Ask / document pipeline]
   PIPE --> STORE[Store: SQLite + sqlite-vector]
-  PIPE --> ENGINE[Engine: llama.cpp · Gemma 4 E2B + EmbeddingGemma; Gemma audio STT; OS TTS; microphone]
+  PIPE --> ENGINE[Engine: llama.cpp · Gemma 4 E2B + bge-small embeddings + on-demand Qwen3-VL tier-3 grounder; whisper.cpp helper; OS TTS; microphone]
   PIPE --> PLATFORM[Platform: macOS AX | Windows UIA]
 ```
 
@@ -96,7 +96,7 @@ The model points by **element ID** whenever it can. A small local model picks an
 |---|---|---|---|---|---|---|
 | 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 controls (static `text` elements don't count) | Element list only | element ID (target pass) | exact element bounds | `normal` |
 | 2 | `elementsWithImage` | Snapshot non-empty but fails the tier-1 test (unlabelled icons, look-alike cells) | Element list **plus** a screenshot with a numbered box drawn on every listed element, labelled with the same IDs | element ID (target pass) | exact element bounds | `normal` |
-| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot plus the text the OS reads in it (`Platform::recognize_text`), each piece boxed and labelled `t1`, `t2`, … on the screenshot | a text id (target pass, like tier 2); `[y, x]` normalized to 0–1000 only when no text fits | the text's box, or a point mapped to the monitor | `bestGuess` (BR-18) |
+| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Qwen3-VL-2B on demand receives an unmarked screenshot when present, skipping OCR; otherwise falls back to OCR text | `point_2d` coordinates normalized to 0–1000 | point mapped to the monitor | `bestGuess` (BR-18) |
 
 Rules:
 - Screen Recording denied or no capture available → tier 1 only; an empty snapshot gives a targetless answer ("can't read this app"), never a guess.
@@ -118,26 +118,26 @@ Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 sc
 
 ## Cross-platform parity
 
-macOS and Windows expose identical commands and behaviour. OS code lives only in `src-tauri/src/platform/macos.rs` and `windows.rs`, implementing the same `Platform` trait; both implementations pass `platform::conformance`. Any trait or IPC contract change updates both OS sides in the same PR. Speech-to-text uses Gemma 4 E2B's audio encoder through llama-cpp-2 `mtmd` on both systems; `tts` and `cpal` are cross-platform. llama.cpp uses Metal on macOS, Vulkan on Windows, automatic CPU fallback on both, and the same model files. No OS-only command or behaviour is permitted.
+macOS and Windows expose identical commands and behaviour. OS code lives only in `src-tauri/src/platform/macos.rs` and `windows.rs`, implementing the same `Platform` trait; both implementations pass `platform::conformance`. Speech-to-text uses the `getcko-whisper` helper running whisper.cpp small.en on both systems; `tts` and `cpal` are cross-platform. llama.cpp uses Metal on macOS, Vulkan on Windows, automatic CPU fallback on both, and the same model files. No OS-only command or behaviour is permitted. User-facing language is English only.
 
 Engine components:
 
 | Component | Implementation |
 |---|---|
-| `Transcriber` | `LlamaChat` (`engine/llama.rs`), using Gemma 4 E2B audio via `mtmd` |
+| `Transcriber` | whisper.cpp small.en in `getcko-whisper` helper process |
 | `Speaker` | `engine/speaker.rs` |
 
 ## Local models and runtime
 
 | File | Approx. size | Use |
 |---|---:|---|
-| `gemma-4-E2B-it-Q4_0.gguf` | 2.8 GB | Chat, target selection; vision fallback when enabled; audio transcription |
-| `embeddinggemma-300M-Q8_0.gguf` | 0.33 GB | Local embeddings, 256 dimensions |
-| `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.56 GB | Gemma 4 E2B vision and audio encoder/projector; screenshots (tiers 2–3) and transcription, downloaded and bundled |
+| `gemma-4-E2B-it-Q4_0.gguf` | 2.65 GiB | Chat, element picking (tiers 1–2), answers, tier-2 screenshots |
+| `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.52 GiB | Gemma vision projector; audio encoder is fallback only if the Whisper helper/model is missing |
+| `Qwen3VL-2B-Instruct-Q4_K_M.gguf` + `mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf` | 1056 + 424 MB | Apache-2.0 tier-3 grounder; loaded on demand |
+| `bge-small-en-v1.5-q8_0.gguf` | 36 MB | MIT English embeddings, 384 dimensions |
+| `ggml-small.en.bin` | 488 MB | Whisper small.en weights for the `getcko-whisper` helper |
 
-Gemma 4 E2B is one multimodal model. In GGUF/llama.cpp it ships as two files loaded together: language weights (`gemma-4-E2B-it-Q4_0.gguf`) and its own vision and audio encoder + projector (`mmproj-…`). The mmproj is not a second model. EmbeddingGemma is the only separate model, because search needs a dedicated embedding model. The same Hugging Face repo also has `mtp-gemma-4-E2B-it-*.gguf` multi-token-prediction files (faster generation, unverified with llama-cpp-2); not used yet, see macOS task 6.
-
-The transcriber is `LlamaChat`, using Gemma 4 E2B's audio encoder via `mtmd`. This reuses the bundled model rather than downloading a separate speech model. `mtmd` audio input is experimental; Filipino/Taglish accuracy with a real speaker is not yet measured. If accuracy is inadequate, evaluate whisper.cpp in a separate process or build llama.cpp as shared libraries.
+Gemma 4 E2B ships as language weights and its own vision projector. The Qwen3-VL-2B grounder loads on the first tier-3 turn. Speech-to-text uses whisper.cpp small.en in the `getcko-whisper` helper process (see [ADR 0005](../.monozukuri/decisions/0005-whisper-helper-process.md)); the binary is built per target triple and bundled through `externalBin`. User-facing speech and text are English only.
 
 `bun run models` fetches and SHA-256 verifies models using `scripts/fetch-models.sh`. Development uses `src-tauri/models/`; release bundles models via `bun run tauri:build` and `src-tauri/tauri.models.conf.json`. `GETCKO_MODELS_DIR` overrides model location. Nothing downloads at runtime; the only network use is explicit model setup.
 

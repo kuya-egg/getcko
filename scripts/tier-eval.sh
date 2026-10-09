@@ -3,7 +3,9 @@
 # Google Chrome (scripts/fixtures/class-record.html), Finder and TextEdit, in every
 # forced tier. Opens only those three apps; needs Accessibility and Screen Recording for
 # the terminal. `--app <name>` runs one app, `--survey` asks about controls found on each
-# screen, `--dump <app>` lists an app's elements and saves the screenshot the model sees.
+# screen, `--dump <app>` lists an app's elements and saves the screenshot the model sees,
+# `--heldout` runs the held-out pages in scripts/fixtures/heldout/ instead (never used to
+# tune the pipeline), and GETCKO_GROUNDER=qwen3-vl uses a grounding model in tier 3.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

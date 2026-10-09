@@ -17,15 +17,16 @@ printf 'Benchmark machine: %s\n' "$machine"
 
 fixture_dir="$(mktemp -d)"
 trap 'rm -rf "$fixture_dir"' EXIT
-# English question, English voice. macOS ships no Filipino voice; the Spanish (Mexico)
-# voice reads Tagalog spelling close to how a Filipino speaker says it ("Juan" = "hwan").
-say -v Samantha -o "$fixture_dir/en.wav" --data-format=LEI16@16000 \
-  "Where do I put Juan's grade in the class record, and how is the final grade computed?"
-say -v Paulina -o "$fixture_dir/taglish.wav" --data-format=LEI16@16000 \
-  "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta ang final grade?"
+# The PRD demo question in English, read twice: by a US voice, and by the Spanish
+# (Mexico) voice, whose "Juan" (/hwan/) is how a Filipino speaker says it. macOS has
+# no Filipino English voice.
+QUESTION="Where do I put Juan's grade in the class record, and how is the final grade computed?"
+say -v Samantha -o "$fixture_dir/us.wav" --data-format=LEI16@16000 "$QUESTION"
+say -v Paulina -o "$fixture_dir/hwan.wav" --data-format=LEI16@16000 "$QUESTION"
 
 cd "$ROOT/src-tauri"
-for language in ${LANGUAGES:-taglish en}; do
+for clip in ${CLIPS:-hwan us}; do
+  echo "## Clip: $clip"
   BENCH_DATE="$(date +%Y-%m-%d)" BENCH_MACHINE="$machine" cargo run --release --example benchmark -- \
-    --runs "${RUNS:-10}" --wav "$fixture_dir/$language.wav" --language "$language"
+    --runs "${RUNS:-10}" --wav "$fixture_dir/$clip.wav"
 done

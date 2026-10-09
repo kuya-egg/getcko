@@ -43,12 +43,13 @@ pub fn run() {
         .setup(|app| {
             let vector = paths::vector_extension(app.handle()).map_err(Box::<dyn std::error::Error>::from)?;
             let db = paths::database(app.handle()).map_err(Box::<dyn std::error::Error>::from)?;
-            let store = Arc::new(store::Store::open(&db, &vector, engine::EMBEDDING_DIM).map_err(Box::<dyn std::error::Error>::from)?);
+            let store = Arc::new(store::Store::open(&db, &vector, engine::EMBEDDING_DIM, engine::EMBEDDING_MODEL_ID).map_err(Box::<dyn std::error::Error>::from)?);
             match store.vector_version() { Ok(version) => tracing::info!(%version, "sqlite-vector loaded"), Err(error) => tracing::warn!("sqlite-vector version unavailable: {error}") }
             let engine = Arc::new(OnceLock::new());
             let state = Arc::new(pipeline::AppState { store, engine: Arc::clone(&engine), platform: Arc::from(platform::current()), turns: Arc::new(pipeline::TurnControl::new()), prepared: std::sync::Mutex::new(None) });
             let models = paths::models_dir(app.handle());
             let handle = app.handle().clone();
+            let reembed_store = Arc::clone(&state.store);
             std::thread::spawn(move || {
                 use tauri::Emitter;
                 let started = std::time::Instant::now();
@@ -58,6 +59,7 @@ pub fn run() {
                 let statuses = loaded.status().to_vec();
                 if engine.set(loaded).is_err() { tracing::error!("engine initialized more than once"); }
                 if let Err(error) = handle.emit(EVENT_ENGINE, statuses) { tracing::warn!("could not emit engine event: {error}"); }
+                if let Some(loaded) = engine.get() { pipeline::reembed_documents(&reembed_store, loaded, &handle); }
             });
             // The OS loads its text-recognition model on first use (~28 s cold on macOS);
             // pay that at startup instead of on a user's first tier-3 question.

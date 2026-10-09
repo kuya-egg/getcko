@@ -25,4 +25,8 @@ dist-ssr
 
 # Local model weights (fetched by scripts/fetch-models.sh, bundled at build time)
 src-tauri/models/*.gguf
+src-tauri/models/*.bin
+# Speech helper build output (scripts/build-whisper.sh)
+src-tauri/binaries/
+src-tauri/sidecars/whisper/target/
 src-tauri/models/*.part

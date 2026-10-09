@@ -1,0 +1,234 @@
+{
+  "pages": [
+    {
+      "slug": "enrollment-form",
+      "file": "enrollment-form.html",
+      "questions": [
+        {
+          "question": "Where do I put the learner's reference number?",
+          "expect": "Learner Reference Number (LRN)"
+        },
+        {
+          "question": "What's the child's surname field?",
+          "expect": "Last name"
+        },
+        {
+          "question": "Can you point me to where I enter the first name?",
+          "expect": "First name"
+        },
+        {
+          "question": "Where should I enter their birthday?",
+          "expect": "Date of birth"
+        },
+        {
+          "question": "Where do I put where the child was born?",
+          "expect": "Place of birth"
+        },
+        {
+          "question": "Which option do I choose for a male learner?",
+          "expect": "Sex, Male"
+        },
+        {
+          "question": "How do I choose the language spoken at home?",
+          "expect": "Mother tongue"
+        },
+        {
+          "question": "Where do I mark that the family is in 4Ps?",
+          "expect": "4Ps beneficiary"
+        },
+        {
+          "question": "Where do I type the barangay for the home address?",
+          "expect": "Barangay"
+        },
+        {
+          "question": "Where do I put the guardian's cellphone number?",
+          "expect": "Guardian mobile number"
+        }
+      ]
+    },
+    {
+      "slug": "grade-grid",
+      "file": "grade-grid.html",
+      "questions": [
+        {
+          "question": "Where can I enter Liza Ramos's PT2 score?",
+          "expect": "PT2, Ramos, Liza"
+        },
+        {
+          "question": "I want to sort the list of kids, where's the button?",
+          "expect": "Sort learners"
+        },
+        {
+          "question": "Where do I put Miguel Santos's QA grade?",
+          "expect": "QA, Santos, Miguel"
+        },
+        {
+          "question": "How do I add another learner row?",
+          "expect": "Add learner row"
+        },
+        {
+          "question": "Where is the blank WW4 score for Ana Cruz?",
+          "expect": "WW4, Cruz, Ana"
+        },
+        {
+          "question": "How do I filter the gradebook?",
+          "expect": "Filter grades"
+        },
+        {
+          "question": "Where do I enter Paolo Garcia's PT3 score?",
+          "expect": "PT3, Garcia, Paolo"
+        },
+        {
+          "question": "Which control exports this class record?",
+          "expect": "Export gradebook"
+        },
+        {
+          "question": "Where can I put Nina Reyes's WW2 mark?",
+          "expect": "WW2, Reyes, Nina"
+        },
+        {
+          "question": "Where's undo to take back my last edit?",
+          "expect": "Undo grade edit"
+        }
+      ]
+    },
+    {
+      "slug": "editor-toolbar",
+      "file": "editor-toolbar.html",
+      "questions": [
+        {
+          "question": "How do I make the selected word thicker?",
+          "expect": "Bold"
+        },
+        {
+          "question": "Make this text slant to the right—where is that?",
+          "expect": "Italic"
+        },
+        {
+          "question": "Where can I add a clickable website to the letter?",
+          "expect": "Insert link"
+        },
+        {
+          "question": "How do I make bullet points for a list?",
+          "expect": "Bulleted list"
+        },
+        {
+          "question": "I want all the lines flush to the right margin; which button?",
+          "expect": "Align right"
+        },
+        {
+          "question": "Where do I add a photo to this notice?",
+          "expect": "Insert image"
+        },
+        {
+          "question": "Can you underline the important date?",
+          "expect": "Underline"
+        },
+        {
+          "question": "Where do I change how big the letters are?",
+          "expect": "Font size"
+        },
+        {
+          "question": "How do I center the heading on the page?",
+          "expect": "Align center"
+        },
+        {
+          "question": "How do I highlight an important line?",
+          "expect": "Highlight color"
+        }
+      ]
+    },
+    {
+      "slug": "settings-page",
+      "file": "settings-page.html",
+      "questions": [
+        {
+          "question": "Where do I turn on alerts when stocks are running low?",
+          "expect": "Low-stock alerts"
+        },
+        {
+          "question": "How do I turn off the daily sales notifications?",
+          "expect": "Daily sales summary"
+        },
+        {
+          "question": "Where can I choose Filipino for the menus?",
+          "expect": "Display language"
+        },
+        {
+          "question": "Find the place where I can change my profile picture.",
+          "expect": "Change profile photo"
+        },
+        {
+          "question": "What switch controls the delivery update messages?",
+          "expect": "Order updates"
+        },
+        {
+          "question": "Where do I look for a setting?",
+          "expect": "Search settings"
+        },
+        {
+          "question": "How can I remove temporary files from this device?",
+          "expect": "Clear application cache"
+        },
+        {
+          "question": "Where do I control anonymous usage data sharing?",
+          "expect": "Usage analytics"
+        },
+        {
+          "question": "Where's the section for account privacy?",
+          "expect": "Privacy"
+        },
+        {
+          "question": "Where can I manage how long my data is kept?",
+          "expect": "Storage"
+        }
+      ]
+    },
+    {
+      "slug": "dark-dashboard",
+      "file": "dark-dashboard.html",
+      "questions": [
+        {
+          "question": "Where can I see the alerts from the store dashboard?",
+          "expect": "Notifications"
+        },
+        {
+          "question": "Where's the setting for the dashboard?",
+          "expect": "Dashboard settings"
+        },
+        {
+          "question": "Which button gets me help if I am stuck?",
+          "expect": "Help and support"
+        },
+        {
+          "question": "Where do I set the first day for this sales report?",
+          "expect": "Report start date"
+        },
+        {
+          "question": "Download the sales figures for me—where do I click?",
+          "expect": "Download sales report"
+        },
+        {
+          "question": "Can you point to the edit control for Bear Brand?",
+          "expect": "Edit Bear Brand 33g"
+        },
+        {
+          "question": "Which one deletes Lucky Me from the inventory?",
+          "expect": "Delete Lucky Me Pancit Canton"
+        },
+        {
+          "question": "Where can I change the date the report ends?",
+          "expect": "Report end date"
+        },
+        {
+          "question": "Where do I edit the Silver Swan product details?",
+          "expect": "Edit Silver Swan Soy Sauce 1L"
+        },
+        {
+          "question": "Where can I see the store's profile?",
+          "expect": "Store profile"
+        }
+      ]
+    }
+  ]
+}

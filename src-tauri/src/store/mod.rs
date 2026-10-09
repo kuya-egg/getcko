@@ -39,6 +39,14 @@ fn now() -> i64 {
 fn storage<T>(r: rusqlite::Result<T>) -> AppResult<T> {
     r.map_err(AppError::from)
 }
+/// Meta key present while passages wait to be embedded by a newly configured model.
+const REEMBED_KEY: &str = "reembed_pending";
+
+/// A vector as the store keeps it: little-endian `f32`s.
+fn to_blob(vector: &[f32]) -> Vec<u8> {
+    vector.iter().flat_map(|f| f.to_le_bytes()).collect()
+}
+
 /// Thread-safe SQLite persistence for knowledge, documents, passages, and agents.
 ///
 /// # Errors
@@ -50,11 +58,27 @@ impl Store {
             .map_err(|_| AppError::new(ErrorKind::Storage, "database lock poisoned"))
     }
     /// Opens the database, initializes sqlite-vector, and recovers interrupted imports.
-    pub fn open(db_path: &Path, vector_extension: &Path, dimension: usize) -> AppResult<Self> {
+    /// Passages embedded by another model (or size) than `model`/`dimension` are kept
+    /// and queued for re-embedding ([`Store::reembed_pending`]); their documents are
+    /// `processing` (out of search) until [`Store::reembed_finish`].
+    pub fn open(
+        db_path: &Path,
+        vector_extension: &Path,
+        dimension: usize,
+        model: &str,
+    ) -> AppResult<Self> {
         let c = storage(Connection::open(db_path))?;
         storage(c.pragma_update(None, "foreign_keys", "ON"))?;
         storage(c.pragma_update(None, "journal_mode", "WAL"))?;
         storage(c.execute_batch(include_str!("schema.sql")))?;
+        let has_language: bool = storage(c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('agents') WHERE name='language')",
+            [],
+            |row| row.get(0),
+        ))?;
+        if has_language {
+            storage(c.execute("ALTER TABLE agents DROP COLUMN language", []))?;
+        }
         let ext = vector_extension.to_string_lossy();
         // SAFETY: loading is enabled only for this one call to the vendored
         // sqlite-vector build shipped with the app, then disabled again before any
@@ -72,31 +96,108 @@ impl Store {
             )],
             |_| Ok(()),
         ))?;
-        let existing: Option<String> = storage(
-            c.query_row(
-                "SELECT value FROM meta WHERE key='embedding_dim'",
-                [],
-                |r| r.get(0),
+        let meta = |key: &str| -> AppResult<Option<String>> {
+            storage(
+                c.query_row("SELECT value FROM meta WHERE key=?1", [key], |r| r.get(0))
+                    .optional(),
             )
-            .optional(),
-        )?;
-        if existing
+        };
+        let reembedding = meta(REEMBED_KEY)?.is_some();
+        // Imports cut off by a quit; documents waiting for re-embedding are resumed instead.
+        storage(c.execute(
+            if reembedding {
+                "UPDATE documents SET status='failed', error='import interrupted' WHERE status='queued'"
+            } else {
+                "UPDATE documents SET status='failed', error='import interrupted' WHERE status IN ('queued','processing')"
+            },
+            [],
+        ))?;
+        // Databases from before the model was recorded used EmbeddingGemma.
+        let stored_model = meta("embedding_model")?;
+        let stored_dim = meta("embedding_dim")?;
+        let changed = stored_dim
             .as_deref()
-            .is_some_and(|s| s != dimension.to_string())
-        {
-            return Err(AppError::invalid(
-                "database embedding dimension does not match configured dimension",
-            ));
+            .is_some_and(|d| d != dimension.to_string())
+            || stored_model.as_deref().is_none_or(|m| m != model);
+        let has_passages: bool =
+            storage(c.query_row("SELECT EXISTS(SELECT 1 FROM passages)", [], |r| r.get(0)))?;
+        if changed && has_passages {
+            storage(c.execute(
+                "UPDATE documents SET status='processing', error=NULL
+                 WHERE status='ready' AND id IN (SELECT document_id FROM passages)",
+                [],
+            ))?;
+            storage(c.execute(
+                "INSERT OR REPLACE INTO meta(key,value) VALUES(?1,'1')",
+                [REEMBED_KEY],
+            ))?;
+            tracing::info!("embedding model changed; documents will be re-embedded");
         }
         storage(c.execute(
-            "INSERT OR IGNORE INTO meta(key,value) VALUES('embedding_dim',?1)",
-            [dimension.to_string()],
+            "INSERT OR REPLACE INTO meta(key,value) VALUES('embedding_dim',?1),('embedding_model',?2)",
+            params![dimension.to_string(), model],
         ))?;
-        storage(c.execute("UPDATE documents SET status='failed', error='import interrupted' WHERE status IN ('queued','processing')", []))?;
         Ok(Self {
             connection: Mutex::new(c),
             dimension,
         })
+    }
+    /// Passages (id, text) waiting to be embedded again after a model change; empty
+    /// when none are.
+    pub fn reembed_pending(&self) -> AppResult<Vec<(i64, String)>> {
+        let c = self.conn()?;
+        let pending: bool = storage(c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM meta WHERE key=?1)",
+            [REEMBED_KEY],
+            |r| r.get(0),
+        ))?;
+        if !pending {
+            return Ok(Vec::new());
+        }
+        let mut st = storage(c.prepare(
+            "SELECT p.id,p.text FROM passages p JOIN documents d ON d.id=p.document_id
+             WHERE d.status='processing' ORDER BY p.id",
+        ))?;
+        let rows = storage(st.query_map([], |r| Ok((r.get(0)?, r.get(1)?))))?;
+        rows.map(storage).collect()
+    }
+    /// Replaces passages' embeddings (passage id, vector of the store's dimension).
+    pub fn reembed_store(&self, vectors: &[(i64, Vec<f32>)]) -> AppResult<()> {
+        if vectors.iter().any(|(_, v)| v.len() != self.dimension) {
+            return Err(AppError::invalid("passage embedding dimension mismatch"));
+        }
+        let mut c = self.conn()?;
+        let tx = storage(c.transaction())?;
+        {
+            let mut st = storage(tx.prepare("UPDATE passages SET embedding=?1 WHERE id=?2"))?;
+            for (id, vector) in vectors {
+                storage(st.execute(params![to_blob(vector), id]))?;
+            }
+        }
+        storage(tx.commit())
+    }
+    /// Ends re-embedding: `None` makes the waiting documents searchable again,
+    /// `Some(error)` marks them failed with it. Returns the documents changed.
+    pub fn reembed_finish(&self, error: Option<&str>) -> AppResult<Vec<Document>> {
+        let mut c = self.conn()?;
+        let tx = storage(c.transaction())?;
+        let ids: Vec<DocumentId> = {
+            let mut st = storage(tx.prepare(
+                "SELECT id FROM documents WHERE status='processing'
+                 AND id IN (SELECT document_id FROM passages)",
+            ))?;
+            let rows = storage(st.query_map([], |r| r.get(0)))?;
+            rows.map(storage).collect::<AppResult<_>>()?
+        };
+        for id in &ids {
+            storage(tx.execute(
+                "UPDATE documents SET status=?1, error=?2 WHERE id=?3",
+                params![if error.is_some() { "failed" } else { "ready" }, error, id],
+            ))?;
+        }
+        storage(tx.execute("DELETE FROM meta WHERE key=?1", [REEMBED_KEY]))?;
+        storage(tx.commit())?;
+        ids.into_iter().map(|id| Self::doc_row(&c, id)).collect()
     }
     /// Returns sqlite-vector's version.
     pub fn vector_version(&self) -> AppResult<String> {
@@ -244,11 +345,13 @@ impl Store {
         {
             let mut st=storage(tx.prepare("INSERT INTO passages(document_id,text,location,token_count,embedding) VALUES(?1,?2,?3,?4,?5)"))?;
             for p in passages {
-                let mut bytes = Vec::with_capacity(p.embedding.len() * 4);
-                for f in &p.embedding {
-                    bytes.extend_from_slice(&f.to_le_bytes())
-                }
-                storage(st.execute(params![id, p.text, p.location, p.token_count, bytes]))?;
+                storage(st.execute(params![
+                    id,
+                    p.text,
+                    p.location,
+                    p.token_count,
+                    to_blob(&p.embedding)
+                ]))?;
             }
         }
         storage(tx.execute(
@@ -320,7 +423,7 @@ impl Store {
     }
     fn agent_row(c: &Connection, id: AgentId) -> AppResult<Agent> {
         let mut agent = storage(c.query_row(
-            "SELECT id,name,description,instructions,base_rules,language,answer_length,
+            "SELECT id,name,description,instructions,base_rules,answer_length,
                     voice_id,speech_rate,template_id,created_at,updated_at
              FROM agents WHERE id=?1",
             [id],
@@ -335,27 +438,22 @@ impl Store {
                         BaseRulesMode::Include
                     },
                     knowledge_base_ids: Vec::new(),
-                    language: match r.get::<_, String>(5)?.as_str() {
-                        "filipino" => Language::Filipino,
-                        "taglish" => Language::Taglish,
-                        _ => Language::English,
-                    },
-                    answer_length: if r.get::<_, String>(6)? == "short" {
+                    answer_length: if r.get::<_, String>(5)? == "short" {
                         AnswerLength::Short
                     } else {
                         AnswerLength::Normal
                     },
-                    voice_id: r.get(7)?,
-                    speech_rate: r.get(8)?,
+                    voice_id: r.get(6)?,
+                    speech_rate: r.get(7)?,
                 };
                 Ok(Agent {
                     id: r.get(0)?,
                     draft,
                     template_id: r
-                        .get::<_, Option<String>>(9)?
+                        .get::<_, Option<String>>(8)?
                         .and_then(|s| TemplateId::parse(&s)),
-                    created_at: r.get(10)?,
-                    updated_at: r.get(11)?,
+                    created_at: r.get(9)?,
+                    updated_at: r.get(10)?,
                 })
             },
         ))?;
@@ -412,7 +510,7 @@ impl Store {
         created: i64,
     ) -> AppResult<Agent> {
         let ids = Self::validate_draft(c, d)?;
-        storage(c.execute("INSERT INTO agents(name,description,instructions,base_rules,language,answer_length,voice_id,speech_rate,template_id,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",params![d.name.trim(),d.description,d.instructions,if d.base_rules==BaseRulesMode::Include{"include"}else{"replace"},match d.language{Language::English=>"english",Language::Filipino=>"filipino",Language::Taglish=>"taglish"},match d.answer_length{AnswerLength::Short=>"short",AnswerLength::Normal=>"normal"},d.voice_id,d.speech_rate,t.map(TemplateId::as_str),created]))?;
+        storage(c.execute("INSERT INTO agents(name,description,instructions,base_rules,answer_length,voice_id,speech_rate,template_id,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",params![d.name.trim(),d.description,d.instructions,if d.base_rules==BaseRulesMode::Include{"include"}else{"replace"},match d.answer_length{AnswerLength::Short=>"short",AnswerLength::Normal=>"normal"},d.voice_id,d.speech_rate,t.map(TemplateId::as_str),created]))?;
         let id = AgentId(c.last_insert_rowid());
         Self::save_links(c, id, &ids)?;
         let active: Option<Option<i64>> = storage(
@@ -452,7 +550,7 @@ impl Store {
     pub fn agent_update(&self, id: AgentId, d: &AgentDraft) -> AppResult<Agent> {
         let c = self.conn()?;
         let ids = Self::validate_draft(&c, d)?;
-        if storage(c.execute("UPDATE agents SET name=?1,description=?2,instructions=?3,base_rules=?4,language=?5,answer_length=?6,voice_id=?7,speech_rate=?8,updated_at=?9 WHERE id=?10",params![d.name.trim(),d.description,d.instructions,if d.base_rules==BaseRulesMode::Include{"include"}else{"replace"},match d.language{Language::English=>"english",Language::Filipino=>"filipino",Language::Taglish=>"taglish"},match d.answer_length{AnswerLength::Short=>"short",AnswerLength::Normal=>"normal"},d.voice_id,d.speech_rate,now(),id]))?==0{return Err(AppError::not_found("agent"))}
+        if storage(c.execute("UPDATE agents SET name=?1,description=?2,instructions=?3,base_rules=?4,answer_length=?5,voice_id=?6,speech_rate=?7,updated_at=?8 WHERE id=?9",params![d.name.trim(),d.description,d.instructions,if d.base_rules==BaseRulesMode::Include{"include"}else{"replace"},match d.answer_length{AnswerLength::Short=>"short",AnswerLength::Normal=>"normal"},d.voice_id,d.speech_rate,now(),id]))?==0{return Err(AppError::not_found("agent"))}
         Self::save_links(&c, id, &ids)?;
         Self::agent_row(&c, id)
     }
@@ -540,7 +638,7 @@ mod tests {
         }
     }
     fn store(dir: &Path) -> Store {
-        Store::open(&dir.join("db.sqlite"), extension(), 4).expect("store opens")
+        Store::open(&dir.join("db.sqlite"), extension(), 4, "model-a").expect("store opens")
     }
     fn draft(name: &str, knowledge_base_ids: Vec<KnowledgeBaseId>) -> AgentDraft {
         AgentDraft {
@@ -549,7 +647,6 @@ mod tests {
             instructions: String::new(),
             base_rules: BaseRulesMode::Include,
             knowledge_base_ids,
-            language: Language::English,
             answer_length: AnswerLength::Normal,
             voice_id: None,
             speech_rate: 1.0,
@@ -562,6 +659,38 @@ mod tests {
             token_count: 1,
             embedding: embedding.to_vec(),
         }
+    }
+    #[test]
+    fn opens_legacy_agent_schema_and_preserves_unknown_template_id() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("db.sqlite");
+        let connection = Connection::open(&db_path).expect("legacy database opens");
+        connection
+            .execute_batch(
+                "CREATE TABLE agents (
+                    id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL,
+                    instructions TEXT NOT NULL, base_rules TEXT NOT NULL, language TEXT NOT NULL,
+                    answer_length TEXT NOT NULL, voice_id TEXT, speech_rate REAL NOT NULL,
+                    template_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+                );",
+            )
+            .expect("legacy schema created");
+        connection
+            .execute(
+                "INSERT INTO agents VALUES (
+                    1,'Legacy','description','instructions','include','taglish',
+                    'normal',NULL,1.0,'taglishExplainer',10,20
+                )",
+                [],
+            )
+            .expect("legacy agent created");
+        drop(connection);
+
+        let store =
+            Store::open(&db_path, extension(), 4, "model-a").expect("legacy database migrates");
+        let agent = store.agent_get(AgentId(1)).expect("legacy agent loads");
+        assert_eq!(agent.draft.name, "Legacy");
+        assert_eq!(agent.template_id, None);
     }
     #[test]
     fn search_returns_nearest_first_only_from_requested_kbs() {
@@ -769,11 +898,63 @@ mod tests {
         );
     }
     #[test]
-    fn rejects_different_dimension_on_reopen() {
+    fn a_new_embedding_model_re_embeds_kept_passages() {
         let dir = tempfile::tempdir().expect("tempdir");
-        drop(store(dir.path()));
-        assert!(
-            matches!(Store::open(&dir.path().join("db.sqlite"),extension(),3),Err(error) if error.kind==ErrorKind::Invalid)
+        let path = dir.path().join("db.sqlite");
+        let first = store(dir.path());
+        let kb = first.kb_create("k").expect("kb");
+        let doc = first
+            .doc_create(kb.id, "manual", DocumentKind::Text, "f")
+            .expect("doc");
+        first
+            .doc_store_passages(
+                doc.id,
+                None,
+                &[NewPassage {
+                    text: "Enter grades in Q1.".into(),
+                    location: "p. 1".into(),
+                    token_count: 4,
+                    embedding: vec![1.0, 0.0, 0.0, 0.0],
+                }],
+            )
+            .expect("passages");
+        drop(first);
+
+        // Same model: nothing to do.
+        let same = Store::open(&path, extension(), 4, "model-a").expect("reopens");
+        assert!(same.reembed_pending().expect("pending").is_empty());
+        drop(same);
+
+        // Another model and size: kept, out of search until re-embedded.
+        let next = Store::open(&path, extension(), 3, "model-b").expect("reopens");
+        assert_eq!(
+            next.doc_get(doc.id).expect("doc").status,
+            DocumentStatus::Processing
         );
+        assert!(
+            next.search(&[kb.id], &[1.0, 0.0, 0.0], 5)
+                .expect("search")
+                .is_empty()
+        );
+        let pending = next.reembed_pending().expect("pending");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].1, "Enter grades in Q1.");
+        drop(next);
+
+        // A quit before finishing resumes rather than failing the document.
+        let resumed = Store::open(&path, extension(), 3, "model-b").expect("reopens");
+        let pending = resumed.reembed_pending().expect("still pending");
+        assert_eq!(pending.len(), 1);
+        resumed
+            .reembed_store(&[(pending[0].0, vec![0.0, 1.0, 0.0])])
+            .expect("stored");
+        let changed = resumed.reembed_finish(None).expect("finished");
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].status, DocumentStatus::Ready);
+        let hits = resumed
+            .search(&[kb.id], &[0.0, 1.0, 0.0], 5)
+            .expect("search");
+        assert_eq!(hits.len(), 1);
+        assert!(resumed.reembed_pending().expect("done").is_empty());
     }
 }

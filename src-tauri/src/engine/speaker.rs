@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
-use crate::model::{Language, Voice};
+use crate::model::Voice;
 
 use super::{EngineError, EngineResult, Speaker};
 
@@ -11,7 +11,6 @@ enum Command {
     Speak {
         text: String,
         voice_id: Option<String>,
-        language: Language,
         rate: f32,
         generation: u64,
     },
@@ -71,19 +70,12 @@ impl Speaker for OsSpeaker {
         response.recv().unwrap_or_default()
     }
 
-    fn speak(
-        &self,
-        text: &str,
-        voice_id: Option<&str>,
-        language: Language,
-        rate: f32,
-    ) -> EngineResult<()> {
+    fn speak(&self, text: &str, voice_id: Option<&str>, rate: f32) -> EngineResult<()> {
         let generation = self.generation.load(Ordering::Acquire);
         self.commands
             .send(Command::Speak {
                 text: text.to_owned(),
                 voice_id: voice_id.map(str::to_owned),
-                language,
                 rate,
                 generation,
             })
@@ -142,14 +134,13 @@ fn speech_thread(
             Command::Speak {
                 text,
                 voice_id,
-                language,
                 rate,
                 generation: speak_generation,
             } => {
                 if generation.load(Ordering::Acquire) != speak_generation {
                     continue;
                 }
-                let voice = choose_voice(&voice_choices, voice_id.as_deref(), language);
+                let voice = choose_voice(&voice_choices, voice_id.as_deref());
                 if voice != selected_voice
                     && let Some(id) = voice.as_deref()
                     && let Some(backend_voice) =
@@ -185,49 +176,22 @@ fn map_rate(rate: f32, min: f32, normal: f32, max: f32) -> f32 {
     mapped.clamp(min, max)
 }
 
-fn choose_voice(
-    voices: &[(String, String)],
-    requested: Option<&str>,
-    language: Language,
-) -> Option<String> {
+fn choose_voice(voices: &[(String, String)], requested: Option<&str>) -> Option<String> {
     if let Some(id) = requested
         && voices.iter().any(|(voice_id, _)| voice_id == id)
     {
         return Some(id.to_owned());
     }
-    let language_prefix = match language {
-        Language::Filipino | Language::Taglish => "fil",
-        Language::English => "en",
-    };
-    let mut matching = voices.iter().filter(|(_, tag)| {
+    let mut english = voices.iter().filter(|(_, tag)| {
         tag.split(['-', '_'])
             .next()
-            .is_some_and(|part| part.eq_ignore_ascii_case(language_prefix))
+            .is_some_and(|part| part.eq_ignore_ascii_case("en"))
     });
-    let selected = if language == Language::English {
-        matching
-            .clone()
-            .find(|(_, tag)| tag.eq_ignore_ascii_case("en-US"))
-            .or_else(|| matching.next())
-    } else {
-        matching.next()
-    };
-    selected.map(|(id, _)| id.clone()).or_else(|| {
-        if language != Language::English {
-            let mut english = voices.iter().filter(|(_, tag)| {
-                tag.split(['-', '_'])
-                    .next()
-                    .is_some_and(|part| part.eq_ignore_ascii_case("en"))
-            });
-            english
-                .clone()
-                .find(|(_, tag)| tag.eq_ignore_ascii_case("en-US"))
-                .or_else(|| english.next())
-                .map(|(id, _)| id.clone())
-        } else {
-            None
-        }
-    })
+    english
+        .clone()
+        .find(|(_, tag)| tag.eq_ignore_ascii_case("en-US"))
+        .or_else(|| english.next())
+        .map(|(id, _)| id.clone())
 }
 
 #[cfg(test)]
@@ -242,28 +206,15 @@ mod tests {
     }
 
     #[test]
-    fn voice_choice_prefers_requested_then_language() {
+    fn voice_choice_prefers_requested_then_english() {
         let voices = vec![
             ("a".into(), "en-GB".into()),
             ("b".into(), "en-US".into()),
-            ("c".into(), "fil-PH".into()),
+            ("c".into(), "fr-FR".into()),
         ];
-        assert_eq!(
-            choose_voice(&voices, Some("a"), Language::Filipino).as_deref(),
-            Some("a")
-        );
-        assert_eq!(
-            choose_voice(&voices, None, Language::English).as_deref(),
-            Some("b")
-        );
-        assert_eq!(
-            choose_voice(&voices, None, Language::Taglish).as_deref(),
-            Some("c")
-        );
-        assert_eq!(
-            choose_voice(&voices[..2], None, Language::Filipino).as_deref(),
-            Some("b")
-        );
+        assert_eq!(choose_voice(&voices, Some("a")).as_deref(), Some("a"));
+        assert_eq!(choose_voice(&voices, None).as_deref(), Some("b"));
+        assert_eq!(choose_voice(&voices[2..], None), None);
     }
 
     #[test]
@@ -272,7 +223,7 @@ mod tests {
         let speaker = OsSpeaker::new().expect("speech backend should initialize");
         assert!(!speaker.voices().is_empty());
         speaker
-            .speak("Hello from GetCko.", None, Language::English, 1.0)
+            .speak("Hello from GetCko.", None, 1.0)
             .expect("speech should queue");
         speaker.stop();
     }

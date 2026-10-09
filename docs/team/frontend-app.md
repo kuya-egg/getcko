@@ -22,7 +22,7 @@ Build GetCko’s main React/Tauri experience for setup, local knowledge and edit
 4. Establish Tailwind design tokens and bundle Bricolage Grotesque, Geist, Geist Mono and Silkscreen locally. Acceptance: offline UI loads those fonts; implementation matches [design-system tokens and typography](../getcko-design-system.md#2-color-tokens) and controls have visible focus and ≥44px hit targets.
 
 ### P1 — 1–4 AM
-5. Add agent language, voice and speed fields, populated with `voiceList`; add “Try this agent” unsaved test chat. Acceptance: English/Filipino/Taglish follows A5; selected voice/speed is applied (A6); test conversation is not saved (A7). Commands/types: `voiceList`, `ask({input:{type:'text',text}, screenHelp:false, agentId})`, `TurnEvent`, `AgentDraft`.
+5. Add per-agent voice and speaking-speed fields, populated with `voiceList`; add “Try this agent” unsaved test chat. User-facing language is English only. Acceptance: answers are in English; selected voice/speed is applied (A6); test conversation is not saved (A7). Commands/types: `voiceList`, `ask({input:{type:'text',text}, screenHelp:false, agentId})`, `TurnEvent`, `AgentDraft`.
 6. Ensure component readiness and model-missing states remain truthful after refresh; communicate any failure states to overlay and backend. Never display unmeasured latency.
 
 ### P2
