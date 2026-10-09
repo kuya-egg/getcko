@@ -687,7 +687,7 @@ fn describe(node: &Ax, window: Option<Rect>, displays: &[(CGRect, f64)]) -> Opti
         .iter()
         .find_map(|attr| node.string(attr).filter(|s| !s.trim().is_empty()))
         .or_else(|| (role == "text").then(|| raw_value.clone()).flatten())
-        .map(|s| clip(&s))
+        .map(|s| clip(super::without_hover_details(&s)))
         .unwrap_or_default();
     let value = if role == "text" {
         None

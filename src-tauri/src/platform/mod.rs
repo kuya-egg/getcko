@@ -184,6 +184,23 @@ impl Platform for Unbuilt {
     }
 }
 
+/// `label` without the live details a browser appends to a tab's accessible name
+/// (Chrome: "Inbox - Memory usage - 31.5 MB"). They change by the second, are not
+/// what the tab is called, and the answer pass read them out to the user. Both OS
+/// walks call this on every label.
+#[must_use]
+pub fn without_hover_details(label: &str) -> &str {
+    const MEMORY: &str = " - Memory usage - ";
+    let Some(at) = label.rfind(MEMORY) else {
+        return label;
+    };
+    let detail = &label[at + MEMORY.len()..];
+    let is_size = detail.split_once(' ').is_some_and(|(amount, unit)| {
+        amount.parse::<f64>().is_ok() && matches!(unit, "KB" | "MB" | "GB")
+    });
+    if is_size { &label[..at] } else { label }
+}
+
 /// Drops static text that only names a control: a form caption next to its field,
 /// a button's own title listed again as text, "Male" beside the radio "Sex, Male".
 /// The model picked such captions instead of the control (held-out forms), and the
@@ -246,6 +263,24 @@ pub fn conformance(snapshot: &ScreenSnapshot, max_elements: usize) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_labels_lose_the_live_memory_detail_only() {
+        assert_eq!(
+            without_hover_details("Create your account - Memory usage - 31.5 MB"),
+            "Create your account"
+        );
+        assert_eq!(
+            without_hover_details("Inbox - Memory usage - 1 GB"),
+            "Inbox"
+        );
+        // Anything else that merely contains the words stays as it is.
+        assert_eq!(
+            without_hover_details("Report - Memory usage - by team"),
+            "Report - Memory usage - by team"
+        );
+        assert_eq!(without_hover_details("Save"), "Save");
+    }
 
     #[test]
     fn captions_that_name_a_control_are_dropped() {
