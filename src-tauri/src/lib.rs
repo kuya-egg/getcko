@@ -23,6 +23,9 @@ pub const EVENT_DOCUMENT: &str = "document";
 /// Event channel carrying the final `Vec<ComponentStatus>` once models finish loading,
 /// so onboarding can leave its "loading models" state without polling.
 pub const EVENT_ENGINE: &str = "engine";
+/// Event channel carrying the active [`model::Agent`] (`null` when none) whenever an
+/// agent is created, edited, deleted or made active.
+pub const EVENT_AGENT: &str = "agent";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

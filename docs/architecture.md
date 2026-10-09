@@ -51,6 +51,7 @@ The typed client is [`src/lib/getcko.ts`](../src/lib/getcko.ts); wire types are 
 | `turn` | TurnEvent | Turn lifecycle: phase(thinking\|transcribing) → question → target (always exactly once, null when no pointing) → phase(answering) → sentence* → finished \| cancelled \| failed. A new `ask` cancels the running turn. |
 | `document` | Document | emitted on every document status change |
 | `engine` | ComponentStatus[] | emitted once when model loading finishes (M4 Pro: ~16 s on the first launch of a new build while llama.cpp compiles Metal shaders, ~0.9 s afterwards); until then `setup_status` reports every component as `loading models` |
+| `agent` | Agent \| null | the active agent (null when none), emitted after `agent_create`, `agent_create_from_template`, `agent_update`, `agent_delete` and `agent_set_active`; the overlay's bar names it without waiting for the next question |
 
 The `overlay` and `main` are Tauri window labels. Types crossing IPC are defined in `src-tauri/src/model.rs`, serialized camelCase; do not hand-maintain bindings.
 

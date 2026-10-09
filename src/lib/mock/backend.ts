@@ -27,7 +27,7 @@ import type { MockOptions } from "./params";
 import * as seed from "./seed";
 
 /** Event names: the same strings src/lib/getcko.ts listens to. */
-export const MOCK_EVENTS = { turn: "turn", document: "document", engine: "engine", models: "models" } as const;
+export const MOCK_EVENTS = { turn: "turn", document: "document", engine: "engine", models: "models", agent: "agent" } as const;
 
 export type Emit = (event: string, payload: unknown) => void;
 export type Handler = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -173,6 +173,15 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
     agents.push(a);
     if (activeAgentId === null) activeAgentId = a.id;
     return { ...a };
+  };
+  const activeAgent = (): Agent | null => {
+    const a = agents.find((x) => x.id === activeAgentId);
+    return a ? { ...a } : null;
+  };
+  /** Like the core: after an agent change, announce the active agent, then return `result`. */
+  const announced = <T,>(result: T): T => {
+    emit(MOCK_EVENTS.agent, activeAgent());
+    return result;
   };
   const setDoc = (docId: number, patch: Partial<DocRow>) => {
     const d = docs.find((x) => x.id === docId);
@@ -375,18 +384,18 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
     template_list: () => structuredClone(seed.TEMPLATES),
     agent_list: () => agents.map((a) => ({ ...a, knowledgeBaseIds: [...a.knowledgeBaseIds] })),
     agent_get: (a) => ({ ...agentRow(a.id) }),
-    agent_create: (a) => insertAgent(a.draft as AgentDraft, null),
+    agent_create: (a) => announced(insertAgent(a.draft as AgentDraft, null)),
     agent_create_from_template: (a) => {
       const tpl = seed.TEMPLATES.find((t) => t.id === a.templateId);
       if (!tpl) throw fail("notFound", "template not found");
-      return insertAgent(structuredClone(tpl.draft), tpl.id);
+      return announced(insertAgent(structuredClone(tpl.draft), tpl.id));
     },
     agent_update: (a) => {
       const ag = agentRow(a.id);
       const d = a.draft as AgentDraft;
       const ids = validate(d);
       Object.assign(ag, d, { name: d.name.trim(), knowledgeBaseIds: ids, updatedAt: now() });
-      return { ...ag };
+      return announced({ ...ag });
     },
     agent_duplicate: (a) => {
       const { id: _i, templateId, createdAt: _c, updatedAt: _u, ...d } = agentRow(a.id);
@@ -399,16 +408,13 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
         const next = [...agents].sort((x, y) => y.updatedAt - x.updatedAt || y.id - x.id)[0];
         activeAgentId = next?.id ?? null;
       }
-      return null;
+      return announced(null);
     },
-    agent_active: () => {
-      const a = agents.find((x) => x.id === activeAgentId);
-      return a ? { ...a } : null;
-    },
+    agent_active: () => activeAgent(),
     agent_set_active: (a) => {
       const ag = agentRow(a.id);
       activeAgentId = ag.id;
-      return { ...ag };
+      return announced({ ...ag });
     },
 
     ptt_start: () => null,

@@ -4,7 +4,7 @@ import type { AskInput } from "../bindings/AskInput";
 import type { TaskStep } from "../bindings/TaskStep";
 import type { MonitorFrame } from "../bindings/MonitorFrame";
 import type { Rect } from "../bindings/Rect";
-import { agentActive, ask, onTurn, pttStart, stop } from "../lib/getcko";
+import { agentActive, ask, onAgent, onTurn, pttStart, stop } from "../lib/getcko";
 import { registerAskHotkey, setStopKeyActive } from "./input/hotkeys";
 import { detectPlatform } from "./input/platform";
 import { Gecko } from "./pointer/Gecko";
@@ -183,13 +183,16 @@ export function Overlay() {
       .catch((e: unknown) => console.error("overlay could not cover monitor", e));
   }, [target]);
 
-  // Re-read the active agent on every local ask; the main window can switch it at any time.
+  // The bar names the active agent; the main window can switch it at any time.
   useEffect(() => {
-    if (!state.awaiting) return;
     void agentActive()
       .then((agent) => setAgentName(agent?.name ?? null))
       .catch(() => setAgentName(null));
-  }, [state.awaiting]);
+    const unlisten = onAgent((agent) => setAgentName(agent?.name ?? null));
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
 
   /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5); `next` asks for the plan's next step. */
   const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[], next = false) => {
