@@ -3,7 +3,7 @@
 // canonical words and should move to T.site when the lexicon owner adds them (same practice as
 // src/brand/hero/copy.ts). Sample content (names, files, answers) is data.
 
-import { PLACE, T, say, sourceLabel } from "./brand/lexicon";
+import { T, sourceLabel } from "./brand/lexicon";
 
 export const SITE = {
   /** PROPOSED T.site.watchDemo: the page's one primary action. */
@@ -36,9 +36,9 @@ export const SITE = {
 
   knowledge: {
     eyebrow: T.nav.knowledgeBases,
-    title: T.board.knowledge.title,
+    title: "Your documents, read offline.",
     listTitle: T.board.knowledge.listTitle,
-    passagesLabel: "passages · on this Mac",
+    passagesLabel: "passages · stored offline",
     /** The passage behind Juan's answer. */
     answerSource: sourceLabel("Manual", 4),
     docs: [
@@ -49,11 +49,11 @@ export const SITE = {
   },
 
   voice: {
-    eyebrow: "Taglish",
+    eyebrow: "Voice",
     /** PROPOSED: "Ask" is T.actions.ask. 3 words. */
     title: "Ask out loud.",
-    question: "Saan ko ilalagay ang final grade ni Juan?",
-    answer: "Ilagay mo sa cell E5 ang final grade ni Juan. Average ito ng tatlong quarter.",
+    question: "Where do I put Juan's final grade?",
+    answer: "Put Juan's final grade in cell E5. It's the average of the three quarters.",
     answerOutLoud: T.settings.answerOutLoud,
     stop: T.actions.stopSpeaking,
     /** Browser speech stands in for the app's OS voices on this page. */
@@ -66,27 +66,30 @@ export const SITE = {
     title: "Start from a template.",
   },
 
-  keywords: { eyebrow: T.board.keywords.eyebrow, list: T.keywords },
+  /** English-only landing: the place- and culture-specific keywords (On this Mac, Pinoy) are left out. */
+  /** PROPOSED title, 4 words. */
+  keywords: { eyebrow: T.board.keywords.eyebrow, title: "What GetcKo stands for.", list: T.keywords.filter((k) => k.word !== "Pinoy" && k.word !== "On this Mac") },
 
   offline: {
     eyebrow: T.status.offline,
     title: T.offline.proof,
-    nothingLeaves: T.offline.nothingLeaves("mac"),
-    runsOn: PLACE.mac.onThis,
+    nothingLeaves: "Nothing leaves your computer.",
     stackTitle: T.settings.models,
-    stackHelp: T.settings.modelsHelp,
+    stackHelp: "Downloaded once. Everything runs offline.",
     /** Model stack, docs/architecture.md "Local models and runtime". */
     stack: [
       ["Answers and pointing", "Gemma 4 E2B"],
       ["Hearing your question", "Gemma 4 E2B audio"],
       ["Search your documents", "EmbeddingGemma 300M · sqlite-vector"],
-      [T.settings.voice, "This Mac's voices"],
+      [T.settings.voice, "Your computer's built-in voices"],
     ] as const,
   },
 
+  /** English-only landing: the tagline "Gets mo na." is shown as its English gloss. */
+  tagline: T.product.taglineGloss,
+  privacy: "Nothing leaves your computer.",
   closing: {
-    title: T.product.tagline,
-    gloss: T.product.taglineGloss,
+    title: T.product.taglineGloss,
     line: T.product.line,
   },
 
@@ -95,5 +98,4 @@ export const SITE = {
     event: "AppBuildersPH 2026 · Local AI challenge",
   },
 
-  close: say.tl.close,
 } as const;

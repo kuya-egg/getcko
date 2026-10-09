@@ -18,7 +18,7 @@ const ANSWER = 12;
 
 type Row = { status: "processing" | "ready"; page: number };
 
-/** Documents become passages on this Mac: each import pours pixels into the passage grid while GetcKo reads. */
+/** Documents become passages, offline: each import pours pixels into the passage grid while GetcKo reads. */
 export function KnowledgeBases() {
   const section = useRef<HTMLElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -86,7 +86,7 @@ export function KnowledgeBases() {
             {processing >= 0 ? (
               <ImportProgress className="pt-3" page={rows[processing].page} total={docs[processing].pages} />
             ) : (
-              <p className="pt-3 text-caption text-text-3">{T.knowledgeBase.fileHint("mac")}</p>
+              <p className="pt-3 text-caption text-text-3">PDF, DOCX, PPTX, TXT or MD</p>
             )}
           </div>
         </div>
@@ -94,7 +94,7 @@ export function KnowledgeBases() {
         <div className="kb-stage lg:col-span-7">
           <div className="rounded-panel border border-border bg-surface p-5 shadow-card">
             <p className="pb-4 font-mono text-keys text-text-2">{SITE.knowledge.passagesLabel}</p>
-            <div className="passages" role="img" aria-label={`Passages stored on this Mac. The highlighted one is ${SITE.knowledge.answerSource}.`}>
+            <div className="passages" role="img" aria-label={`Passages stored offline. The highlighted one is ${SITE.knowledge.answerSource}.`}>
               {Array.from({ length: CELLS }, (_, i) => (
                 <span
                   key={i}

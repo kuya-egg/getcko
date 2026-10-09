@@ -3,7 +3,7 @@
 // (lexicon §2.1 "point", "source") and should move to T.hero when the lexicon owner adds it.
 // Sample content (the question, the answer, the sheet) is data, as in Showcase.tsx.
 
-import { PLACE, T, sourceLabel } from "../lexicon";
+import { T, sourceLabel } from "../lexicon";
 
 export type HeroBeat = "ask" | "point" | "source" | "offline";
 
@@ -22,8 +22,8 @@ export const HERO_COPY = {
     offline: T.status.offline,
   } satisfies Record<HeroBeat, string>,
   listening: T.status.listening,
-  place: PLACE.mac.onThis,
-  tagline: T.product.tagline,
+  /** English-only landing: the tagline's English gloss. */
+  tagline: T.product.taglineGloss,
   agent: T.templates.officeHelper.name,
 } as const;
 
@@ -47,9 +47,9 @@ export const HERO_SAMPLE = {
   target: "Upload ID",
   back: "Back",
   next: "Next",
-  question: "Bakit hindi ko ma-click ang Next?",
+  question: "Why can't I click Next?",
   /** Answer: action first (the button by name), then the reason; the source chip follows. */
-  answer: { before: "I-click mo muna ang", target: "Upload ID", after: ". Kailangan ang valid ID bago ka makapag-Next." },
+  answer: { before: "Click", target: "Upload ID", after: " first. A valid ID is required before you can continue." },
   source: { doc: "Permit guide", page: 2 },
   sourceText: sourceLabel("Permit guide", 2),
 } as const;

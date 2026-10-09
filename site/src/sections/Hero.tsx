@@ -180,7 +180,7 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
               </div>
             </div>
             <p className="intro-word">{T.product.name}</p>
-            <p className="intro-badge">{T.product.tagline}</p>
+            <p className="intro-badge">{SITE.tagline}</p>
           </div>
           <Button variant="secondary" size="sm" className="intro-skip" tabIndex={-1}>
             Skip intro

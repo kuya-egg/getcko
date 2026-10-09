@@ -9,7 +9,7 @@ import { GeckoSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
 /**
- * The seven brand keywords (T.keywords), one per line on gecko skin. As you scroll, GetcKo walks
+ * The brand keywords (T.keywords, minus the place- and culture-specific two), one per line on gecko skin. As you scroll, GetcKo walks
  * down the list and points right at the keyword in the reading band; that word wears the green mark.
  */
 export function Keywords() {
@@ -71,9 +71,9 @@ export function Keywords() {
         <div className="flex flex-col gap-4 lg:col-span-4">
           <p className="eyebrow text-text-2">{SITE.keywords.eyebrow}</p>
           <h2 id="kw-title" className="font-display text-h1 text-text md:text-display">
-            {T.product.tagline}
+            {SITE.keywords.title}
           </h2>
-          <p className="text-title font-sans font-normal text-text-2">{T.product.taglineGloss}</p>
+          <p className="text-title font-sans font-normal text-text-2">{T.product.line}</p>
         </div>
         <div className="kw-stage lg:col-span-8">
           <div ref={rail} className="kw-rail">

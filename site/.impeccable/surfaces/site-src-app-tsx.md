@@ -17,9 +17,9 @@ THESIS: Ask out loud, GetcKo points. Every section is one worked example with on
 
 OWN-WORLD: The brand kit. Textured sections from the gecko's world (footprints, pointer, how band, weave, canopy, skin, footer) with solid content cards. One green creature and one sun ring. Bricolage, Geist and Silkscreen. Kit components and lexicon words only.
 
-STORY: The logo is born from pixels and walks into the nav. The hero shows the whole loop (ask, point, source, offline). Then: how it points, your documents, Taglish voice, templates, the seven brand keywords, the one dark offline island, and "Gets mo na."
+STORY: The logo is born from pixels and walks into the nav. The hero shows the whole loop (ask, point, source, offline). Then: how it points, your documents, voice, templates, the brand keywords, the one dark offline island, and "Now you get it." English only: no Taglish, Filipino, Pinoy or "this Mac" copy.
 
-FIRST VIEWPORT: The kit's GetCkoHero. On the left, "Ask out loud. GetcKo points." with the CTA, the beats, the shortcut and "Nothing leaves this Mac." On the right, an LGU e-service form (business permit renewal, step 2 of 4, Next disabled until a valid ID is added), the voxel GetcKo hopping to Upload ID, the answer card and the source.
+FIRST VIEWPORT: The kit's GetCkoHero. On the left, "Ask out loud. GetcKo points." with the CTA, the beats, the shortcut and "Nothing leaves your computer." On the right, an LGU e-service form (business permit renewal, step 2 of 4, Next disabled until a valid ID is added), the voxel GetcKo hopping to Upload ID, the answer card and the source.
 
 FORM: A GSAP logo intro hands off to the kit hero timeline. A canvas GetcKo re-forms per section from MOMENT_POSE, with a halo via haloIn.
 

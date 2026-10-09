@@ -9,7 +9,7 @@ import { director } from "../gecko/director";
 import { GeckoSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
-/** Hold to talk, let go, GetcKo answers out loud in Taglish. On the banig weave: the language band. */
+/** Hold to talk, let go, GetcKo answers out loud. On the banig weave band. */
 export function Voice() {
   const section = useRef<HTMLElement>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -29,8 +29,7 @@ export function Voice() {
     const synth = window.speechSynthesis;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(c.answer);
-    const fil = synth.getVoices().find((v) => /^(fil|tl)/i.test(v.lang));
-    if (fil) u.voice = fil;
+    u.lang = "en-US";
     u.onend = u.onerror = () => setSpeaking(false);
     setSpeaking(true);
     synth.speak(u);
@@ -55,7 +54,7 @@ export function Voice() {
       <div className="site-wrap grid items-center gap-12 lg:grid-cols-12">
         <div className="flex flex-col gap-8 lg:col-span-6">
           <SectionHead id="voice-title" eyebrow={c.eyebrow} title={c.title}>
-            <Kw>{T.actions.holdToTalk}</Kw>, ask in English, Filipino or <Kw>Taglish</Kw>. GetcKo answers out loud.
+            <Kw>{T.actions.holdToTalk}</Kw> and ask your question. GetcKo <Kw>answers out loud</Kw>.
           </SectionHead>
           <div className="voice-bar-row">
             <GeckoSlot
@@ -67,7 +66,7 @@ export function Voice() {
             />
             <div ref={bar} className="voice-bar">
               <SessionBar
-                agent={T.templates.taglishExplainer.name}
+                agent={T.templates.officeHelper.name}
                 listening={listening}
                 speaking={speaking}
                 onTalkStart={() => {
@@ -86,10 +85,10 @@ export function Voice() {
         </div>
 
         <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-5 shadow-overlay lg:col-span-6">
-          <ChatBubble from="user" lang="fil">
+          <ChatBubble from="user">
             “{c.question}”
           </ChatBubble>
-          <ChatBubble from="getcko" lang="fil">
+          <ChatBubble from="getcko">
             {c.answer}
           </ChatBubble>
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">

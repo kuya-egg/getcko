@@ -1,6 +1,6 @@
 // GetCko first-glance hero: "Ask out loud. GetCko points." beside a mock e-service form (site edit:
 // was a grade sheet) where a voxel GetCko (three.js, the real sprite map extruded) hops to the Upload ID button, rings it, answers in
-// Taglish and cites the manual, offline. Choreography: ./timeline.ts (shared with the demo video).
+// English and cites the guide, offline. Choreography: ./timeline.ts (shared with the demo video).
 // Spec: docs/brand/hero.md.
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -299,7 +299,7 @@ export function GetCkoHero({ theme = "auto", autoplay = true, at, className, act
               <Keycap hotkey platform="mac" />
               <span>{T.sessionBar.shortcutHint}</span>
               <span aria-hidden="true" className="text-text-3">·</span>
-              <span>{T.offline.nothingLeaves("mac")}</span>
+              <span>Nothing leaves your computer.</span>
             </p>
           </div>
         </div>
@@ -355,7 +355,7 @@ export function GetCkoHero({ theme = "auto", autoplay = true, at, className, act
                   <CitationChip source={HERO_SAMPLE.source.doc} page={HERO_SAMPLE.source.page} />
                 </span>
                 <span data-hero="offline">
-                  <OfflineBadge detail={HERO_COPY.place} />
+                  <OfflineBadge />
                 </span>
               </div>
             </div>

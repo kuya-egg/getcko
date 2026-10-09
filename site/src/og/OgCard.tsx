@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { EServiceForm } from "../brand/hero/GetCkoHero";
 import { HERO_COPY } from "../brand/hero/copy";
 import { GetCkoSprite, handTip } from "../brand/mascot";
-import { MEASURED, T, latencyLine } from "../brand/lexicon";
+import { MEASURED, T, fmtSeconds } from "../brand/lexicon";
+import { SITE } from "../copy";
 import { ProofLine, Surface, Wordmark } from "../components/ui";
 
 /** GetcKo pixel scale on the card (integer only). */
@@ -45,7 +46,7 @@ export function OgCard() {
         <p className="og-support text-text-2">{HERO_COPY.support}</p>
         <ProofLine
           className="og-proof"
-          items={[T.proof.wifiOff, MEASURED.firstSpokenWord != null && latencyLine(MEASURED.firstSpokenWord)]}
+          items={[T.proof.wifiOff, MEASURED.firstSpokenWord != null && `${fmtSeconds(MEASURED.firstSpokenWord)} to first spoken word`]}
         />
       </div>
       <div ref={stage} className="og-stage">
@@ -55,7 +56,7 @@ export function OgCard() {
         {gecko && (
           <GetCkoSprite pose="pointing" flip scale={SCALE} label="" className="og-gecko" style={{ left: gecko.x, top: gecko.y }} />
         )}
-        <p className="og-badge font-pixel text-pixel text-accent-text">{T.product.tagline}</p>
+        <p className="og-badge font-pixel text-pixel text-accent-text">{SITE.tagline}</p>
       </div>
       <span className="og-url font-mono text-keys text-text-3">getcko.vercel.app</span>
     </Surface>

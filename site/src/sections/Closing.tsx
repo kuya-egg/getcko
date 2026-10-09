@@ -1,15 +1,15 @@
 import { useRef } from "react";
 import { pointPoseFor } from "../brand/mascot";
-import { MEASURED, PLACE, T, latencyLine } from "../brand/lexicon";
+import { T } from "../brand/lexicon";
 import { ICON_SIZE, Icon } from "../brand/icons";
 import { plateStyle } from "../brand/textures";
-import { ProofLine, Surface, Wordmark } from "../components/ui";
+import { Surface, Wordmark } from "../components/ui";
 import { GeckoSlot } from "../gecko/react";
 import { REPO_PUBLIC, REPO_URL } from "../config";
 import { SITE } from "../copy";
 
 /**
- * End card on the footer band. Left: "Gets mo na." and the measured proof. Right: the demo itself,
+ * End card on the footer band. Left: "Now you get it." and the product line. Right: the demo itself,
  * a poster on the kit's `headmark` end-card plate; GetcKo points at its play button (the one halo).
  */
 export function Closing({ onWatch }: { onWatch: () => void }) {
@@ -25,12 +25,7 @@ export function Closing({ onWatch }: { onWatch: () => void }) {
             <h2 id="closing-title" className="font-display text-display text-text md:text-hero">
               {c.title}
             </h2>
-            <p className="text-title font-sans font-normal text-text-2">
-              {c.gloss} {c.line}
-            </p>
-            <ProofLine
-              items={[T.proof.wifiOff, MEASURED.firstSpokenWord != null && latencyLine(MEASURED.firstSpokenWord), T.proof.measuredOn]}
-            />
+            <p className="text-title font-sans font-normal text-text-2">{c.line}</p>
             {REPO_PUBLIC && (
               <a className="closing-link self-start" href={REPO_URL} target="_blank" rel="noreferrer">
                 {SITE.readCode}
@@ -56,7 +51,7 @@ export function Closing({ onWatch }: { onWatch: () => void }) {
                 <span className="flex min-w-0 flex-col gap-1 text-left">
                   <span className="font-display text-h2 text-chrome-text">{SITE.demoTitle}</span>
                   <span className="font-mono text-keys text-chrome-text-2">
-                    {T.proof.wifiOff} · {PLACE.mac.onThis}
+                    {T.proof.wifiOff} · {SITE.privacy}
                   </span>
                 </span>
               </span>
@@ -67,7 +62,7 @@ export function Closing({ onWatch }: { onWatch: () => void }) {
         <div className="closing-foot flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-6">
           <Wordmark size="sm" />
           <p className="mr-auto text-caption text-text-2">
-            {SITE.footer.event} · {T.offline.nothingLeaves("mac")}
+            {SITE.footer.event} · {SITE.privacy}
           </p>
           {REPO_PUBLIC && (
             <a className="text-label text-accent-text" href={REPO_URL} target="_blank" rel="noreferrer">

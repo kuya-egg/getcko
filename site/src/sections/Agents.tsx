@@ -8,9 +8,8 @@ import { SITE } from "../copy";
 
 const TEMPLATES = [
   { ...T.templates.officeHelper, kbs: ["Office manual"], language: T.languages.English },
-  { ...T.templates.teacher, kbs: ["DepEd forms"], language: T.languages.Taglish },
+  { ...T.templates.teacher, kbs: ["DepEd forms"], language: T.languages.English },
   { ...T.templates.studyBuddy, kbs: ["My notes"], language: T.languages.English },
-  { ...T.templates.taglishExplainer, kbs: [], language: T.languages.Taglish },
 ];
 
 /** Templates on the canopy edge. GetcKo points down-right at the first card's Start. */
