@@ -182,6 +182,13 @@ pub fn prepare_turn(app: &tauri::AppHandle, state: &AppState, purpose: PrepareFo
             screen,
         });
     }
+    // Pressing again while this one read the screen: only the newest press is evaluated
+    // (each evaluation holds the model for seconds on a laptop GPU).
+    if let PrepareFor::Voice(press) = purpose
+        && press != VOICE_PRESSES.load(Ordering::SeqCst)
+    {
+        return;
+    }
     let prefilled = (|| -> AppResult<()> {
         let agent = state
             .store
@@ -380,6 +387,11 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             text
         }
         AskInput::Voice => {
+            // A newer question replaced this one: don't hold the speech helper.
+            if !check() {
+                emit(app, TurnEvent::Cancelled { turn_id: id });
+                return Ok(());
+            }
             emit(
                 app,
                 TurnEvent::Phase {

@@ -41,10 +41,13 @@ fn run() -> Result<(), String> {
     let mut state = context
         .create_state()
         .map_err(|error| format!("whisper state: {error}"))?;
+    // At most 4, whisper.cpp's own default: on a 4-core/8-thread laptop CPU, 8
+    // threads made one 3 s clip take 16 s, then longer on every call (MODELS.md).
     let threads = std::thread::available_parallelism()
         .ok()
         .and_then(|n| i32::try_from(n.get()).ok())
-        .unwrap_or(4);
+        .unwrap_or(4)
+        .min(MAX_THREADS);
 
     let mut input = BufReader::new(io::stdin().lock());
     let mut output = BufWriter::new(io::stdout().lock());
@@ -78,6 +81,7 @@ fn run() -> Result<(), String> {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_language(Some("en"));
         params.set_n_threads(threads);
+        params.set_audio_ctx(audio_ctx(pcm.len()));
         params.set_no_context(true);
         params.set_single_segment(true);
         params.set_print_progress(false);
@@ -111,6 +115,32 @@ fn run() -> Result<(), String> {
             .write_all(text.as_bytes())
             .map_err(|e| e.to_string())?;
         output.flush().map_err(|e| e.to_string())?;
+    }
+}
+
+/// Encoder threads; more only contend on laptop CPUs.
+const MAX_THREADS: i32 = 4;
+/// Encoder positions for Whisper's whole 30 s window.
+const FULL_AUDIO_CTX: usize = 1500;
+/// Positions kept beyond the clip itself.
+const AUDIO_CTX_MARGIN: usize = 64;
+
+/// Encoder positions for a clip of `samples` (16 kHz), instead of always encoding the
+/// whole 30 s window: push-to-talk questions are a few seconds long, and the encoder's
+/// cost grows with its positions (CPU: 11 s → 0.8 s for a 1.4 s clip, same text).
+fn audio_ctx(samples: usize) -> i32 {
+    let positions = (samples * FULL_AUDIO_CTX).div_ceil(16_000 * 30) + AUDIO_CTX_MARGIN;
+    i32::try_from(positions.min(FULL_AUDIO_CTX)).unwrap_or(1500)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn audio_ctx_covers_the_clip_and_never_exceeds_the_window() {
+        assert_eq!(super::audio_ctx(16_000 * 3), 150 + 64);
+        assert_eq!(super::audio_ctx(1), 1 + 64);
+        assert_eq!(super::audio_ctx(16_000 * 30), 1500);
+        assert_eq!(super::audio_ctx(16_000 * 60), 1500);
     }
 }
 
