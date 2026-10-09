@@ -64,7 +64,8 @@ pub trait Platform: Send + Sync {
     fn snapshot(&self, max_elements: usize) -> Result<ScreenSnapshot, PlatformError>;
 
     /// Pixels of the window [`Platform::snapshot`] reads (the topmost window that is
-    /// not this process), on the monitor holding it. The caller hides GetCko's own
+    /// not this process), on the monitor holding it; with no such window (only the
+    /// desktop showing), the whole primary monitor. The caller hides GetCko's own
     /// windows first.
     ///
     /// # Errors

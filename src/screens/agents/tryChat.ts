@@ -75,6 +75,7 @@ export function applyEvent(t: TryTurn, e: TurnEvent): TryTurn {
       return { ...t, stage: e.phase };
     case "question":
       return t.question ? t : { ...t, question: e.text };
+    case "step":
     case "target":
       return t;
     case "sentence": {

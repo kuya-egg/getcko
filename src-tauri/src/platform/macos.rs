@@ -110,7 +110,13 @@ impl Platform for MacPlatform {
 
     fn capture(&self) -> Result<ScreenCapture, PlatformError> {
         let own_pid = std::process::id();
-        let target = topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid))?;
+        let target =
+            match topmost_window_owner(|pid, _| u32::try_from(pid).is_ok_and(|p| p != own_pid)) {
+                Ok(target) => target,
+                // Only the desktop: the whole main display.
+                Err(PlatformError::NoFocusedApp) => return capture_display(None, None),
+                Err(error) => return Err(error),
+            };
         // Crop to the window the snapshot reads, so the screenshot and the element
         // list describe the same window; fall back to the topmost CG window.
         let window = Ax::application(target.pid)

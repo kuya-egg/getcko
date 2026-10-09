@@ -57,6 +57,8 @@ export interface OverlayState {
    * question. The current turn is step `task.length + 1`.
    */
   task: TaskStep[];
+  /** This turn's step of the guided-task plan (core `step` event); `null` without a plan. */
+  planStep: { number: number; total: number } | null;
 }
 
 export type OverlayAction =

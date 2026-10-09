@@ -8,4 +8,4 @@ import type { TurnPhase } from "./TurnPhase";
  * Emitted on [`crate::EVENT_TURN`]. A turn ends with exactly one of
  * `finished`, `cancelled` or `failed`.
  */
-export type TurnEvent = { "type": "phase", turnId: TurnId, phase: TurnPhase, } | { "type": "question", turnId: TurnId, text: string, } | { "type": "target", turnId: TurnId, target: PointerTarget | null, } | { "type": "sentence", turnId: TurnId, text: string, } | { "type": "finished", answer: Answer, } | { "type": "cancelled", turnId: TurnId, } | { "type": "failed", turnId: TurnId, message: string, };
+export type TurnEvent = { "type": "phase", turnId: TurnId, phase: TurnPhase, } | { "type": "question", turnId: TurnId, text: string, } | { "type": "step", turnId: TurnId, number: number, total: number, } | { "type": "target", turnId: TurnId, target: PointerTarget | null, } | { "type": "sentence", turnId: TurnId, text: string, } | { "type": "finished", answer: Answer, } | { "type": "cancelled", turnId: TurnId, } | { "type": "failed", turnId: TurnId, message: string, };

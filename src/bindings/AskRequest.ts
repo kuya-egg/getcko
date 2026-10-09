@@ -15,4 +15,9 @@ agentId: AgentId | null,
 /**
  * Earlier steps of a guided task, oldest first; at most MAX_TASK_STEPS - 1.
  */
-task?: Array<TaskStep>, };
+task?: Array<TaskStep>, 
+/**
+ * "Next step" of a guided task: point at the next action of the plan made for the
+ * task's first question. Any other ask starts over.
+ */
+nextStep?: boolean, };

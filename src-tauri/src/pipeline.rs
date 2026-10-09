@@ -47,6 +47,16 @@ pub struct AppState {
     pub turns: Arc<TurnControl>,
     /// Screen read when push-to-talk started; a voice turn uses it if fresh.
     pub prepared: Mutex<Option<PreparedScreen>>,
+    /// The plan of the guided task in progress, if any ([`Guide`]).
+    pub guide: Mutex<Option<Guide>>,
+}
+
+/// A guided task's plan (PRD S5): the actions from the plan pass, in plain words, and
+/// how many have been shown. Each "next step" request grounds the next action on the
+/// screen as it is then; any other question replaces the plan.
+pub struct Guide {
+    actions: Vec<String>,
+    shown: usize,
 }
 
 /// A snapshot taken at push-to-talk start, whose prompt prefix was evaluated
@@ -62,6 +72,8 @@ const PREPARED_MAX_AGE: Duration = Duration::from_secs(60);
 const TARGET_MAX_TOKENS: u32 = 8;
 /// `[yyyy, xxxx]` can take one token per character; the grammar ends it sooner.
 const POINT_MAX_TOKENS: u32 = 16;
+/// App name in the prompt when no app is focused, only the desktop.
+const DESKTOP: &str = "Desktop (no app open)";
 
 /// Reads the screen and evaluates the active agent's prompt prefix for it, so a
 /// voice turn only evaluates the question and passages. Runs while the user speaks;
@@ -215,10 +227,21 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             Some(snapshot) => Some(snapshot),
             None => {
                 let t = Instant::now();
-                let s = state
+                let s = match state
                     .platform
                     .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
-                    .map_err(AppError::from)?;
+                {
+                    Ok(snapshot) => snapshot,
+                    // Only the desktop is showing: no element list, so tier 3 reads a
+                    // screenshot of the whole display (Platform::capture), and with no
+                    // screenshot either the answer comes without a pointer.
+                    Err(crate::platform::PlatformError::NoFocusedApp) => ScreenSnapshot {
+                        app_name: DESKTOP.into(),
+                        window_title: None,
+                        elements: Vec::new(),
+                    },
+                    Err(error) => return Err(AppError::from(error)),
+                };
                 screen_ms = Some(ms(t));
                 Some(s)
             }
@@ -350,16 +373,32 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
 
     let body = turn.body(&question);
 
+    // Guided task (PRD S5): the action this turn shows, as (number, total, action).
+    let step = guide_step(
+        state,
+        chat.as_ref(),
+        &turn.system,
+        &body,
+        request.next_step == Some(true),
+        request.screen_help && mode.is_some_and(plans),
+        &check,
+    )?;
+    // The target pass grounds the step's action alone, on the screen as it is now.
+    let step_body = step
+        .as_ref()
+        .map(|(_, _, action)| TurnPrompt::new(&agent.draft, snapshot.as_ref(), &[]).body(action));
+
     // Pass 1: where to point.
     let mut pointed = Pointed::Nothing;
     let mut target = None;
     let mut confidence = Confidence::Normal;
     let screen = screen_text.as_ref().or(snapshot.as_ref());
     if let (Some(mode), Some(screen)) = (mode, screen) {
-        match aim(
+        let aimed = aim_step(
             chat.as_ref(),
             &turn.system,
             &body,
+            step_body.as_deref(),
             mode,
             screen,
             screenshot.as_ref(),
@@ -368,7 +407,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                 question: &question,
             }),
             &check,
-        )? {
+        )?;
+        match aimed {
             Aim::Element(element) if mode == ScreenMode::ImageOnly => {
                 // Text read from a screenshot: its box is exact, but whether it is
                 // the control to use is a guess (BR-18), so no element id.
@@ -396,6 +436,16 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     if !check() {
         emit(app, TurnEvent::Cancelled { turn_id: id });
         return Ok(());
+    }
+    if let Some((number, total, _)) = &step {
+        emit(
+            app,
+            TurnEvent::Step {
+                turn_id: id,
+                number: u32::try_from(*number).unwrap_or(u32::MAX),
+                total: u32::try_from(*total).unwrap_or(u32::MAX),
+            },
+        );
     }
     emit(
         app,
@@ -437,7 +487,14 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         }
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
-    let answer_task = TurnPrompt::answer_task(pointed, &passages);
+    let answer_task = match &step {
+        Some((number, total, action)) => format!(
+            "{}{}",
+            prompt::step_note(*number, *total, action),
+            TurnPrompt::answer_task(pointed, &passages)
+        ),
+        None => TurnPrompt::answer_task(pointed, &passages),
+    };
     let answer_user = with_task(&body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {
@@ -600,6 +657,122 @@ pub enum Aim<'a> {
         monitor: MonitorFrame,
     },
     Nothing,
+}
+
+/// Screen modes a guided-task plan is made in: the plan names elements by label, so
+/// tier 3 (the screenshot alone) has none.
+#[must_use]
+pub fn plans(mode: ScreenMode) -> bool {
+    matches!(mode, ScreenMode::Elements | ScreenMode::ElementsWithImage)
+}
+
+/// Target pass for a turn: the guided-task action alone (`action_body`, from
+/// [`plan`]) when there is one, else the question (`body`); an action that matches
+/// nothing on screen falls back to the question.
+#[allow(clippy::too_many_arguments)] // mirrors `aim`
+pub fn aim_step<'a>(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    action_body: Option<&str>,
+    mode: ScreenMode,
+    screen: &'a ScreenSnapshot,
+    shot: Option<&Prepared>,
+    grounding: Option<Grounding<'_>>,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Aim<'a>> {
+    if let Some(action_body) = action_body {
+        let found = aim(
+            chat,
+            system,
+            action_body,
+            mode,
+            screen,
+            shot,
+            grounding,
+            keep_going,
+        )?;
+        if !matches!(found, Aim::Nothing) {
+            return Ok(found);
+        }
+    }
+    aim(
+        chat, system, body, mode, screen, shot, grounding, keep_going,
+    )
+}
+
+/// Plan pass (PRD S5): the actions that answer `body`'s question, in plain words and
+/// in order ([`prompt::PLAN_TASK`]); empty when the question needs no actions.
+pub fn plan(
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Vec<String>> {
+    let mut reply = String::new();
+    chat.generate(
+        &ChatRequest {
+            system,
+            user: &format!("{body}{}", prompt::PLAN_TASK),
+            max_tokens: prompt::PLAN_MAX_TOKENS,
+            grammar: None,
+            image: None,
+        },
+        &mut |piece| {
+            reply.push_str(piece);
+            if keep_going() {
+                Flow::Continue
+            } else {
+                Flow::Stop
+            }
+        },
+    )
+    .map_err(AppError::from)?;
+    let actions = prompt::plan_actions(&reply);
+    // The actions quote the question: log their number only.
+    tracing::debug!(actions = actions.len(), "plan pass");
+    Ok(actions)
+}
+
+/// The guided-task action this turn shows, as (number, total, action), and the stored
+/// plan updated. `next`: take the plan's next action (none left or no plan: `None`, and
+/// the earlier steps in the prompt carry the task). Otherwise the plan is replaced:
+/// when `plan_on`, a plan of two or more actions starts at its first.
+fn guide_step(
+    state: &AppState,
+    chat: &dyn ChatModel,
+    system: &str,
+    body: &str,
+    next: bool,
+    plan_on: bool,
+    keep_going: &dyn Fn() -> bool,
+) -> AppResult<Option<(usize, usize, String)>> {
+    let lock = || {
+        state
+            .guide
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    };
+    if next {
+        let mut guide = lock();
+        return Ok(guide.as_mut().and_then(|guide| {
+            let action = guide.actions.get(guide.shown)?.clone();
+            guide.shown += 1;
+            Some((guide.shown, guide.actions.len(), action))
+        }));
+    }
+    *lock() = None;
+    if !plan_on {
+        return Ok(None);
+    }
+    let actions = plan(chat, system, body, keep_going)?;
+    if actions.len() < 2 {
+        return Ok(None);
+    }
+    let first = actions[0].clone();
+    let total = actions.len();
+    *lock() = Some(Guide { actions, shown: 1 });
+    Ok(Some((1, total, first)))
 }
 
 /// The user prompt for a pass: `body` then `task`, unless an image is attached, in

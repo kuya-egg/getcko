@@ -31,6 +31,44 @@ const ANSWER_TASK: &str = "Task: answer the question.";
 const CITE_TASK: &str = " Cite the passages you use inline as [n].";
 const NO_SOURCE_TASK: &str =
     " There are no passages: do not add a source or any reference after the answer.";
+/// Plan pass of a guided task (PRD S5): the actions in plain words, grounded one at a
+/// time later. Plain words beat element ids or labels here: listing ids or labels, the
+/// model mixed up digits and order (task_eval 10/20 and 5/20 steps; words 16/20).
+pub const PLAN_TASK: &str = "Task: list the actions that do what the question asks, in the order the user does them, one short line per action; think of exactly what the user presses or types first, then next. Write each line as \"N. action\", naming the one screen element the action uses by its label (for example \"1. Click Save\"). When a value is entered with separate keys, one action per key. Use only elements on the screen. At most 5 lines. If the question asks for a fact or an explanation rather than actions, reply none.";
+/// Longest plan reply: five short numbered lines.
+pub const PLAN_MAX_TOKENS: u32 = 96;
+/// Most actions kept from a plan: a guided task has at most this many steps.
+const PLAN_MAX_STEPS: usize = crate::model::MAX_TASK_STEPS;
+
+/// The actions of a plan-pass reply: the text of each `N. action` line, in order.
+#[must_use]
+pub fn plan_actions(reply: &str) -> Vec<String> {
+    reply
+        .lines()
+        .filter_map(|line| {
+            let (number, action) = line.trim().split_once(". ")?;
+            number.parse::<u32>().ok()?;
+            let action = action.trim();
+            (!action.is_empty()).then(|| action.to_owned())
+        })
+        .take(PLAN_MAX_STEPS)
+        .collect()
+}
+
+/// Answer-pass note for step `number` (1-based) of a `total`-step plan: the answer
+/// covers that action only, so it matches the element the pointer shows.
+#[must_use]
+pub fn step_note(number: usize, total: usize, action: &str) -> String {
+    let more = if number < total {
+        " Say only this step; the user asks for the next step when it is done."
+    } else {
+        " This is the last step."
+    };
+    format!(
+        "This is step {number} of {total} of the task: {}.{more}\n\n",
+        truncate_chars(action, 120)
+    )
+}
 
 /// One retrieved passage and its display location.
 pub struct RetrievedPassage<'a> {

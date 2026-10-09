@@ -463,6 +463,11 @@ pub struct AskRequest {
     #[serde(default)]
     #[ts(optional)]
     pub task: Option<Vec<TaskStep>>,
+    /// "Next step" of a guided task: point at the next action of the plan made for the
+    /// task's first question. Any other ask starts over.
+    #[serde(default)]
+    #[ts(optional)]
+    pub next_step: Option<bool>,
 }
 
 /// Steps a guided task keeps in context, the current one included (PRD S5).
@@ -559,6 +564,13 @@ pub enum TurnEvent {
     Question {
         turn_id: TurnId,
         text: String,
+    },
+    /// This turn shows step `number` of a `total`-step guided-task plan (PRD S5); sent
+    /// before `Target`. Absent for a stand-alone answer.
+    Step {
+        turn_id: TurnId,
+        number: u32,
+        total: u32,
     },
     /// Sent before the first sentence so the gecko can fly while GetCko speaks.
     Target {

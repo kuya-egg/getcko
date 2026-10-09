@@ -172,14 +172,14 @@ export function Overlay() {
       .catch(() => setAgentName(null));
   }, [state.awaiting]);
 
-  /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5). */
-  const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[]) => {
+  /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5); `next` asks for the plan's next step. */
+  const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[], next = false) => {
     setBarVisible(true);
     localStorage.setItem("getcko.barHidden", "false");
     const run = pendingAsk.current.then(async () => {
       dispatch({ type: "asked", input: input.type, screenHelp: help, question, task });
       try {
-        const turnId = await ask({ input, screenHelp: help, agentId: null, task });
+        const turnId = await ask({ input, screenHelp: help, agentId: null, task, ...(next ? { nextStep: true } : {}) });
         dispatch({ type: "askResolved", turnId });
       } catch (e: unknown) {
         dispatch({ type: "askRejected", message: e instanceof Error ? e.message : String(e) });
@@ -332,9 +332,12 @@ export function Overlay() {
             target={state.target}
             onStop={handleStop}
             onDismiss={() => dispatch({ type: "dismiss" })}
-            step={state.task.length > 0 ? state.task.length + 1 : null}
-            taskEnded={state.status === "finished" && state.task.length + 1 >= MAX_TASK_STEPS}
-            onNext={nextSteps ? () => startAsk({ type: "text", text: NEXT_STEP }, NEXT_STEP, true, nextSteps) : undefined}
+            step={state.planStep ?? (state.task.length > 0 ? { number: state.task.length + 1, total: MAX_TASK_STEPS } : null)}
+            taskEnded={
+              state.status === "finished" &&
+              (state.planStep !== null ? state.planStep.number >= state.planStep.total : state.task.length + 1 >= MAX_TASK_STEPS)
+            }
+            onNext={nextSteps ? () => startAsk({ type: "text", text: NEXT_STEP }, NEXT_STEP, true, nextSteps, true) : undefined}
           />
         )}
         <div style={{ position: "fixed", left: composerAt.x, top: composerAt.y }}>
