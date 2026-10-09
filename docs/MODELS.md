@@ -206,3 +206,16 @@ An earlier survey over 15 apps (Safari, Chrome, Finder, Calculator, TextEdit, Sy
    The example answers made Gemma invent answers to questions with no source (2 of 3) and add steps nobody asked for; without them the "don't know" answers stay intact (3/3). Role names (popUpButton, colorWell) still leak in a few answers despite the instruction. A native-speaker review is still needed.
 30. **Decision input for tier 3.** On screens with an accessibility tree, tiers 1–2 already score 42–44/50 on held-out pages without any extra model. Only screenshot-only screens (canvas apps, games, remote desktops, some Electron/Java apps) reach tier 3, where Gemma alone scores 8/50 and the on-demand Qwen3-VL-2B grounder 30/50 at +1.48 GB on disk, ~+1 GB memory while loaded, and ~1–1.4 s per point. Making Gemma itself ground would need fine-tuning (LoRA on screenshot → box data, e.g. Qwen3-VL predictions checked by hand), not prompting.
 
+31. **Windows laptop (Intel Iris Xe): three fixes for screen-help latency.** Machine: i7-11370H (4 cores), Iris Xe 96 EU over Vulkan, 16 GB, Windows 11; `cargo run --example screen_cost` (dev build; llama.cpp is optimized in dev). Before them a typed tier-2 question took ~28 s.
+    - **Grammar-constrained replies checked the whole vocabulary.** llama.cpp's grammar sampler matches all ~262k tokens against the grammar each step. The target pass now checks the model's best token, then its top 256, then the rest (`constrained_greedy`; same choice as grammar-then-greedy). Target pass with the element list already cached: 6.4 s → 2.2 s, same element.
+    - **Flash attention on Vulkan is slower than plain attention here.** Reading a fixed 150-element screen (2,945 tokens) cold: 55 s at 53 tokens/s with llama.cpp's "auto", 19.5 s at 150 tokens/s with it disabled; CPU only 38–78 tokens/s; 4 threads or other batch sizes no better. Windows builds now disable it.
+    - **The screenshot came after the question, so it could not be evaluated ahead.** It now follows the screen context and is captured and prefilled at push-to-talk start (`ptt_start`) or when the composer opens (`screen_prepare`).
+
+| Iris Xe, all three fixes | Evaluated while the user speaks or types | Left after the question (target pass) |
+|---|---|---|
+| Tier 1 (element list, already read) | 0.2 s | 1.2–1.4 s |
+| Tier 2, 1024 px screenshot (shipped) | 5.5 s | 1.6–1.7 s |
+| Tier 2, 768 px | 3.0 s | 1.6 s |
+| Tier 2, 512 px | 1.9 s | 1.5 s |
+
+    Same element picked at every size. A screen not seen before still has to be read: ~150 tokens/s, so a full 150-element list (~2,000–3,000 tokens) is ~13–20 s, partly hidden behind speaking or typing. Accuracy at 768/512 px was not measured, so 1024 px stays.

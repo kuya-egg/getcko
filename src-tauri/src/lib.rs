@@ -71,7 +71,7 @@ pub fn run() {
             commands::doc_list, commands::doc_import, commands::doc_delete, commands::template_list,
             commands::agent_list, commands::agent_get, commands::agent_create, commands::agent_create_from_template,
             commands::agent_update, commands::agent_duplicate, commands::agent_delete, commands::agent_active,
-            commands::agent_set_active, commands::ptt_start, commands::ask, commands::stop, commands::screen_snapshot
+            commands::agent_set_active, commands::ptt_start, commands::screen_prepare, commands::ask, commands::stop, commands::screen_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

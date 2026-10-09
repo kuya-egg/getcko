@@ -426,7 +426,7 @@ fn main() {
                 let started = Instant::now();
                 let aim = pipeline::aim(
                     chat.as_ref() as &dyn ChatModel,
-                    &turn.system,
+                    &turn,
                     &turn.body(question, &[]),
                     mode,
                     screen,
@@ -699,7 +699,7 @@ fn survey(
             let started = Instant::now();
             let aim = pipeline::aim(
                 chat,
-                &turn.system,
+                &turn,
                 &turn.body(&question, &[]),
                 mode,
                 screen,

@@ -25,7 +25,7 @@ use llama_cpp_2::{
     },
     sampling::LlamaSampler,
     send_logs_to_tracing,
-    token::LlamaToken,
+    token::{LlamaToken, data::LlamaTokenData, data_array::LlamaTokenDataArray},
 };
 fn token_text_piece(
     vocab: &llama_cpp_2::vocab::LlamaVocab<'_>,
@@ -116,8 +116,18 @@ fn context<'a>(
         .with_n_threads_batch(threads())
         .with_embeddings(embeddings)
         .with_pooling_type(pooling);
+    // Vulkan's flash-attention kernels are slower than plain attention on laptop GPUs
+    // without matrix cores: on Intel Iris Xe, "auto" read a 150-element screen
+    // (2,945 tokens) at 53 tokens/s and disabled at 150 tokens/s (MODELS.md). Only
+    // Iris Xe was measured; other Windows GPUs get the same setting.
+    #[cfg(target_os = "windows")]
+    let params = params.with_flash_attention_policy(FLASH_ATTENTION_DISABLED);
     model.new_context(backend, params).map_err(runtime_error)
 }
+
+/// llama.cpp's `LLAMA_FLASH_ATTN_TYPE_DISABLED`.
+#[cfg(target_os = "windows")]
+const FLASH_ATTENTION_DISABLED: i32 = 0;
 
 /// Chat model loaded from a GGUF file.
 ///
@@ -520,19 +530,109 @@ impl LlamaChat {
         session.evaluate(plan, guard.as_deref_mut())
     }
 
-    fn sampler(&self, grammar: Option<&str>) -> EngineResult<LlamaSampler> {
+    fn sampler(&self, grammar: Option<&str>) -> EngineResult<Sampling> {
         let Some(grammar) = grammar else {
-            return Ok(LlamaSampler::chain_simple([
+            return Ok(Sampling::Free(LlamaSampler::chain_simple([
                 LlamaSampler::temp(0.2),
                 LlamaSampler::dist(0),
-            ]));
+            ])));
         };
-        let grammar = LlamaSampler::grammar(&self.model, grammar, "root").map_err(runtime_error)?;
-        Ok(LlamaSampler::chain_simple([
-            grammar,
-            LlamaSampler::greedy(),
-        ]))
+        LlamaSampler::grammar(&self.model, grammar, "root")
+            .map(Sampling::Constrained)
+            .map_err(runtime_error)
     }
+}
+
+/// How the next token is chosen.
+enum Sampling {
+    /// Low-temperature sampling for free text.
+    Free(LlamaSampler),
+    /// Greedy within a GBNF grammar (element ids, points).
+    Constrained(LlamaSampler),
+}
+
+impl Sampling {
+    /// Picks and accepts the next token from the last evaluated position.
+    ///
+    /// # Errors
+    /// The grammar allows no token at all.
+    fn next(&mut self, ctx: &LlamaContext<'_>) -> EngineResult<LlamaToken> {
+        match self {
+            Self::Free(sampler) => Ok(sampler.sample(ctx, -1)),
+            Self::Constrained(grammar) => {
+                let token = constrained_greedy(grammar, ctx.get_logits_ith(-1))
+                    .ok_or_else(|| runtime_error("the reply grammar allows no token here"))?;
+                grammar.accept(token);
+                Ok(token)
+            }
+        }
+    }
+}
+
+/// Candidates checked against the grammar at once when the model's own best token
+/// is not allowed.
+const GRAMMAR_SHORTLIST: usize = 256;
+
+/// The highest-scoring token the grammar allows: the choice of running the grammar
+/// over every candidate and then picking greedily (only ties at the shortlist's
+/// lowest score may break differently), without matching all ~262k vocabulary
+/// entries against the grammar on every step (seconds per reply on a laptop CPU).
+/// The model's best token is checked first, then its top [`GRAMMAR_SHORTLIST`]; the
+/// best allowed token there is the best allowed overall. The whole vocabulary is
+/// checked only when none of those is allowed. `None` when the grammar allows nothing.
+fn constrained_greedy(grammar: &mut LlamaSampler, logits: &[f32]) -> Option<LlamaToken> {
+    let best = argmax(logits.iter().copied().enumerate());
+    if let Some(token) = best_allowed(grammar, logits, &[best]) {
+        return Some(token);
+    }
+    let mut order: Vec<usize> = (0..logits.len()).collect();
+    let shortlist = GRAMMAR_SHORTLIST.min(order.len());
+    if shortlist > 0 && shortlist < order.len() {
+        order.select_nth_unstable_by(shortlist - 1, |a, b| logits[*b].total_cmp(&logits[*a]));
+    }
+    best_allowed(grammar, logits, &order[..shortlist])
+        .or_else(|| best_allowed(grammar, logits, &order[shortlist..]))
+}
+
+/// The highest-scoring of `indices` that the grammar allows, if any.
+fn best_allowed(grammar: &mut LlamaSampler, logits: &[f32], indices: &[usize]) -> Option<LlamaToken> {
+    if indices.is_empty() {
+        return None;
+    }
+    let mut shortlist = LlamaTokenDataArray::new(
+        indices.iter().map(|&i| candidate(i, logits[i])).collect(),
+        false,
+    );
+    grammar.apply(&mut shortlist);
+    shortlist
+        .data
+        .iter()
+        .filter(|c| c.logit() > f32::NEG_INFINITY)
+        .map(|c| (index_of(c.id()), c.logit()))
+        .reduce(|a, b| if b.1 > a.1 || (b.1 == a.1 && b.0 < a.0) { b } else { a })
+        .map(|(i, _)| token_at(i))
+}
+
+/// Index of the largest score; the first one on ties, like llama.cpp's greedy sampler.
+fn argmax(scores: impl Iterator<Item = (usize, f32)>) -> usize {
+    scores
+        .fold(None, |best: Option<(usize, f32)>, (i, score)| match best {
+            Some((_, top)) if top >= score => best,
+            _ => Some((i, score)),
+        })
+        .map_or(0, |(i, _)| i)
+}
+
+fn candidate(index: usize, logit: f32) -> LlamaTokenData {
+    LlamaTokenData::new(token_at(index), logit, 0.0)
+}
+
+fn token_at(index: usize) -> LlamaToken {
+    LlamaToken::new(i32::try_from(index).unwrap_or(i32::MAX))
+}
+
+fn index_of(token: LlamaToken) -> usize {
+    usize::try_from(token.0).unwrap_or(0)
 }
 
 /// Hash of an image's size and pixels; equal screenshots share KV-cache slots.
@@ -593,8 +693,8 @@ impl ChatModel for LlamaChat {
         let mut raw = Vec::with_capacity(8);
         let mut pending = Vec::with_capacity(4);
         for index in 0..request.max_tokens {
-            // `sample` also accepts the token into the sampler (grammar state).
-            let token = sampler.sample(&session.ctx, -1);
+            // Also accepts the token into the sampler (grammar state).
+            let token = sampler.next(&session.ctx)?;
             stats.generated_tokens = index.saturating_add(1);
             if vocab.is_eog(token) {
                 break;
@@ -869,6 +969,14 @@ impl Embedder for LlamaEmbedder {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn argmax_takes_the_first_of_equal_scores() {
+        let scores = [1.0, 3.0, 3.0, f32::NEG_INFINITY];
+        assert_eq!(super::argmax(scores.iter().copied().enumerate()), 1);
+        assert_eq!(super::argmax(std::iter::empty()), 0);
+        assert_eq!(super::argmax([(7, f32::NEG_INFINITY), (9, -1.0)].into_iter()), 9);
+    }
+
     use super::*;
     use crate::engine::ImagePart;
     use std::path::PathBuf;

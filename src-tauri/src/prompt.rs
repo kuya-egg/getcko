@@ -191,7 +191,8 @@ impl TurnPrompt {
     }
 
     /// Screen, task steps, question and passages: the part both passes share. A
-    /// screenshot, when used, goes right after it.
+    /// screenshot, when used, goes right after the screen part ([`Self::warm_user`]),
+    /// so it can be evaluated before the question is known.
     pub fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
         use std::fmt::Write;
         let mut user = format!("{}{}Question: {question}\n\n", self.context, self.task);

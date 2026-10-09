@@ -9,7 +9,7 @@ use crate::{
 };
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicU32, Ordering},
+    atomic::{AtomicU32, AtomicU64, Ordering},
 };
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -45,15 +45,82 @@ pub struct AppState {
     pub engine: Arc<OnceLock<Engine>>,
     pub platform: Arc<dyn Platform>,
     pub turns: Arc<TurnControl>,
-    /// Screen read when push-to-talk started; a voice turn uses it if fresh.
+    /// Screen read when push-to-talk started; the voice turn of that press uses it.
     pub prepared: Mutex<Option<PreparedScreen>>,
 }
 
-/// A snapshot taken at push-to-talk start, whose prompt prefix was evaluated
-/// while the user was speaking.
+/// The screen read when push-to-talk started, whose prompt prefix (screenshot
+/// included, when it could be taken) was evaluated while the user spoke.
 pub struct PreparedScreen {
     taken: Instant,
+    /// The push-to-talk press it was read for ([`next_voice_prepare`]).
+    press: u64,
     snapshot: ScreenSnapshot,
+    /// `None` when the screenshot was left for the turn (the overlay had focus).
+    screen: Option<ScreenRead>,
+}
+
+/// What a screen is read ahead for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrepareFor {
+    /// Push-to-talk press `n` ([`next_voice_prepare`]): its voice turn uses the screen
+    /// read here, screenshot included.
+    Voice(u64),
+    /// The composer opened: only the prompt prefix is evaluated. The typed turn reads
+    /// the screen again (fast) and reuses that prefix from the cache when the screen
+    /// did not change, so a screen read for a question never asked is never used.
+    Typing,
+}
+
+static VOICE_PRESSES: AtomicU64 = AtomicU64::new(0);
+
+/// Numbers a push-to-talk press; only the newest press's prepared screen is used.
+pub fn next_voice_prepare() -> u64 {
+    VOICE_PRESSES.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+/// What a turn sees beyond the element list: the tier and, for tiers 2-3, the
+/// screenshot (and for tier 3 the text read from it).
+#[derive(Default)]
+struct ScreenRead {
+    mode: Option<ScreenMode>,
+    shot: Option<Prepared>,
+    text: Option<ScreenSnapshot>,
+    capture_ms: Option<u32>,
+}
+
+/// Picks the tier for `snapshot` and takes the screenshot tiers 2-3 need.
+fn read_screen(app: &tauri::AppHandle, platform: &dyn Platform, snapshot: &ScreenSnapshot) -> ScreenRead {
+    let mut read = ScreenRead {
+        mode: Some(screen_mode(snapshot)),
+        ..ScreenRead::default()
+    };
+    if let Some(wanted) = read.mode
+        && wanted != ScreenMode::Elements
+    {
+        let t = Instant::now();
+        match capture_screen(app, platform) {
+            Ok(capture) => {
+                if wanted == ScreenMode::ImageOnly {
+                    let (shot, text) = read_screenshot(platform, capture);
+                    read.shot = Some(shot);
+                    read.text = Some(text);
+                } else {
+                    read.shot = Some(crate::screenshot::prepare(capture, Some(&snapshot.elements)));
+                }
+                read.capture_ms = Some(ms(t));
+            }
+            Err(error) => {
+                tracing::info!(%error, "no screenshot; using the element list only");
+                read.mode = Some(ScreenMode::Elements);
+            }
+        }
+    }
+    // Nothing on screen could be read (no elements, no screenshot): no tier applies.
+    if read.shot.is_none() && snapshot.elements.is_empty() {
+        read.mode = None;
+    }
+    read
 }
 
 /// A prepared screen older than this is re-read instead.
@@ -63,10 +130,13 @@ const TARGET_MAX_TOKENS: u32 = 8;
 /// `[yyyy, xxxx]` can take one token per character; the grammar ends it sooner.
 const POINT_MAX_TOKENS: u32 = 16;
 
-/// Reads the screen and evaluates the active agent's prompt prefix for it, so a
-/// voice turn only evaluates the question and passages. Runs while the user speaks;
-/// failures only cost that head start.
-pub fn prepare_turn(state: &AppState) {
+/// Reads the screen and evaluates the active agent's prompt prefix for it, so the turn
+/// only evaluates the question and passages. For a voice turn it also takes the
+/// screenshot tiers 2-3 need and evaluates it with the prefix, unless the overlay
+/// has keyboard focus: hiding it for the capture would send keys typed in the
+/// composer, or the release of its mic button, to another window. Runs while the
+/// user speaks or types; failures only cost that head start.
+pub fn prepare_turn(app: &tauri::AppHandle, state: &AppState, purpose: PrepareFor) {
     let snapshot = match state
         .platform
         .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
@@ -78,10 +148,19 @@ pub fn prepare_turn(state: &AppState) {
         }
     };
     let taken = Instant::now();
-    if let Ok(mut prepared) = state.prepared.lock() {
+    let screen = (matches!(purpose, PrepareFor::Voice(_)) && !overlay_focused(app))
+        .then(|| read_screen(app, state.platform.as_ref(), &snapshot));
+    let shot = screen.as_ref().and_then(|s| s.shot.clone());
+    if let PrepareFor::Voice(press) = purpose
+        // A newer press has started reading the screen: this one is out of date.
+        && press == VOICE_PRESSES.load(Ordering::SeqCst)
+        && let Ok(mut prepared) = state.prepared.lock()
+    {
         *prepared = Some(PreparedScreen {
             taken,
+            press,
             snapshot: snapshot.clone(),
+            screen,
         });
     }
     let prefilled = (|| -> AppResult<()> {
@@ -103,7 +182,10 @@ pub fn prepare_turn(state: &AppState) {
             user: turn.warm_user(),
             max_tokens: turn.max_tokens,
             grammar: None,
-            image: None,
+            image: shot.as_ref().map(|s| ImagePart {
+                image: &s.image,
+                text_after: "",
+            }),
         })
         .map_err(AppError::from)
     })();
@@ -117,7 +199,12 @@ pub fn run_turn(
     state: Arc<AppState>,
     request: AskRequest,
 ) -> AppResult<TurnId> {
-    validate_task(request.task.as_deref().unwrap_or_default())?;
+    if let Err(error) = validate_task(request.task.as_deref().unwrap_or_default()) {
+        if matches!(request.input, AskInput::Voice) {
+            let _ = stop_recording(&state);
+        }
+        return Err(error);
+    }
     let id = state.turns.begin();
     if let Some(engine) = state.engine.get()
         && let Some(s) = &engine.speaker
@@ -180,8 +267,22 @@ fn emit(app: &tauri::AppHandle, event: TurnEvent) {
         tracing::warn!("could not emit turn event: {e}");
     }
 }
+/// Ends push-to-talk recording and returns the audio.
+fn stop_recording(state: &AppState) -> AppResult<Vec<f32>> {
+    state
+        .engine
+        .get()
+        .and_then(|engine| engine.microphone.as_ref())
+        .ok_or_else(|| AppError::unavailable("microphone is not available"))?
+        .stop()
+        .map_err(AppError::from)
+}
+
 fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest) -> AppResult<()> {
     let started = Instant::now();
+    // The user let go of the key: stop listening now, before any early return,
+    // so the microphone never stays open and the clip ends where the user stopped.
+    let mut recording = matches!(request.input, AskInput::Voice).then(|| stop_recording(state));
     let check = || state.turns.is_current(id);
     if !check() {
         if let Some(s) = state
@@ -202,17 +303,33 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             .active_agent()?
             .ok_or_else(|| AppError::invalid("no agent — pick a template first"))?,
     };
-    // A voice turn reuses the screen read (and prefilled) when push-to-talk started.
-    let prepared = state.prepared.lock().ok().and_then(|mut p| p.take());
+    // A voice turn uses the screen read (and evaluated) when its push-to-talk press
+    // started. Anything else reads the screen now; the prompt prefix evaluated when
+    // the composer opened is reused from the cache if the screen did not change.
+    let prepared = state
+        .prepared
+        .lock()
+        .ok()
+        .and_then(|mut p| p.take())
+        .filter(|p| {
+            matches!(request.input, AskInput::Voice)
+                && p.press == VOICE_PRESSES.load(Ordering::SeqCst)
+                && p.taken.elapsed() < PREPARED_MAX_AGE
+        });
     let mut screen_ms = None;
-    let snapshot = if request.screen_help {
-        let fresh = prepared
-            .filter(|p| {
-                matches!(request.input, AskInput::Voice) && p.taken.elapsed() < PREPARED_MAX_AGE
-            })
-            .map(|p| p.snapshot);
-        match fresh {
-            Some(snapshot) => Some(snapshot),
+    let (snapshot, screen) = if request.screen_help {
+        match prepared {
+            Some(p) => {
+                // Captured ahead of the turn, so not part of its latency.
+                let screen = match p.screen {
+                    Some(screen) => ScreenRead {
+                        capture_ms: None,
+                        ..screen
+                    },
+                    None => read_screen(app, state.platform.as_ref(), &p.snapshot),
+                };
+                (Some(p.snapshot), screen)
+            }
             None => {
                 let t = Instant::now();
                 let s = state
@@ -220,43 +337,19 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                     .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
                     .map_err(AppError::from)?;
                 screen_ms = Some(ms(t));
-                Some(s)
+                let screen = read_screen(app, state.platform.as_ref(), &s);
+                (Some(s), screen)
             }
         }
     } else {
-        None
+        (None, ScreenRead::default())
     };
-    // Tiers 2-3: a screenshot when the element list is weak or empty.
-    let mut capture_ms = None;
-    let mut mode = snapshot.as_ref().map(screen_mode);
-    let mut screenshot = None;
-    // Tier 3: text read from the screenshot, offered like an element list.
-    let mut screen_text = None;
-    if let (Some(wanted), Some(snap)) = (mode, snapshot.as_ref())
-        && wanted != ScreenMode::Elements
-    {
-        let t = Instant::now();
-        match capture_screen(app, state.platform.as_ref()) {
-            Ok(capture) => {
-                if wanted == ScreenMode::ImageOnly {
-                    let (shot, text) = read_screenshot(state.platform.as_ref(), capture);
-                    screenshot = Some(shot);
-                    screen_text = Some(text);
-                } else {
-                    screenshot = Some(crate::screenshot::prepare(capture, Some(&snap.elements)));
-                }
-                capture_ms = Some(ms(t));
-            }
-            Err(error) => {
-                tracing::info!(%error, "no screenshot; using the element list only");
-                mode = Some(ScreenMode::Elements);
-            }
-        }
-    }
-    // Nothing on screen could be read (no elements, no screenshot): no tier applies.
-    if screenshot.is_none() && snapshot.as_ref().is_some_and(|s| s.elements.is_empty()) {
-        mode = None;
-    }
+    let ScreenRead {
+        mode,
+        shot: screenshot,
+        text: screen_text,
+        capture_ms,
+    } = screen;
     let mut transcribe_ms = None;
     let question = match request.input {
         AskInput::Text { text } => {
@@ -275,11 +368,9 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                 },
             );
             let t = Instant::now();
-            let mic = engine
-                .microphone
-                .as_ref()
-                .ok_or_else(|| AppError::unavailable("microphone is not available"))?;
-            let pcm = mic.stop().map_err(AppError::from)?;
+            let pcm = recording
+                .take()
+                .unwrap_or_else(|| Err(AppError::unavailable("microphone is not available")))?;
             let trans = engine
                 .transcriber
                 .as_ref()
@@ -350,7 +441,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     if let (Some(mode), Some(screen)) = (mode, screen) {
         match aim(
             chat.as_ref(),
-            &turn.system,
+            &turn,
             &body,
             mode,
             screen,
@@ -428,7 +519,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
     let answer_task = TurnPrompt::answer_task(pointed, !passages.is_empty());
-    let answer_user = with_task(&body, &answer_task, screenshot.is_some());
+    let (answer_user, answer_after) = split_at_image(&turn, &body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {
             system: &turn.system,
@@ -437,7 +528,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             grammar: None,
             image: screenshot.as_ref().map(|s| ImagePart {
                 image: &s.image,
-                text_after: &answer_task,
+                text_after: &answer_after,
             }),
         },
         &mut |piece| {
@@ -592,13 +683,17 @@ pub enum Aim<'a> {
     Nothing,
 }
 
-/// The user prompt for a pass: `body` then `task`, unless an image is attached, in
-/// which case the task follows the image ([`ImagePart::text_after`]).
-fn with_task(body: &str, task: &str, has_image: bool) -> String {
-    if has_image {
-        body.to_owned()
-    } else {
-        format!("{body}{task}")
+/// The user prompt for a pass (`body` then `task`) as the text before the image and
+/// the text after it ([`ImagePart::text_after`]). The screenshot goes right after the
+/// screen context, the prefix [`prepare_turn`] evaluates (screenshot included) while
+/// the user speaks or types, so only the question, passages and task are left when
+/// the question arrives. Without an image everything is before.
+fn split_at_image(turn: &TurnPrompt, body: &str, task: &str, has_image: bool) -> (String, String) {
+    let context = turn.warm_user();
+    match body.strip_prefix(context) {
+        Some(rest) if has_image => (context.to_owned(), format!("{rest}{task}")),
+        _ if has_image => (String::new(), format!("{body}{task}")),
+        _ => (format!("{body}{task}"), String::new()),
     }
 }
 
@@ -609,7 +704,7 @@ fn with_task(body: &str, task: &str, has_image: bool) -> String {
 #[allow(clippy::too_many_arguments)] // one call site per caller; a struct would only rename them
 pub fn aim<'a>(
     chat: &dyn ChatModel,
-    system: &str,
+    turn: &TurnPrompt,
     body: &str,
     mode: ScreenMode,
     screen: &'a ScreenSnapshot,
@@ -645,7 +740,7 @@ pub fn aim<'a>(
         if !screen.elements.is_empty() {
             let reply = target_reply(
                 chat,
-                system,
+                turn,
                 body,
                 &TurnPrompt::text_target_task(screen),
                 &prompt::target_grammar(screen),
@@ -657,14 +752,14 @@ pub fn aim<'a>(
                 return Ok(Aim::Element(piece));
             }
         }
-        return point(chat, system, body, shot, keep_going);
+        return point(chat, turn, body, shot, keep_going);
     }
     if screen.elements.is_empty() {
         return Ok(Aim::Nothing);
     }
     let reply = target_reply(
         chat,
-        system,
+        turn,
         body,
         &TurnPrompt::target_task(mode),
         &prompt::target_grammar(screen),
@@ -680,14 +775,14 @@ pub fn aim<'a>(
 /// edge), so there is none.
 fn point(
     chat: &dyn ChatModel,
-    system: &str,
+    turn: &TurnPrompt,
     body: &str,
     shot: &Prepared,
     keep_going: &dyn Fn() -> bool,
 ) -> AppResult<Aim<'static>> {
     let reply = target_reply(
         chat,
-        system,
+        turn,
         body,
         &TurnPrompt::target_task(ScreenMode::ImageOnly),
         crate::screenshot::POINT_GRAMMAR,
@@ -711,7 +806,7 @@ fn point(
 #[allow(clippy::too_many_arguments)]
 fn target_reply(
     chat: &dyn ChatModel,
-    system: &str,
+    turn: &TurnPrompt,
     body: &str,
     task: &str,
     grammar: &str,
@@ -720,15 +815,16 @@ fn target_reply(
     keep_going: &dyn Fn() -> bool,
 ) -> AppResult<String> {
     let mut reply = String::new();
+    let (user, after) = split_at_image(turn, body, task, shot.is_some());
     chat.generate(
         &ChatRequest {
-            system,
-            user: &with_task(body, task, shot.is_some()),
+            system: &turn.system,
+            user: &user,
             max_tokens,
             grammar: Some(grammar),
             image: shot.map(|s| ImagePart {
                 image: &s.image,
-                text_after: task,
+                text_after: &after,
             }),
         },
         &mut |piece| {
@@ -797,6 +893,9 @@ fn capture_screen(
     platform: &dyn Platform,
 ) -> Result<crate::platform::ScreenCapture, crate::platform::PlatformError> {
     use tauri::Manager;
+    // One capture at a time: a second one would show the overlay again mid-capture.
+    static CAPTURE: Mutex<()> = Mutex::new(());
+    let _one = CAPTURE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let overlay = app
         .get_webview_window("overlay")
         .filter(|w| w.is_visible().unwrap_or(false));
@@ -814,6 +913,15 @@ fn capture_screen(
         tracing::warn!(%error, "could not show the overlay after capture");
     }
     result
+}
+
+/// Whether the overlay is showing and has keyboard focus (composer open, or its mic
+/// button being pressed).
+fn overlay_focused(app: &tauri::AppHandle) -> bool {
+    use tauri::Manager;
+    app.get_webview_window("overlay").is_some_and(|w| {
+        w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)
+    })
 }
 
 const OVERLAY_HIDE_DELAY: Duration = Duration::from_millis(60);
@@ -911,6 +1019,31 @@ pub fn stop(state: &AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn screenshot_follows_the_screen_context() {
+        let agent = crate::templates::get(TemplateId::OfficeHelper).draft;
+        let snapshot = ScreenSnapshot {
+            app_name: "Notes".into(),
+            window_title: None,
+            elements: vec![ScreenElement {
+                id: "e1".into(),
+                role: "button".into(),
+                label: "Save".into(),
+                value: None,
+                bounds: Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
+            }],
+        };
+        let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
+        let body = turn.body("where is save", &[]);
+        // With an image: the context (evaluated ahead, image included) comes first,
+        // and the question and task follow the image.
+        let (before, after) = split_at_image(&turn, &body, "TASK", true);
+        assert_eq!(before, turn.warm_user());
+        assert!(after.starts_with(&body[turn.warm_user().len()..]) && after.ends_with("TASK"));
+        assert_eq!(format!("{before}{after}"), format!("{body}TASK"));
+        // Without an image everything is user text.
+        assert_eq!(split_at_image(&turn, &body, "TASK", false), (format!("{body}TASK"), String::new()));
+    }
     #[test]
     fn turns_supersede_and_cancel() {
         let t = TurnControl::new();
