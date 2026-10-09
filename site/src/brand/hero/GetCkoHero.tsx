@@ -54,7 +54,7 @@ function Mark({ children, beat }: { children: ReactNode; beat?: string }) {
 // TIN are filled, the valid ID is missing, so Next is disabled. Upload ID is the target; it sits
 // on the window's right edge so GetCko lands beside it, facing it.
 
-function EServiceForm() {
+export function EServiceForm() {
   const label = "text-caption font-medium text-text-2";
   const box = "flex h-9 items-center rounded-input border border-border-strong bg-surface px-3 text-label text-text";
   return (

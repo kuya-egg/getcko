@@ -90,6 +90,8 @@ Before launch, set the flags in `site/src/config.ts`:
 - `DEMO_VIDEO_URL`: the hosted 1-minute demo video. Until it's set, "Watch the 1-min demo" opens a "being recorded" notice.
 - `REPO_PUBLIC`: set to `true` once the repo is public under an OSI license. This shows the GitHub links and the "Open source" line.
 
+Social card: `site/public/og.png` (1200 × 630) is a capture of the dev-only page `site/og.html`, built from the real brand pieces. After changing the hero copy or form, run `bun run dev`, open http://localhost:5180/og.html at 1200 × 630, and save the screenshot over `public/og.png`.
+
 ## Licenses and disclosure
 
 - **sqlite-vector 1.1.2:** Apache-2.0; vendored binaries are in `src-tauri/vendor/sqlite-vector`.
