@@ -14,9 +14,11 @@
     "windows": [
       {
         "label": "main",
-        "title": "GetCko",
-        "width": 1100,
-        "height": 760
+        "title": "GetcKo",
+        "width": 1040,
+        "height": 680,
+        "minWidth": 900,
+        "minHeight": 600
       },
       {
         "label": "overlay",
