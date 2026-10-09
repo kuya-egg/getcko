@@ -1,6 +1,78 @@
 {
   "version": 1,
   "skills": {
+    "andon": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "andon/SKILL.md",
+      "computedHash": "6494641a3853aa9b46fd07847809f09600e475c56771b796a511af9836c6cb45"
+    },
+    "genchi-genbutsu": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "genchi-genbutsu/SKILL.md",
+      "computedHash": "7e9120ab26ba6473907184c92d782e4ba9a5884fae1832fdbc1490b4438990a1"
+    },
+    "hansei": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "hansei/SKILL.md",
+      "computedHash": "4fb98861f12c186ad66ed85088a4f47c7b8b6e1e5a2b3b883ea4fa920823fb57"
+    },
+    "jidoka": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "jidoka/SKILL.md",
+      "computedHash": "52d56f65c03c8c506aacde75b114deb603adcfaad13fbd39c461a1fa2c74bbf9"
+    },
+    "kaizen": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "kaizen/SKILL.md",
+      "computedHash": "940136c144a9e6e70c1a623040ecbc7497067d6c76c38bf347277bebcf89a79d"
+    },
+    "kanso": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "kanso/SKILL.md",
+      "computedHash": "124c056bd75de3a820caa2b573d5072db93805d90140e9899735d6acad3ea689"
+    },
+    "kata": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "kata/SKILL.md",
+      "computedHash": "29956bf1814bc8fc2a020389fc5a8c058ab9d449cc83978749c06565b7944b5f"
+    },
+    "kodawari": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "kodawari/SKILL.md",
+      "computedHash": "360f458e95c80122692256dfa163da1244291deb2a9577a1cff6e087ad100ab4"
+    },
+    "monozukuri-blueprint": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "monozukuri-blueprint/SKILL.md",
+      "computedHash": "e3ec38d783648ae568da5667ee6f815457dddcf17b62190c873b7521a2c3a917"
+    },
+    "monozukuri-core": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "monozukuri-core/SKILL.md",
+      "computedHash": "70295b6dcc907ba238a3596c430cb4965cce70052e39c5a762cb9d796f1661b3"
+    },
+    "monozukuri-router": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "monozukuri-router/SKILL.md",
+      "computedHash": "cd34065763c4ea87e07496dd6e277dac054aeae3bb566915f969c35d374cbe2c"
+    },
+    "nemawashi": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "nemawashi/SKILL.md",
+      "computedHash": "76e6d3c7a5d2fb09f3d4236c4a6b3e059ae3cd2b67f8382cf18ce14815ccaf10"
+    },
     "openspec-apply-change": {
       "source": "full-stack-skills/tauri-skills",
       "sourceType": "github",
@@ -25,11 +97,23 @@
       "skillPath": ".agents/skills/openspec-propose/SKILL.md",
       "computedHash": "406a71796ac111be0fddc8bc2a4137c91c967eaf43439bbcc3f2509aec7440db"
     },
+    "poka-yoke": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "poka-yoke/SKILL.md",
+      "computedHash": "c24f77184968dceaf8b039631e45fde79bb3d3e654d8dbad3cadcfb084862233"
+    },
     "rust-skills": {
       "source": "leonardomso/rust-skills",
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "9719e9ebd94783d3436ed26156bf9bf2e4c7f63b3220d9d17ff90cba55c92bb8"
+    },
+    "shukka": {
+      "source": "kuya-egg/monozukuri",
+      "sourceType": "github",
+      "skillPath": "shukka/SKILL.md",
+      "computedHash": "f9b73739cbf23efd3328bb31e7eabab6bccb46f535f309e3774f0335e8ceb8f1"
     },
     "tauri": {
       "source": "full-stack-skills/tauri-skills",
