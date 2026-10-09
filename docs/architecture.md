@@ -42,7 +42,7 @@ The typed client is [`src/lib/getcko.ts`](../src/lib/getcko.ts); wire types are 
 | agent_active | – | Agent \| null |
 | agent_set_active | id | Agent |
 | ptt_start | – | null (starts mic recording) |
-| ask | request: AskRequest | TurnId (returns immediately; progress via `turn` events) |
+| ask | request: AskRequest (optional `task`: up to 4 earlier TaskSteps of a guided task, oldest first, for S5 "next"; more is rejected as invalid) | TurnId (returns immediately; progress via `turn` events) |
 | stop | – | null (cancels current turn, silences speech) |
 | screen_snapshot | – | ScreenSnapshot (debug/dev aid) |
 

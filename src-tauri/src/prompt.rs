@@ -1,7 +1,7 @@
 //! Prompt construction and streaming answer parsing.
 use std::collections::HashSet;
 
-use crate::model::{AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenSnapshot};
+use crate::model::{AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenSnapshot, TaskStep};
 
 /// General grounding and answer-quality rules (BR-6).
 pub const BASE_RULES: &str = "Be grounded and honest: answer from the supplied screen and passages. If neither supports an answer, say \"I don't know\". Be brief; lead with the action, then the reason, then the source.";
@@ -20,6 +20,8 @@ pub struct PromptInput<'a> {
     pub question: &'a str,
     pub snapshot: Option<&'a ScreenSnapshot>,
     pub passages: &'a [RetrievedPassage<'a>],
+    /// Earlier steps of a guided task, oldest first.
+    pub task: &'a [TaskStep],
 }
 /// Complete model prompt and generation budget.
 pub struct Prompt {
@@ -90,6 +92,23 @@ pub fn build(input: &PromptInput<'_>) -> Prompt {
                 passage.text
             );
         }
+    }
+    if !input.task.is_empty() {
+        use std::fmt::Write;
+        user.push_str("\n\nEarlier steps of this task:");
+        for (index, step) in input.task.iter().enumerate() {
+            let _ = write!(
+                user,
+                "\nStep {}: Q: {} A: {}",
+                index + 1,
+                step.question,
+                truncate_chars(&step.answer, 300)
+            );
+            if let Some(label) = &step.target_label {
+                let _ = write!(user, " (pointed at: {})", truncate_chars(label, 60));
+            }
+        }
+        user.push_str("\nThe user is continuing this task. Give only the next single step on the current screen.");
     }
     user.push_str("\n\nQuestion: ");
     user.push_str(input.question);
@@ -394,10 +413,53 @@ mod tests {
             question: "Help?",
             snapshot: None,
             passages: &[],
+            task: &[],
         });
         assert!(result.system.contains(GUARANTEES));
         assert!(!result.system.contains(BASE_RULES));
         assert!(result.system.contains("TARGET: none"));
+    }
+    fn step(question: &str, answer: &str, target_label: Option<&str>) -> TaskStep {
+        TaskStep {
+            question: question.into(),
+            answer: answer.into(),
+            target_label: target_label.map(Into::into),
+        }
+    }
+    fn build_with_task(task: &[TaskStep]) -> Prompt {
+        build(&PromptInput {
+            agent: &templates_draft(),
+            question: "Next?",
+            snapshot: None,
+            passages: &[],
+            task,
+        })
+    }
+    #[test]
+    fn empty_task_prompt_is_unchanged() {
+        let result = build_with_task(&[]);
+        assert_eq!(result.user, "(no screen)\n\n(no documents)\n\nQuestion: Next?");
+    }
+    #[test]
+    fn task_steps_appear_oldest_first_before_question() {
+        let result = build_with_task(&[
+            step("Open file?", "Click File.", Some("File")),
+            step("Then?", "Click Save.", None),
+        ]);
+        let first = result
+            .user
+            .find("Step 1: Q: Open file? A: Click File. (pointed at: File)")
+            .unwrap();
+        let second = result.user.find("Step 2: Q: Then? A: Click Save.").unwrap();
+        let question = result.user.find("Question: Next?").unwrap();
+        assert!(first < second && second < question);
+        assert!(result.user.contains("continuing this task"));
+    }
+    #[test]
+    fn long_task_answer_is_truncated() {
+        let result = build_with_task(&[step("q", &"x".repeat(1000), None)]);
+        assert!(result.user.contains(&format!("A: {}…", "x".repeat(300))));
+        assert!(!result.user.contains(&"x".repeat(301)));
     }
     fn templates_draft() -> AgentDraft {
         crate::templates::get(crate::model::TemplateId::OfficeHelper).draft
