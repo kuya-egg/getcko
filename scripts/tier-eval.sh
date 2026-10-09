@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Screen-tier measurement (architecture: three tiers): 10 scripted questions in each of
-# Safari (scripts/fixtures/class-record.html), Finder and Calculator, in every forced
-# tier. Brings those apps to the front while it runs; needs Accessibility and Screen
-# Recording for the terminal. Pass `--app <name>` for one app, `--dump <app>` to list
-# an app's elements and save the screenshot the model sees.
+# Google Chrome (scripts/fixtures/class-record.html), Finder and TextEdit, in every
+# forced tier. Opens only those three apps; needs Accessibility and Screen Recording for
+# the terminal. `--app <name>` runs one app, `--survey` asks about controls found on each
+# screen, `--dump <app>` lists an app's elements and saves the screenshot the model sees.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

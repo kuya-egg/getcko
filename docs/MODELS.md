@@ -111,21 +111,31 @@ Measured Oct 9 on the M4 Pro, Metal, Gemma 4 E2B Q4_0 + `mmproj-gemma-4-E2B-it-Q
 
 ### Tier measurement (protocol)
 
-`./scripts/tier-eval.sh` (`src-tauri/examples/tier_eval.rs`): 10 scripted questions in each of three apps, run in every forced tier through the same `pipeline::aim` the app uses. Apps: Safari on `scripts/fixtures/class-record.html` (stands in for the spreadsheet demo; Numbers and Excel are not installed on the demo Mac), Finder on a folder of demo files, Calculator. A pointer is **correct** when it lands inside the expected element, which is taken from the app's own accessibility tree, so all tiers are scored the same way. **Touched by the guess circle**: the overlay's 36 CSS px best-guess circle reaches the element (tier 3 only; elements are exact in tiers 1–2). No knowledge base, so passages do not help. Oct 9, M4 Pro, release build, one run each.
+`./scripts/tier-eval.sh` (`src-tauri/examples/tier_eval.rs`): 10 scripted questions in each of three apps, run in every forced tier through the same `pipeline::aim` the app uses. It opens only these three: Google Chrome on `scripts/fixtures/class-record.html` (a web class record, standing in for the spreadsheet demo; Numbers and Excel are not installed on the demo Mac), Finder on a folder of demo files, and TextEdit on a rich-text letter. A pointer is **correct** when it lands inside the expected element, which is taken from the app's own accessibility tree, so all tiers are scored the same way. **Touched by the guess circle**: the overlay's 36 CSS px best-guess circle reaches the element (only differs from Correct in tier 3; elements are exact in tiers 1–2). No knowledge base, so passages do not help. Oct 9, M4 Pro, release build, one run each.
 
 | App | Tier | Correct | Touched by the guess circle | Target pass median | Capture + prepare |
 |---|---|---|---|---|---|
-| Safari | 1 `elements` | 10/10 | 10/10 | 455 ms | — |
-| Safari | 2 `elementsWithImage` | 10/10 | 10/10 | 1240 ms | 79 ms |
-| Safari | 3 `imageOnly` | 0/10 | 0/10 | 1080 ms | 75 ms |
-| Finder | 1 `elements` | 10/10 | 10/10 | 484 ms | — |
-| Finder | 2 `elementsWithImage` | 9/10 | 9/10 | 979 ms | 37 ms |
-| Finder | 3 `imageOnly` | 0/10 | 0/10 | 800 ms | 36 ms |
-| Calculator | 1 `elements` | 9/10 | 9/10 | 306 ms | — |
-| Calculator | 2 `elementsWithImage` | 10/10 | 10/10 | 690 ms | 35 ms |
-| Calculator | 3 `imageOnly` | 0/10 | 4/10 | 695 ms | 35 ms |
+| Google Chrome | 1 `elements` | 9/10 | 9/10 | 510 ms | — |
+| Google Chrome | 2 `elementsWithImage` | 9/10 | 9/10 | 1158 ms | 78 ms |
+| Google Chrome | 3 `imageOnly` | 0/10 | 0/10 | 957 ms | 75 ms |
+| Finder | 1 `elements` | 10/10 | 10/10 | 444 ms | — |
+| Finder | 2 `elementsWithImage` | 10/10 | 10/10 | 962 ms | 39 ms |
+| Finder | 3 `imageOnly` | 0/10 | 0/10 | 789 ms | 39 ms |
+| TextEdit | 1 `elements` | 9/10 | 9/10 | 277 ms | — |
+| TextEdit | 2 `elementsWithImage` | 9/10 | 9/10 | 991 ms | 55 ms |
+| TextEdit | 3 `imageOnly` | 0/10 | 1/10 | 974 ms | 55 ms |
 
-Totals: tier 1 29/30 (S2 target ≥ 8/10 met in every app), tier 2 29/30 at 2–3× the target-pass time, tier 3 0/30 correct and 4/30 touched. The core now picks tier 1 for all three apps.
+Totals: tier 1 28/30 (S2 target ≥ 8/10 met in every app), tier 2 28/30 at 2–3× the target-pass time, tier 3 0/30 correct and 1/30 touched. The core picks tier 1 for all three apps. Tier-1 misses: "Ana Santos's grade for the second quarter" → Q3 field; "center the title" → align right. An earlier run with Safari and Calculator in place of Chrome and TextEdit gave tier 1 29/30, tier 2 29/30, tier 3 0/30.
+
+`./scripts/tier-eval.sh --survey` reads each app and asks six "Where is the "<label>" <role>?" questions about controls it found, in the tier the core picks; a miss there means the screen read, ids or model failed rather than a hard question:
+
+| App | Elements | Labelled | Read | Auto tier | Named-control questions | Target pass median |
+|---|---|---|---|---|---|---|
+| Google Chrome | 108 | 105 | 83 ms | elements | 6/6 | 456 ms |
+| Finder | 101 | 61 | 42 ms | elements | 6/6 | 432 ms |
+| TextEdit | 32 | 29 | 19 ms | elements | 6/6 | 274 ms |
+
+An earlier survey over 15 apps (Safari, Chrome, Finder, Calculator, TextEdit, System Settings, App Store, Font Book, Dictionary, Weather, Clock, Chess, Tips, Activity Monitor, Disk Utility; before the Chrome and walk fixes below) scored 63/65 on the apps it could read; the two misses picked a look-alike neighbour ("2 AM" → "3 AM", "h5" → "h4").
 
 10. **Tier 2 does not pay for itself on these apps.** Same accuracy as tier 1, 2–3× slower. It stays as the automatic choice only for screens with look-alike controls (none of the three apps after the rule fix below); those screens are unmeasured.
 11. **Tier 3 is not reliable with Gemma 4 E2B.** Points cluster on a few spots (`[831, 831]`, `[850, 850]`) and miss by one control or more. It stays labelled "best guess" (BR-18); whether to show a pointer at all in tier 3 is a product decision.
@@ -136,3 +146,8 @@ Totals: tier 1 29/30 (S2 target ≥ 8/10 met in every app), tier 2 29/30 at 2–
 16. **Fixed: repeated static text forced tier 2.** "—" down a table column or "Zero bytes" in a file list counted as look-alike controls; the rule now counts only non-text elements.
 
 17. **Fixed: answers without a knowledge base leaked markers.** With no passages the prompt said `(no documents)` and still asked for `[n]` citations, so answers ended in "[no documents]", "[e15]", "(e15)" or "(Screen: Calculator)". The prompt now omits the passages block when empty and asks for no source; the answer parser drops element ids in `[]` or `()` as a backstop. Checked on Calculator: four answers, none with a marker.
+18. **Fixed: Chrome page content was invisible.** Chrome builds its web accessibility tree only for clients that set `AXEnhancedUserInterface` (VoiceOver does); we set only Electron's `AXManualAccessibility`. Both are set now, and the first read of an app waits 250 ms for the tree (Chrome class record: 42 → 108 elements).
+19. **Fixed: long lists exhausted the walk.** Walking `AXChildren` (finding 13) also walked every off-screen row; lists, outlines, tables, browsers and grids use their visible children (Finder: 1,400 nodes and a 300 ms timeout → 144 nodes in 70 ms).
+20. **Fixed: the first read of an app had almost no walk budget.** The 250 ms web-tree wait counted against the 300 ms walk budget.
+21. **Leaner prompts:** unnamed elements of unknown role (ruler ticks carrying a number, layout groups) are dropped (TextEdit: 47 → 32 elements).
+

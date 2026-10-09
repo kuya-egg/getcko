@@ -136,9 +136,14 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
             PermissionKind::Accessibility,
         ));
     }
-    let started = Instant::now();
     let app = Ax::application(target.pid)
         .ok_or_else(|| PlatformError::Os("could not open the app's accessibility tree".into()))?;
+    if first_read(target.pid) {
+        // The web tree requested in `Ax::application` is built asynchronously.
+        std::thread::sleep(WEB_TREE_DELAY);
+    }
+    // The walk budget starts after that wait.
+    let started = Instant::now();
     let window = focused_window(&app).ok_or(PlatformError::NoFocusedApp)?;
     let window_title = window.string("AXTitle").filter(|t| !t.is_empty());
     let window_rect = window.frame();
@@ -166,11 +171,7 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
             candidates.push(el);
         }
         if depth < MAX_DEPTH {
-            let mut children = node.elements("AXChildren");
-            if children.is_empty() {
-                children = node.elements("AXVisibleChildren");
-            }
-            queue.extend(children.into_iter().map(|child| (child, depth + 1)));
+            queue.extend(children(&node).into_iter().map(|child| (child, depth + 1)));
         }
     }
     let elements = rank_and_assign(candidates, max_elements);
@@ -186,6 +187,43 @@ fn snapshot_app(target: TargetApp, max_elements: usize) -> Result<ScreenSnapshot
         window_title,
         elements,
     })
+}
+
+/// Containers whose `AXChildren` include every row, scrolled out of view or not.
+const SCROLLING_ROLES: &[&str] = &["AXList", "AXOutline", "AXTable", "AXBrowser", "AXGrid"];
+
+/// Children to walk. `AXChildren` in general: some containers report only part of
+/// their content as visible (Safari's tab group lists only its tabs, hiding the page).
+/// Long lists use `AXVisibleChildren`/`AXVisibleRows` so off-screen rows don't use up
+/// the walk budget.
+fn children(node: &Ax) -> Vec<Ax> {
+    let role = node.string("AXRole").unwrap_or_default();
+    if SCROLLING_ROLES.contains(&role.as_str()) {
+        for attribute in ["AXVisibleChildren", "AXVisibleRows"] {
+            let visible = node.elements(attribute);
+            if !visible.is_empty() {
+                return visible;
+            }
+        }
+    }
+    let all = node.elements("AXChildren");
+    if all.is_empty() {
+        node.elements("AXVisibleChildren")
+    } else {
+        all
+    }
+}
+
+/// How long a Chromium/Electron app gets to build its web tree after the first request.
+const WEB_TREE_DELAY: Duration = Duration::from_millis(250);
+
+/// `true` the first time `pid` is read in this process.
+fn first_read(pid: i32) -> bool {
+    static SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<i32>>> =
+        std::sync::LazyLock::new(Default::default);
+    SEEN.lock()
+        .map(|mut seen| seen.insert(pid))
+        .unwrap_or(false)
 }
 
 struct TargetApp {
@@ -402,18 +440,20 @@ impl Ax {
         // SAFETY: `app` is a valid AXUIElement; the timeout applies to calls on it.
         unsafe { AXUIElementSetMessagingTimeout(app.raw(), AX_TIMEOUT_SECS) };
         // Chromium and Electron apps (Chrome, Edge, Slack, VS Code, ...) only build their
-        // web-content accessibility tree when an assistive client asks for it. Setting this
-        // attribute is how screen readers ask; apps that don't know it return an error,
-        // which is ignored.
-        let key = CFString::new("AXManualAccessibility");
-        // SAFETY: valid AXUIElement, CFString key and CFBoolean value for the call.
-        unsafe {
-            AXUIElementSetAttributeValue(
-                app.raw(),
-                key.as_concrete_TypeRef(),
-                CFBoolean::true_value().as_CFTypeRef(),
-            )
-        };
+        // web-content accessibility tree when an assistive client asks for it. Electron
+        // listens for AXManualAccessibility, Chrome for AXEnhancedUserInterface (what
+        // VoiceOver sets); apps that know neither return an error, which is ignored.
+        for attribute in ["AXManualAccessibility", "AXEnhancedUserInterface"] {
+            let key = CFString::new(attribute);
+            // SAFETY: valid AXUIElement, CFString key and CFBoolean value for the call.
+            unsafe {
+                AXUIElementSetAttributeValue(
+                    app.raw(),
+                    key.as_concrete_TypeRef(),
+                    CFBoolean::true_value().as_CFTypeRef(),
+                )
+            };
+        }
         Some(app)
     }
 
@@ -547,6 +587,11 @@ fn describe(node: &Ax, window: Option<Rect>, displays: &[(CGRect, f64)]) -> Opti
         raw_value.map(|v| clip(&v))
     };
     if label.is_empty() && value.is_none() && !actionable(role) {
+        return None;
+    }
+    // Unnamed, unrecognised elements (ruler ticks, layout groups carrying a number)
+    // can't be asked about or described; they only lengthen the prompt.
+    if label.is_empty() && role == "other" {
         return None;
     }
     Some(ScreenElement {

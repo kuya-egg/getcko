@@ -3,9 +3,10 @@
 //! correct when it lands inside the expected element's bounds (the element comes
 //! from the app's own accessibility tree, so tiers are scored the same way).
 //!
-//! Run with `./scripts/tier-eval.sh`; `--app <name>` runs one app, `--dump <app>` prints
-//! that app's elements and saves the screenshot the model sees.
-//! Brings Safari, Finder and Calculator to the front while it runs.
+//! Run with `./scripts/tier-eval.sh`; `--app <name>` runs one app, `--survey` asks
+//! about controls found on each app's screen instead, `--dump <app>` prints that app's
+//! elements and saves the screenshot the model sees. Brings Google Chrome, Finder and
+//! TextEdit (no other apps) to the front while it runs.
 
 use std::{
     path::{Path, PathBuf},
@@ -120,52 +121,53 @@ const FINDER: &[Task] = &[
     },
 ];
 
-const CALCULATOR: &[Task] = &[
+const TEXTEDIT: &[Task] = &[
     Task {
-        question: "Where is the button for seven?",
-        expect: "7",
+        question: "How do I make the text bold?",
+        expect: "bold",
     },
     Task {
-        question: "Which button gives me the result?",
-        expect: "Equals",
+        question: "How do I make it italic?",
+        expect: "italic",
     },
     Task {
-        question: "How do I clear everything?",
-        expect: "All Clear",
+        question: "Where do I underline words?",
+        expect: "underline",
     },
     Task {
-        question: "Which button adds numbers?",
-        expect: "Add",
+        question: "How do I change the font?",
+        expect: "typeface",
     },
     Task {
-        question: "Where is multiply?",
-        expect: "Multiply",
+        question: "How do I make the letters bigger?",
+        expect: "font size",
     },
     Task {
-        question: "How do I divide?",
-        expect: "Divide",
+        question: "How do I center the title?",
+        expect: "align center",
     },
     Task {
-        question: "Where is the percent key?",
-        expect: "Percent",
+        question: "How do I align the text to the right?",
+        expect: "align right",
     },
     Task {
-        question: "Where is zero?",
-        expect: "0",
+        question: "How do I add bullet points?",
+        expect: "list style",
     },
     Task {
-        question: "How do I subtract?",
-        expect: "Subtract",
+        question: "How do I change the color of the text?",
+        expect: "text color",
     },
     Task {
-        question: "Where is the decimal point?",
-        expect: "Point",
+        question: "Where do I change the line spacing?",
+        expect: "line spacing",
     },
 ];
 
+/// At most three apps are opened: a browser, the file manager and a document editor.
 const APPS: &[App] = &[
     App {
-        name: "Safari",
+        name: "Google Chrome",
         tasks: CLASS_RECORD,
     },
     App {
@@ -173,8 +175,8 @@ const APPS: &[App] = &[
         tasks: FINDER,
     },
     App {
-        name: "Calculator",
-        tasks: CALCULATOR,
+        name: "TextEdit",
+        tasks: TEXTEDIT,
     },
 ];
 
@@ -206,7 +208,7 @@ fn main() {
     let platform = platform::current();
 
     if let Some(name) = dump {
-        let snapshot = show(&name, &fixtures, platform.as_ref());
+        let snapshot = show(&name, &fixtures, platform.as_ref()).expect("app shown");
         println!(
             "{} ({} elements, auto tier {:?})",
             snapshot.app_name,
@@ -237,6 +239,10 @@ fn main() {
     let ai = engine::Engine::load(&manifest.join("models"));
     let chat = ai.chat.clone().expect("chat model loads");
     let agent = templates::get(TemplateId::OfficeHelper).draft;
+    if args.iter().any(|a| a == "--survey") {
+        survey(chat.as_ref(), &agent, platform.as_ref(), &fixtures);
+        return;
+    }
     println!(
         "| App | Tier | Correct | Touched by the guess circle | Target pass median | Capture + prepare |"
     );
@@ -250,7 +256,7 @@ fn main() {
         .iter()
         .filter(|a| only.is_none_or(|name| name == a.name))
     {
-        let snapshot = show(app.name, &fixtures, platform.as_ref());
+        let snapshot = show(app.name, &fixtures, platform.as_ref()).expect("app shown");
         let capture_start = Instant::now();
         let capture = platform
             .capture()
@@ -362,11 +368,21 @@ fn main() {
 }
 
 /// Opens `app` on its fixture, brings it to the front and reads its screen.
-fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> ScreenSnapshot {
+fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> Result<ScreenSnapshot, String> {
     match app {
-        "Safari" => {
+        "Google Chrome" => {
             let page = fixtures.join("class-record.html");
-            run("open", &["-a", "Safari", &page.to_string_lossy()]);
+            run("open", &["-a", app, &page.to_string_lossy()]);
+        }
+        "TextEdit" => {
+            // Rich text, so the formatting bar (font, style, alignment, lists) shows.
+            let letter = std::env::temp_dir().join("GetCko letter.rtf");
+            std::fs::write(
+                &letter,
+                r"{\rtf1\ansi{\fonttbl\f0 Helvetica;}\f0\fs28 Dear parents,\par\par Grades for the first quarter are ready.\par}",
+            )
+            .expect("fixture letter");
+            run("open", &["-a", "TextEdit", &letter.to_string_lossy()]);
         }
         "Finder" => {
             let folder = finder_folder();
@@ -375,7 +391,8 @@ fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> ScreenSnapshot {
         other => run("open", &["-a", other]),
     }
     // A just-launched app can take a few seconds to own the frontmost window, and
-    // its window animates into place: wait until two reads agree on the window.
+    // its window animates into place and pages load: wait until two reads agree on the
+    // window and the element count.
     let window_frame = |s: &ScreenSnapshot| {
         s.elements
             .iter()
@@ -390,22 +407,27 @@ fn show(app: &str, fixtures: &Path, platform: &dyn Platform) -> ScreenSnapshot {
             &["-e", &format!("tell application \"{app}\" to activate")],
         );
         thread::sleep(Duration::from_millis(500));
-        let snapshot = platform
-            .snapshot(platform::MAX_SNAPSHOT_ELEMENTS)
-            .expect("accessibility snapshot (Accessibility granted?)");
+        let snapshot = match platform.snapshot(platform::MAX_SNAPSHOT_ELEMENTS) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                previous = None;
+                eprintln!("{app}: {error}");
+                continue;
+            }
+        };
         if snapshot.app_name != app {
             previous = None;
             continue;
         }
         if let Some(before) = &previous
-            && window_frame(before).is_some()
             && window_frame(before) == window_frame(&snapshot)
+            && before.elements.len() == snapshot.elements.len()
         {
-            return snapshot;
+            return Ok(snapshot);
         }
         previous = Some(snapshot);
     }
-    panic!("{app} did not settle at the front");
+    Err(format!("{app} did not settle at the front"))
 }
 
 /// A folder of empty files with the names the Finder tasks ask about.
@@ -429,4 +451,143 @@ fn run(program: &str, args: &[&str]) {
         .status()
         .expect("command runs");
     assert!(status.success(), "{program} {args:?} failed");
+}
+
+/// Roles worth asking "where is" about: things the user acts on.
+const ASKABLE: &[&str] = &[
+    "button",
+    "checkbox",
+    "radio",
+    "textField",
+    "textArea",
+    "comboBox",
+    "listItem",
+    "tab",
+    "link",
+    "cell",
+    "slider",
+];
+const SURVEY_QUESTIONS: usize = 6;
+
+/// Generic check: reads each app's screen and asks about controls it finds, in the
+/// tier the core would pick. Questions name the control, so a miss means the screen
+/// read, the ids or the model failed, not that the question was hard.
+fn survey(
+    chat: &dyn ChatModel,
+    agent: &getcko_lib::model::AgentDraft,
+    platform: &dyn Platform,
+    fixtures: &Path,
+) {
+    println!(
+        "| App | Elements | Labelled | Read | Auto tier | Named-control questions | Target pass median |"
+    );
+    println!("|---|---|---|---|---|---|---|");
+    let mut misses = Vec::new();
+    for app in APPS.iter().map(|a| a.name) {
+        let snapshot = match show(app, fixtures, platform) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                println!("| {app} | — | — | — | — | {error} | — |");
+                continue;
+            }
+        };
+        let started = Instant::now();
+        let snapshot = platform
+            .snapshot(platform::MAX_SNAPSHOT_ELEMENTS)
+            .ok()
+            .filter(|s| s.app_name == app)
+            .unwrap_or(snapshot);
+        let read_ms = started.elapsed().as_millis();
+        let labelled = snapshot
+            .elements
+            .iter()
+            .filter(|e| !e.label.trim().is_empty())
+            .count();
+        let mode = pipeline::tier_for(&snapshot);
+        let unique = |label: &str| {
+            snapshot
+                .elements
+                .iter()
+                .filter(|e| e.label == label)
+                .count()
+                == 1
+        };
+        let candidates: Vec<&ScreenElement> = snapshot
+            .elements
+            .iter()
+            .filter(|e| {
+                ASKABLE.contains(&e.role.as_str())
+                    && !e.label.trim().is_empty()
+                    && e.label.chars().count() <= 40
+                    && unique(&e.label)
+            })
+            .collect();
+        let step = (candidates.len() / SURVEY_QUESTIONS).max(1);
+        let picks: Vec<&ScreenElement> = candidates
+            .iter()
+            .step_by(step)
+            .take(SURVEY_QUESTIONS)
+            .copied()
+            .collect();
+        let shot = match mode {
+            ScreenMode::Elements => None,
+            ScreenMode::ElementsWithImage => platform
+                .capture()
+                .ok()
+                .map(|c| screenshot::prepare(c, Some(&snapshot.elements))),
+            ScreenMode::ImageOnly => platform
+                .capture()
+                .ok()
+                .map(|c| screenshot::prepare(c, None)),
+        };
+        let turn = TurnPrompt::new(agent, Some(&snapshot), &[]);
+        let mut correct = 0;
+        let mut times = Vec::new();
+        for pick in &picks {
+            let question = format!("Where is the \"{}\" {}?", pick.label, pick.role);
+            let started = Instant::now();
+            let aim = pipeline::aim(
+                chat,
+                &turn.system,
+                &turn.body(&question, &[]),
+                mode,
+                &snapshot,
+                shot.as_ref(),
+                &|| true,
+            )
+            .expect("target pass");
+            times.push(started.elapsed().as_millis());
+            let point = match aim {
+                Aim::Element(e) => Some(e.bounds.center()),
+                Aim::Point { x, y, .. } => Some((x, y)),
+                Aim::Nothing => None,
+            };
+            let b = &pick.bounds;
+            if point.is_some_and(|(x, y)| {
+                x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
+            }) {
+                correct += 1;
+            } else {
+                let got = match aim {
+                    Aim::Element(e) => format!("{} {:?}", e.role, e.label),
+                    Aim::Point { x, y, .. } => format!("point ({x:.0}, {y:.0})"),
+                    Aim::Nothing => "nothing".into(),
+                };
+                misses.push(format!("{app}: {question} → {got}"));
+            }
+        }
+        times.sort_unstable();
+        let median = times
+            .get(times.len() / 2)
+            .map_or("—".into(), |ms| format!("{ms} ms"));
+        println!(
+            "| {app} | {} | {labelled} | {read_ms} ms | {mode:?} | {correct}/{} | {median} |",
+            snapshot.elements.len(),
+            picks.len()
+        );
+    }
+    println!("\nMisses:");
+    for miss in misses {
+        println!("- {miss}");
+    }
 }
