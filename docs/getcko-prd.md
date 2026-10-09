@@ -1,7 +1,5 @@
 # GetCko PRD: Local AI Desktop Copilot
 
-Oct 9, 2026 · @Louie Miguel
-
 ## Overview
 
 GetCko is a private desktop copilot whose AI runs entirely on your own laptop. You ask it anything about what is on your screen or in your own documents. It answers out loud, points at where to click, and works the same with Wi-Fi off. For the AppBuildersPH 2026 "Local AI" challenge, it rebuilds the GetCko v1 concept around four local features: **RAG** over your documents (stored with sqlite-vector), **Customizable Agents**, **Screen Help**, and **TTS**.
