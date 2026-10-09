@@ -1,0 +1,270 @@
+/*
+ * GetcKo brand tokens v0.2
+ * Source of truth: docs/getcko-design-system.md (v0.1) + v0.2 dark theme.
+ *
+ * Two layers:
+ *   1. Raw palette  (--gc-paper, --gc-ink, --gc-gecko ...)  fixed hex, never theme-dependent.
+ *   2. Semantic     (--gc-bg, --gc-text, --gc-accent-text ...)  what components consume.
+ * Components should use SEMANTIC tokens only, so light/dark switch for free.
+ *
+ * Theme switching: <html data-theme="light|dark">. With no attribute the OS setting wins.
+ *
+ * Hard rules: one green (gecko fills, gecko-deep text on light), sun = target halo only,
+ * no gradients, no glows, no glassmorphism, no purple.
+ */
+
+:root {
+  /* ---------- 1. Raw palette ---------- */
+  --gc-paper: #ffffff;
+  --gc-canvas: #f6f7f4;
+  --gc-line: #e6e8e3;
+  --gc-line-strong: #c9ccc4;
+  --gc-ink: #0e0f0c;
+  --gc-ink-2: #4a4d46;
+  --gc-ink-3: #6c7067; /* 4.70:1 on canvas, 5.06:1 on paper */
+  --gc-gecko: #39d86f;
+  --gc-gecko-deep: #0f7a3d;
+  --gc-gecko-wash: #eafbef;
+  --gc-sun: #ffc83d;
+  --gc-alert: #b3321d;
+  --gc-alert-wash: #fdecea;
+
+  /* Dark-side raw palette (v0.2). Ink family, green-black undertone, never navy or #000. */
+  --gc-night: #121410; /* dark ground */
+  --gc-night-1: #191b16; /* raised surface */
+  --gc-night-2: #21241e; /* wells, hover, secondary panels */
+  --gc-night-line: #2e3229;
+  --gc-night-line-strong: #474c41;
+  --gc-mist: #f1f3ec; /* primary text on dark */
+  --gc-mist-2: #b8bdb0; /* secondary text on dark */
+  --gc-mist-3: #8d9285; /* captions on dark (>= 4.5:1 on night-2) */
+  --gc-gecko-tint: #6fe598; /* green text on dark surfaces */
+  --gc-gecko-night: #15301e; /* green wash on dark */
+  --gc-gecko-night-2: #24502f; /* text selection on dark */
+  --gc-alert-tint: #ff8f78;
+  --gc-alert-night: #3a1b14;
+
+  /* Fixed chrome tones from the spec */
+  --gc-ink-raised: #1e201b; /* agent chip inside the session bar */
+  --gc-keycap-dark: #2a2c27; /* keycap inside a primary button */
+
+  /* Mascot palette (sprite cells only) */
+  --gc-sprite-outline: #0e0f0c;
+  --gc-sprite-body: #39d86f;
+  --gc-sprite-highlight: #9bf2b6;
+  --gc-sprite-belly: #d6f8e0;
+  --gc-sprite-eye: #ffffff;
+  --gc-sprite-cheek: #ff9db0;
+  --gc-sprite-mouth: #0e5e2e;
+
+  /* ---------- Type ---------- */
+  --gc-font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
+  --gc-font-ui: "Geist Variable", "Geist", system-ui, sans-serif;
+  --gc-font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  --gc-font-pixel: "Silkscreen", ui-monospace, monospace;
+
+  /* ---------- Space (4px base) ---------- */
+  --gc-space-1: 4px;
+  --gc-space-2: 8px;
+  --gc-space-3: 12px;
+  --gc-space-4: 16px;
+  --gc-space-5: 24px;
+  --gc-space-6: 32px;
+  --gc-space-7: 48px;
+  --gc-space-8: 64px;
+  --gc-target-min: 44px;
+
+  /* ---------- Radius ---------- */
+  --gc-r-code: 4px; /* inline code chip */
+  --gc-r-input: 8px;
+  --gc-r-keycap: 7px;
+  --gc-r-window: 10px; /* macOS; Windows uses 8px */
+  --gc-r-tile: 12px; /* icon tile, nav row, swatch */
+  --gc-r-button: 14px;
+  --gc-r-bubble: 18px;
+  --gc-r-panel: 20px;
+  --gc-r-icon: 22px; /* app icon tile at 96px */
+  --gc-r-pill: 999px;
+
+  /* ---------- Motion ---------- */
+  --gc-dur-instant: 80ms;
+  --gc-dur-fast: 140ms;
+  --gc-dur-base: 220ms;
+  --gc-dur-slow: 360ms;
+  --gc-dur-pointer: 520ms; /* gecko flight to target */
+  --gc-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); /* UI enter, hover */
+  --gc-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* moves, panels */
+  --gc-ease-point: cubic-bezier(0.34, 1.32, 0.64, 1); /* small overshoot: gecko flight ONLY (GSAP flyTo), never UI or halo */
+  --gc-ease-step: steps(2, jump-none); /* pixel-sprite frame swaps */
+
+  /* ---------- Layers (z-index) ---------- */
+  /* Utilities: z-base, z-raised, z-sticky, z-scrim, z-dialog, z-toast, z-overlay (theme.css). */
+  --gc-z-base: 0;
+  --gc-z-raised: 10; /* tooltips, popovers inside a pane */
+  --gc-z-sticky: 20; /* sticky headers, the sidebar */
+  --gc-z-scrim: 40; /* flat bg-ink/40 behind a dialog */
+  --gc-z-dialog: 50;
+  --gc-z-toast: 60;
+  --gc-z-overlay: 70; /* Screen Help pointer + halo: always on top */
+
+  /* ---------- Measure (line length) ---------- */
+  --gc-measure-copy: 44ch; /* explanatory copy beside a visual (onboarding, empty states) */
+  --gc-measure-answer: 68ch; /* answer text, long help */
+
+  /* ---------- Window ---------- */
+  /* App screens are designed for 1040 x 680 (min 900 x 600). No lg:/xl: breakpoints needed. */
+  --gc-window-w: 1040px;
+  --gc-window-h: 680px;
+  --gc-window-min-w: 900px;
+  --gc-window-min-h: 600px;
+  --gc-sidebar-w: 240px;
+
+  /* ---------- 2. Semantic: LIGHT (default) ---------- */
+  color-scheme: light;
+
+  --gc-bg: var(--gc-paper);
+  --gc-surface: var(--gc-paper);
+  --gc-surface-2: var(--gc-canvas);
+  --gc-border: var(--gc-line);
+  --gc-border-strong: var(--gc-line-strong);
+
+  --gc-text: var(--gc-ink);
+  --gc-text-2: var(--gc-ink-2);
+  --gc-text-3: var(--gc-ink-3);
+
+  --gc-accent-fill: var(--gc-gecko); /* fills only, never text */
+  --gc-on-accent: var(--gc-ink); /* icon/text sitting on accent-fill */
+  --gc-accent-text: var(--gc-gecko-deep); /* links, citations, green text */
+  --gc-accent-wash: var(--gc-gecko-wash); /* ready chips, tints */
+
+  --gc-target: var(--gc-sun); /* the ONE element GetcKo points at */
+  --gc-danger: var(--gc-alert);
+  --gc-danger-wash: var(--gc-alert-wash);
+
+  --gc-inverse-bg: var(--gc-ink); /* primary button, chat bubble */
+  --gc-inverse-text: var(--gc-paper);
+  --gc-chrome-bg: var(--gc-ink); /* session bar: dark in both themes */
+  --gc-chrome-raised: var(--gc-ink-raised);
+  --gc-chrome-text: var(--gc-paper);
+  --gc-chrome-text-2: var(--gc-line-strong);
+  --gc-chrome-border: transparent; /* dark themes give the bar an edge so it does not vanish on night */
+  --gc-chrome-line: var(--gc-night-line); /* keycap edge inside the bar */
+  --gc-chrome-hover: var(--gc-keycap-dark); /* agent chip hover inside the bar */
+  --gc-keycap-inverse-bg: var(--gc-keycap-dark); /* keycap inside a primary button */
+  --gc-keycap-inverse-text: var(--gc-mist);
+
+  --gc-focus: var(--gc-gecko-deep);
+  --gc-focus-wash: var(--gc-gecko-wash);
+  --gc-selection: var(--gc-gecko-wash);
+
+  --gc-disabled-bg: var(--gc-canvas);
+  --gc-disabled-border: var(--gc-line);
+  --gc-disabled-text: var(--gc-ink-3);
+
+  --gc-keycap-bg: var(--gc-paper);
+  --gc-keycap-border: var(--gc-line-strong);
+
+  --gc-shadow-1: 0 1px 2px rgba(14, 15, 12, 0.06), 0 4px 12px rgba(14, 15, 12, 0.06);
+  --gc-shadow-2: 0 2px 4px rgba(14, 15, 12, 0.06), 0 16px 40px rgba(14, 15, 12, 0.12);
+  --gc-shadow-keycap: inset 0 -2px 0 var(--gc-line);
+  --gc-halo: 0 0 0 3px var(--gc-sun), 0 0 0 4px var(--gc-ink); /* 1px ink keyline: sun alone is 1.55:1 on paper */
+  --gc-halo-on-dark: 0 0 0 6px #ffffff, 0 0 0 10px var(--gc-sun);
+}
+
+/* ---------- 2b. Semantic: DARK ---------- */
+/* Shared block: keep the two selectors below identical. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --gc-bg: var(--gc-night);
+  --gc-surface: var(--gc-night-1);
+  --gc-surface-2: var(--gc-night-2);
+  --gc-border: var(--gc-night-line);
+  --gc-border-strong: var(--gc-night-line-strong);
+
+  --gc-text: var(--gc-mist);
+  --gc-text-2: var(--gc-mist-2);
+  --gc-text-3: var(--gc-mist-3);
+
+  --gc-accent-fill: var(--gc-gecko);
+  --gc-on-accent: var(--gc-ink);
+  --gc-accent-text: var(--gc-gecko-tint);
+  --gc-accent-wash: var(--gc-gecko-night);
+
+  --gc-target: var(--gc-sun);
+  --gc-danger: var(--gc-alert-tint);
+  --gc-danger-wash: var(--gc-alert-night);
+
+  --gc-inverse-bg: var(--gc-mist);
+  --gc-inverse-text: var(--gc-ink);
+  --gc-chrome-bg: var(--gc-ink);
+  --gc-chrome-raised: var(--gc-ink-raised);
+  --gc-chrome-text: var(--gc-mist);
+  --gc-chrome-text-2: var(--gc-mist-2);
+  --gc-chrome-border: var(--gc-night-line-strong);
+
+  --gc-focus: var(--gc-gecko);
+  --gc-focus-wash: var(--gc-gecko-night);
+  --gc-selection: var(--gc-gecko-night-2);
+
+  --gc-disabled-bg: var(--gc-night-2);
+  --gc-disabled-border: var(--gc-night-line);
+  --gc-disabled-text: var(--gc-mist-3);
+
+  --gc-keycap-bg: var(--gc-night-2);
+  --gc-keycap-border: var(--gc-night-line-strong);
+
+  --gc-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.28);
+  --gc-shadow-2: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+  --gc-shadow-keycap: inset 0 -2px 0 var(--gc-night-line);
+  --gc-halo: 0 0 0 3px var(--gc-night), 0 0 0 6px var(--gc-sun);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --gc-bg: var(--gc-night);
+    --gc-surface: var(--gc-night-1);
+    --gc-surface-2: var(--gc-night-2);
+    --gc-border: var(--gc-night-line);
+    --gc-border-strong: var(--gc-night-line-strong);
+
+    --gc-text: var(--gc-mist);
+    --gc-text-2: var(--gc-mist-2);
+    --gc-text-3: var(--gc-mist-3);
+
+    --gc-accent-fill: var(--gc-gecko);
+    --gc-on-accent: var(--gc-ink);
+    --gc-accent-text: var(--gc-gecko-tint);
+    --gc-accent-wash: var(--gc-gecko-night);
+
+    --gc-target: var(--gc-sun);
+    --gc-danger: var(--gc-alert-tint);
+    --gc-danger-wash: var(--gc-alert-night);
+
+    --gc-inverse-bg: var(--gc-mist);
+    --gc-inverse-text: var(--gc-ink);
+    --gc-chrome-bg: var(--gc-ink);
+    --gc-chrome-raised: var(--gc-ink-raised);
+    --gc-chrome-text: var(--gc-mist);
+    --gc-chrome-text-2: var(--gc-mist-2);
+    --gc-chrome-border: var(--gc-night-line-strong);
+
+    --gc-focus: var(--gc-gecko);
+    --gc-focus-wash: var(--gc-gecko-night);
+    --gc-selection: var(--gc-gecko-night-2);
+
+    --gc-disabled-bg: var(--gc-night-2);
+    --gc-disabled-border: var(--gc-night-line);
+    --gc-disabled-text: var(--gc-mist-3);
+
+    --gc-keycap-bg: var(--gc-night-2);
+    --gc-keycap-border: var(--gc-night-line-strong);
+
+    --gc-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.28);
+    --gc-shadow-2: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+    --gc-shadow-keycap: inset 0 -2px 0 var(--gc-night-line);
+    --gc-halo: 0 0 0 3px var(--gc-night), 0 0 0 6px var(--gc-sun);
+  }
+}
