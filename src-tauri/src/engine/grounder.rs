@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use super::llama::{LlamaChat, PromptFormat, Runtime};
+use super::llama::{LlamaChat, OnDemand, PromptFormat, Runtime};
 use super::{ChatModel, ChatRequest, EngineResult, Flow, Grounder, ImagePart, RgbImage};
 
 /// Qwen3-VL's point instruction; it replies `{"point_2d": [x, y]}`.
@@ -32,6 +32,30 @@ impl LlamaGrounder {
     pub fn load(rt: &Runtime, model: &Path, projector: &Path) -> EngineResult<Self> {
         let chat = LlamaChat::load_with_format(rt, model, projector, PromptFormat::ChatMl)?;
         Ok(Self { chat })
+    }
+}
+
+impl OnDemand<LlamaGrounder> {
+    /// Qwen3-VL at `model` + `projector`, loaded on the first tier-3 turn.
+    ///
+    /// # Errors
+    /// [`super::EngineError::MissingModel`] when a file is missing.
+    pub fn grounder(rt: &Runtime, model: &Path, projector: &Path) -> EngineResult<Self> {
+        let (rt, owned_model, owned_projector) =
+            (rt.clone(), model.to_owned(), projector.to_owned());
+        Self::new("grounding", &[model, projector], move || {
+            LlamaGrounder::load(&rt, &owned_model, &owned_projector)
+        })
+    }
+}
+
+impl Grounder for OnDemand<LlamaGrounder> {
+    fn name(&self) -> &'static str {
+        "Qwen3-VL-2B"
+    }
+
+    fn ground(&self, image: &RgbImage, instruction: &str) -> EngineResult<Option<(f64, f64)>> {
+        self.get()?.ground(image, instruction)
     }
 }
 

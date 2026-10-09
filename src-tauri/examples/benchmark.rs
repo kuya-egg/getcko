@@ -7,13 +7,16 @@ use std::{
 use getcko_lib::{
     engine::{self, ChatRequest, Flow},
     ingest,
-    model::{DocumentKind, Language, Rect, ScreenElement, ScreenMode, ScreenSnapshot, TemplateId},
-    platform,
+    model::{DocumentKind, Rect, ScreenElement, ScreenMode, ScreenSnapshot, TemplateId},
+    pipeline, platform,
     prompt::{self, AnswerParser, Pointed, RetrievedPassage, TurnPrompt},
     store::{NewPassage, Store},
     templates,
 };
 use tts::Tts;
+
+#[path = "common/mod.rs"]
+mod common;
 
 const MANUAL: &str = r#"# Class Record Grading Manual
 
@@ -37,8 +40,7 @@ Compare the computed final grade with the four quarter values, verify the learne
 "#;
 
 fn main() {
-    let (runs, wav, language) =
-        parse_args().expect("usage: benchmark --runs N --wav PATH [--language en|fil|taglish]");
+    let (runs, wav) = parse_args().expect("usage: benchmark --runs N --wav PATH");
     // Stage timings from the engine: RUST_LOG=getcko_lib=debug ./scripts/benchmark.sh
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -69,10 +71,12 @@ fn main() {
                 .unwrap_or_default()
         );
     }
-    let chat = ai
-        .chat
-        .as_ref()
-        .expect("chat model unavailable; check models and component status");
+    let chat = &common::chat_under_test(
+        ai.chat
+            .clone()
+            .expect("chat model unavailable; check models and component status"),
+        &manifest.join("models"),
+    );
     let embedder = ai
         .embedder
         .as_ref()
@@ -85,8 +89,13 @@ fn main() {
     let temp = tempfile::tempdir().expect("create benchmark temporary directory");
     let db = temp.path().join("benchmark.sqlite");
     let vector = manifest.join("vendor/sqlite-vector/macos-arm64/vector.dylib");
-    let store =
-        Store::open(&db, &vector, engine::EMBEDDING_DIM).expect("open benchmark vector store");
+    let store = Store::open(
+        &db,
+        &vector,
+        engine::EMBEDDING_DIM,
+        engine::EMBEDDING_MODEL_ID,
+    )
+    .expect("open benchmark vector store");
     let kb = store
         .kb_create("Benchmark grading manual")
         .expect("create benchmark knowledge base");
@@ -126,13 +135,8 @@ fn main() {
         .expect("store grading manual passages");
     let import_ms = millis(import_start.elapsed());
 
-    let mut agent = templates::get(TemplateId::OfficeHelper).draft;
-    agent.language = language;
-    let agent = &agent;
-    let typed_question = match language {
-        Language::English => QUESTION_EN,
-        Language::Filipino | Language::Taglish => QUESTION_TAGLISH,
-    };
+    let agent = &templates::get(TemplateId::OfficeHelper).draft;
+    let typed_question = QUESTION;
     let audio = read_wav(&wav).expect("read 16-bit PCM WAV");
     let audio_seconds = audio.len() as f64 / 16_000.0;
 
@@ -245,7 +249,7 @@ fn main() {
         let prepare_ms = millis(prepare_start.elapsed());
         let stt_start = Instant::now();
         let transcript = transcriber
-            .transcribe(&audio, language)
+            .transcribe(&audio, &pipeline::speech_hint(&snapshot))
             .expect("transcribe benchmark WAV");
         let stt_ms = millis(stt_start.elapsed());
         let voice = turn(&transcript, &snapshot);
@@ -347,9 +351,7 @@ fn main() {
         env::var("BENCH_MACHINE").unwrap_or_else(|_| "unknown".into())
     );
     println!("- Models: {}", model_sizes(&models));
-    println!(
-        "- Runs: {runs} after one warm-up; agent language {language:?}; question clip {audio_seconds:.1} s"
-    );
+    println!("- Runs: {runs} after one warm-up; question clip {audio_seconds:.1} s");
     println!("\n| Stage | Median (ms) | p90 (ms) | Min (ms) | Max (ms) |");
     println!("|---|---:|---:|---:|---:|");
     for (name, values) in stages {
@@ -373,11 +375,9 @@ fn main() {
     );
 }
 
-const QUESTION_EN: &str =
-    "Where do I put Juan's grade in the class record, and how is the final grade computed?";
 /// The PRD demo question.
-const QUESTION_TAGLISH: &str =
-    "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta ang final grade?";
+const QUESTION: &str =
+    "Where do I put Juan's grade in the class record, and how is the final grade computed?";
 
 struct Turn {
     target: Option<String>,
@@ -389,11 +389,10 @@ struct Turn {
     parsed: prompt::ParsedAnswer,
 }
 
-fn parse_args() -> Result<(usize, PathBuf, Language), String> {
+fn parse_args() -> Result<(usize, PathBuf), String> {
     let mut args = env::args().skip(1);
     let mut runs = 10usize;
     let mut wav = None;
-    let mut language = Language::English;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--runs" => {
@@ -404,21 +403,13 @@ fn parse_args() -> Result<(usize, PathBuf, Language), String> {
                     .map_err(|_| "--runs must be a positive integer")?
             }
             "--wav" => wav = Some(PathBuf::from(args.next().ok_or("missing --wav path")?)),
-            "--language" => {
-                language = match args.next().as_deref() {
-                    Some("en") => Language::English,
-                    Some("fil") => Language::Filipino,
-                    Some("taglish") => Language::Taglish,
-                    _ => return Err("--language must be en, fil or taglish".into()),
-                }
-            }
             _ => return Err(format!("unknown argument: {arg}")),
         }
     }
     if runs == 0 {
         return Err("--runs must be positive".into());
     }
-    Ok((runs, wav.ok_or("--wav is required")?, language))
+    Ok((runs, wav.ok_or("--wav is required")?))
 }
 
 fn millis(duration: Duration) -> f64 {

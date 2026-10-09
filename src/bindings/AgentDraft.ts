@@ -2,7 +2,6 @@
 import type { AnswerLength } from "./AnswerLength";
 import type { BaseRulesMode } from "./BaseRulesMode";
 import type { KnowledgeBaseId } from "./KnowledgeBaseId";
-import type { Language } from "./Language";
 
 /**
  * Editable fields of an agent; the payload for create and update.
@@ -11,7 +10,7 @@ export type AgentDraft = { name: string, description: string, instructions: stri
 /**
  * At most [`MAX_AGENT_KNOWLEDGE_BASES`].
  */
-knowledgeBaseIds: Array<KnowledgeBaseId>, language: Language, answerLength: AnswerLength, 
+knowledgeBaseIds: Array<KnowledgeBaseId>, answerLength: AnswerLength, 
 /**
  * An id from `voice_list`; `None` uses the system default voice.
  */

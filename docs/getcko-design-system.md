@@ -124,7 +124,7 @@ Fonts come from Google Fonts: Bricolage Grotesque (500/700/800), Geist (400/500/
 
 ## 6. Mascot: GetCko (pixel sprite)
 
-The mascot is named **GetCko**, after the product: "gecko" plus the Filipino slang "gets ko" ("I get it"). It's a 2D pixel sprite, 22 × 27 cells, drawn in a standing pose and pointing up-right with one hand.
+The mascot is named **GetCko**, after the product: "gecko" plus the phrase "gets it." It's a 2D pixel sprite, 22 × 27 cells, drawn in a standing pose and pointing up-right with one hand.
 
 ### Palette
 
@@ -215,8 +215,8 @@ For the overlay pointer, draw the sprite once to an offscreen `<canvas>` (1 px p
 
 ## 7. Voice and copy
 
-- **Tone:** friendly, short, specific. Taglish is welcome when the agent's language is set to Taglish.
-- **Tagline:** "Gets mo na." ("Now you get it.") Product line: "Help that sits right next to your cursor."
+- **Tone:** friendly, short, specific. User-facing copy and answers are English only.
+- **Tagline:** "Now you get it." Product line: "Help that sits right next to your cursor."
 - Answers lead with the action, then the reason, then the source: "Tap **Upload ID** next. Your TIN is on page 1 of the manual you added."
 - Say what runs locally ("on this Mac", "Offline"). Never claim a source that isn't in the retrieved passages; say "I don't know" instead.
 - Don't use emoji in the UI. Use sentence case for buttons and titles.

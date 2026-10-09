@@ -17,9 +17,9 @@ bun run models
 bun run tauri dev
 ```
 
-`bun run models` downloads and SHA-256 verifies the models into `src-tauri/models/`: Gemma 4 E2B (chat), its vision projector (screenshots, screen tiers 2–3) and EmbeddingGemma (search), about 3.7 GB in total. To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
+`bun run models` downloads and SHA-256 verifies Gemma 4 E2B, its vision projector, the Qwen3-VL-2B tier-3 grounder and projector, bge-small-en-v1.5 embeddings, and Whisper small.en into `src-tauri/models/` (about 5.2 GB total). To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
 
-Build a release with `bun run tauri:build`; this uses the release configuration that bundles the approximately 3.7 GB of models.
+Build a release with `bun run tauri:build`; this bundles about 5.2 GB of models.
 
 ## Tests
 
@@ -67,7 +67,7 @@ cargo test -- --ignored
 | Rust core: SQLite + sqlite-vector, local llama.cpp inference, document/RAG and agent pipeline, typed IPC | Implemented and verified | Core |
 | macOS Accessibility screen capture | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) |
 | Windows UI Automation screen capture | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
-| Gemma 4 E2B audio speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
+| Whisper small.en speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
 | DOCX/PPTX ingestion | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
 | Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
 | Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |
@@ -75,7 +75,10 @@ cargo test -- --ignored
 ## Licenses and disclosure
 
 - **sqlite-vector 1.1.2:** Apache-2.0; vendored binaries are in `src-tauri/vendor/sqlite-vector`.
-- **Gemma 4 E2B and EmbeddingGemma 300M:** both are Gemma models; review and comply with the applicable [Gemma Terms of Use](https://ai.google.dev/gemma/terms) for each model.
+- **Gemma 4 E2B:** review and comply with the applicable [Gemma Terms of Use](https://ai.google.dev/gemma/terms).
+- **Qwen3-VL-2B-Instruct:** Apache-2.0.
+- **bge-small-en-v1.5:** MIT.
+- **whisper.cpp:** MIT; **Whisper small.en weights:** MIT.
 - **llama.cpp:** MIT, used through `llama-cpp-2`.
 - **Tauri:** Tauri 2 framework and associated crates; see [Tauri’s licensing information](https://tauri.app/).
 - **AI development tools:** Claude Code was used during development.

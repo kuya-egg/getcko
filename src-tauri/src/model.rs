@@ -197,15 +197,6 @@ pub enum BaseRulesMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub enum Language {
-    English,
-    Filipino,
-    Taglish,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
 pub enum AnswerLength {
     Short,
     Normal,
@@ -222,7 +213,6 @@ pub struct AgentDraft {
     pub base_rules: BaseRulesMode,
     /// At most [`MAX_AGENT_KNOWLEDGE_BASES`].
     pub knowledge_base_ids: Vec<KnowledgeBaseId>,
-    pub language: Language,
     pub answer_length: AnswerLength,
     /// An id from `voice_list`; `None` uses the system default voice.
     pub voice_id: Option<String>,
@@ -255,7 +245,6 @@ pub enum TemplateId {
     OfficeHelper,
     Teacher,
     StudyBuddy,
-    TaglishExplainer,
 }
 
 impl TemplateId {
@@ -265,7 +254,6 @@ impl TemplateId {
             Self::OfficeHelper => "officeHelper",
             Self::Teacher => "teacher",
             Self::StudyBuddy => "studyBuddy",
-            Self::TaglishExplainer => "taglishExplainer",
         }
     }
 
@@ -275,7 +263,6 @@ impl TemplateId {
             "officeHelper" => Self::OfficeHelper,
             "teacher" => Self::Teacher,
             "studyBuddy" => Self::StudyBuddy,
-            "taglishExplainer" => Self::TaglishExplainer,
             _ => return None,
         })
     }
@@ -359,7 +346,7 @@ pub struct SetupStatus {
 pub struct Voice {
     pub id: String,
     pub name: String,
-    /// BCP-47 tag, e.g. `en-US`, `fil-PH`.
+    /// BCP-47 language tag for this voice, e.g. `en-US`.
     pub language: String,
 }
 

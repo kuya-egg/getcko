@@ -9,7 +9,6 @@ use super::{
     ChatModel, ChatRequest, EMBEDDING_DIM, Embedder, EngineError, EngineResult, Flow,
     GenerationStats, RgbImage, Transcriber,
 };
-use crate::model::Language;
 use llama_cpp_2::{
     LogOptions,
     context::{
@@ -61,7 +60,10 @@ static BACKEND: LazyLock<Result<Arc<LlamaBackend>, String>> = LazyLock::new(|| {
         .map_err(|error| error.to_string())
 });
 const CHAT_CONTEXT: u32 = 4096;
-const EMBED_CONTEXT: u32 = 2048;
+/// bge-small-en-v1.5 reads at most 512 tokens (BERT positions); longer input is cut.
+const EMBED_CONTEXT: u32 = 512;
+/// Gemma audio transcription context.
+const TRANSCRIBE_CONTEXT: u32 = 2048;
 
 /// Initialized llama.cpp backend shared by all loaded models.
 #[derive(Clone)]
@@ -654,7 +656,7 @@ impl ChatModel for LlamaChat {
 }
 
 impl Transcriber for LlamaChat {
-    fn transcribe(&self, pcm: &[f32], language: Language) -> EngineResult<String> {
+    fn transcribe(&self, pcm: &[f32], _hint: &str) -> EngineResult<String> {
         if pcm.len() < 4_800 {
             return Ok(String::new());
         }
@@ -677,17 +679,8 @@ impl Transcriber for LlamaChat {
             return Err(runtime_error("projector does not support 16 kHz audio"));
         }
         let bitmap = MtmdBitmap::from_audio_data(pcm).map_err(runtime_error)?;
-        let instruction = match language {
-            Language::English => {
-                "Transcribe this audio exactly as spoken. Output only the transcript. The speaker uses English."
-            }
-            Language::Filipino => {
-                "Transcribe this audio exactly as spoken. Output only the transcript. The speaker uses Filipino (Tagalog)."
-            }
-            Language::Taglish => {
-                "Transcribe this audio exactly as spoken. Output only the transcript. The speaker mixes Filipino (Tagalog) and English; keep each word in the language spoken."
-            }
-        };
+        let instruction =
+            "Transcribe this English audio exactly as spoken. Output only the transcript.";
         let prompt = gemma4_prompt(None, &format!("{}{instruction}", mtmd_default_marker()));
         let chunks = mtmd
             .tokenize(
@@ -702,7 +695,7 @@ impl Transcriber for LlamaChat {
         let mut ctx = context(
             model,
             &self.backend,
-            EMBED_CONTEXT,
+            TRANSCRIBE_CONTEXT,
             false,
             LlamaPoolingType::Unspecified,
         )?;
@@ -746,36 +739,45 @@ impl Transcriber for LlamaChat {
     }
 }
 
-/// EmbeddingGemma loaded on first use: only agents with documents search, so most
-/// sessions never load it. Kept once loaded: dropping it did not return its memory
-/// (llama.cpp keeps the allocation) and reloading costs ~0.3 s per search.
-pub struct LazyEmbedder {
-    rt: Runtime,
-    path: std::path::PathBuf,
-    loaded: std::sync::OnceLock<LlamaEmbedder>,
-    /// Serializes the first load so two searches do not both load.
+/// A model loaded on first use, then kept: dropping one did not return its memory
+/// (llama.cpp keeps the allocation) and reloading costs every use its load time.
+/// The embedding model (only agents with documents search) and the tier-3 grounder
+/// (only screens without readable elements) wait here until needed.
+pub struct OnDemand<T> {
+    load: Box<dyn Fn() -> EngineResult<T> + Send + Sync>,
+    what: &'static str,
+    loaded: std::sync::OnceLock<T>,
+    /// Serializes the first load so two callers do not both load.
     loading: Mutex<()>,
 }
 
-impl LazyEmbedder {
-    /// Checks the model file exists; loads nothing yet.
+impl<T> OnDemand<T> {
+    /// Checks `files` exist; loads nothing until [`OnDemand::get`]. `what` names the
+    /// model in logs.
     ///
     /// # Errors
-    /// [`EngineError::MissingModel`] when the file is missing.
-    pub fn new(rt: &Runtime, path: &Path) -> EngineResult<Self> {
-        if !path.is_file() {
-            return Err(EngineError::MissingModel(path.display().to_string()));
+    /// [`EngineError::MissingModel`] for the first missing file.
+    pub fn new(
+        what: &'static str,
+        files: &[&Path],
+        load: impl Fn() -> EngineResult<T> + Send + Sync + 'static,
+    ) -> EngineResult<Self> {
+        if let Some(missing) = files.iter().find(|path| !path.is_file()) {
+            return Err(EngineError::MissingModel(missing.display().to_string()));
         }
         Ok(Self {
-            rt: rt.clone(),
-            path: path.to_owned(),
+            load: Box::new(load),
+            what,
             loaded: std::sync::OnceLock::new(),
             loading: Mutex::new(()),
         })
     }
 
     /// The model, loading it now on first use.
-    fn get(&self) -> EngineResult<&LlamaEmbedder> {
+    ///
+    /// # Errors
+    /// The load failed (it is tried again on the next call).
+    pub fn get(&self) -> EngineResult<&T> {
         if let Some(model) = self.loaded.get() {
             return Ok(model);
         }
@@ -784,10 +786,11 @@ impl LazyEmbedder {
             return Ok(model);
         }
         let started = std::time::Instant::now();
-        let model = LlamaEmbedder::load(&self.rt, &self.path)?;
+        let model = (self.load)()?;
         tracing::info!(
+            model = self.what,
             elapsed_ms = started.elapsed().as_millis(),
-            "embedding model loaded"
+            "model loaded on demand"
         );
         Ok(self.loaded.get_or_init(|| model))
     }
@@ -798,7 +801,20 @@ impl LazyEmbedder {
     }
 }
 
-impl Embedder for LazyEmbedder {
+impl OnDemand<LlamaEmbedder> {
+    /// The embedding model at `path`, loaded on the first search.
+    ///
+    /// # Errors
+    /// [`EngineError::MissingModel`] when the file is missing.
+    pub fn embedder(rt: &Runtime, path: &Path) -> EngineResult<Self> {
+        let (rt, owned) = (rt.clone(), path.to_owned());
+        Self::new("embedding", &[path], move || {
+            LlamaEmbedder::load(&rt, &owned)
+        })
+    }
+}
+
+impl Embedder for OnDemand<LlamaEmbedder> {
     fn embed_documents(&self, texts: &[&str]) -> EngineResult<Vec<Vec<f32>>> {
         self.get()?.embed_documents(texts)
     }
@@ -808,14 +824,14 @@ impl Embedder for LazyEmbedder {
     }
 }
 
-/// EmbeddingGemma-backed normalized vector generator.
+/// bge-small-en-v1.5 (MIT, CLS pooling, 384 dims) normalized vector generator.
 pub struct LlamaEmbedder {
     backend: Arc<LlamaBackend>,
     model: Mutex<LlamaModel>,
     device: &'static str,
 }
 impl LlamaEmbedder {
-    /// Loads EmbeddingGemma with mean pooling and CPU fallback.
+    /// Loads the embedding model with CLS pooling and CPU fallback.
     ///
     /// # Errors
     /// Returns [`EngineError::MissingModel`] for a missing file or a runtime error if loading fails.
@@ -834,7 +850,7 @@ impl LlamaEmbedder {
                 &rt.backend,
                 EMBED_CONTEXT,
                 true,
-                LlamaPoolingType::Mean,
+                LlamaPoolingType::Cls,
             )?;
             Ok(model)
         };
@@ -879,17 +895,14 @@ impl LlamaEmbedder {
             &self.backend,
             EMBED_CONTEXT,
             true,
-            LlamaPoolingType::Mean,
+            LlamaPoolingType::Cls,
         )?;
         let input = format!("{prefix}{text}");
         let vocab = model.vocab();
-        let tokens = vocab.tokenize(input.as_bytes(), true, true);
-        if tokens.len() > EMBED_CONTEXT as usize {
-            return Err(EngineError::TooLong {
-                tokens: tokens.len(),
-                limit: EMBED_CONTEXT as usize,
-            });
-        }
+        let mut tokens = vocab.tokenize(input.as_bytes(), true, true);
+        // Chunks aim at 400 tokens (+60 overlap) by a different count; the model
+        // reads 512, so the rare longer chunk is embedded by its first 512 tokens.
+        tokens.truncate(EMBED_CONTEXT as usize);
         if tokens.is_empty() {
             return Err(runtime_error("embedding input tokenized to empty input"));
         }
@@ -921,12 +934,15 @@ impl Embedder for LlamaEmbedder {
     fn embed_documents(&self, texts: &[&str]) -> EngineResult<Vec<Vec<f32>>> {
         let mut result = Vec::with_capacity(texts.len());
         for text in texts {
-            result.push(self.embed(text, "title: none | text: ")?);
+            result.push(self.embed(text, "")?);
         }
         Ok(result)
     }
     fn embed_query(&self, text: &str) -> EngineResult<Vec<f32>> {
-        self.embed(text, "task: search result | query: ")
+        self.embed(
+            text,
+            "Represent this sentence for searching relevant passages: ",
+        )
     }
 }
 
@@ -1107,7 +1123,7 @@ mod tests {
     #[ignore = "needs model files"]
     fn embeddings_are_normalized_and_rank_relevant_passage_higher() {
         let rt = Runtime::init().expect("runtime initializes");
-        let model = LlamaEmbedder::load(&rt, &model_path("embeddinggemma-300M-Q8_0.gguf"))
+        let model = LlamaEmbedder::load(&rt, &model_path(super::super::EMBEDDING_MODEL_FILE))
             .expect("embedding model loads");
         let docs = model
             .embed_documents(&[
@@ -1118,7 +1134,7 @@ mod tests {
         let query = model
             .embed_query("How should I grade student assignments?")
             .expect("query embeds");
-        assert_eq!(query.len(), 256);
+        assert_eq!(query.len(), super::super::EMBEDDING_DIM);
         let norm = query.iter().map(|v| v * v).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 1e-4);
         let cosine = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
@@ -1126,17 +1142,17 @@ mod tests {
     }
     #[test]
     #[ignore = "needs model files"]
-    fn lazy_embedder_loads_on_first_search() {
+    fn embedder_loads_on_first_search() {
         let rt = Runtime::init().expect("runtime initializes");
-        let path = model_path("embeddinggemma-300M-Q8_0.gguf");
-        let lazy = LazyEmbedder::new(&rt, &path).expect("file exists");
+        let path = model_path(super::super::EMBEDDING_MODEL_FILE);
+        let lazy = OnDemand::embedder(&rt, &path).expect("file exists");
         assert!(!lazy.is_loaded(), "nothing loads before the first search");
         let question = "How should I grade student assignments?";
         let first = lazy.embed_query(question).expect("query embeds");
         assert!(lazy.is_loaded());
         let eager = LlamaEmbedder::load(&rt, &path).expect("embedding model loads");
         assert_eq!(first, eager.embed_query(question).expect("query embeds"));
-        assert!(LazyEmbedder::new(&rt, &model_path("missing.gguf")).is_err());
+        assert!(OnDemand::embedder(&rt, &model_path("missing.gguf")).is_err());
     }
     #[test]
     #[ignore = "needs model files"]
@@ -1173,7 +1189,7 @@ mod tests {
         let pcm = (0..16_000)
             .map(|sample| (std::f32::consts::TAU * 440.0 * sample as f32 / 16_000.0).sin())
             .collect::<Vec<_>>();
-        assert!(model.transcribe(&pcm, Language::English).is_ok());
+        assert!(model.transcribe(&pcm, "").is_ok());
     }
 
     #[test]
@@ -1225,9 +1241,7 @@ mod tests {
         )
         .expect("chat and projector load");
         assert!(model.supports_audio());
-        let transcript = model
-            .transcribe(&pcm, Language::English)
-            .expect("speech transcribes");
+        let transcript = model.transcribe(&pcm, "").expect("speech transcribes");
         assert!(transcript.to_lowercase().contains("grade"));
     }
 }

@@ -5,8 +5,8 @@
 //! | Component     | Impl                         | Owner            |
 //! |---------------|------------------------------|------------------|
 //! | [`ChatModel`] | `llama::LlamaChat` (Gemma 4 E2B)        | core (done)      |
-//! | [`Embedder`]  | `llama::LlamaEmbedder` (EmbeddingGemma) | core (done)      |
-//! | [`Transcriber`] | `llama::LlamaChat`: Gemma 4 E2B's own audio encoder (mmproj) | macOS engineer |
+//! | [`Embedder`]  | `llama::LlamaEmbedder` (bge-small-en-v1.5) | core (done)      |
+//! | [`Transcriber`] | `whisper::WhisperTranscriber` (helper process); `llama::LlamaChat` audio as fallback | macOS engineer |
 //! | [`Speaker`]   | `speaker::OsSpeaker`: OS voices via the `tts` crate | macOS engineer |
 //! | [`Microphone`]| `microphone::CpalMicrophone`: default input, 16 kHz mono | macOS engineer |
 //!
@@ -21,23 +21,31 @@ pub mod grounder;
 pub mod llama;
 pub mod microphone;
 pub mod speaker;
+pub mod whisper;
 
 use std::path::Path;
 use std::sync::Arc;
 
 use crate::error::{AppError, ErrorKind};
-use crate::model::{ComponentStatus, EngineComponent, Language, Voice};
+use crate::model::{ComponentStatus, EngineComponent, Voice};
 
-/// Vectors stored and searched. EmbeddingGemma is Matryoshka-trained, so the
-/// first 256 of its 768 dims (re-normalised) keep most of the quality at a third
-/// of the size. Changing this requires re-importing every document.
-pub const EMBEDDING_DIM: usize = 256;
+/// Vectors stored and searched: bge-small-en-v1.5's full output (not truncatable).
+/// The store re-embeds kept passages when this or [`EMBEDDING_MODEL_ID`] changes.
+pub const EMBEDDING_DIM: usize = 384;
+/// Recorded with stored vectors so a model change re-embeds them (MODELS.md: same
+/// recall as EmbeddingGemma-300M on the manual set, 36 MB instead of 330 MB).
+pub const EMBEDDING_MODEL_ID: &str = "bge-small-en-v1.5-q8_0";
 
 /// Model files, relative to the models directory (see `scripts/fetch-models.sh`).
 pub const CHAT_MODEL_FILE: &str = "gemma-4-E2B-it-Q4_0.gguf";
-pub const EMBEDDING_MODEL_FILE: &str = "embeddinggemma-300M-Q8_0.gguf";
+pub const EMBEDDING_MODEL_FILE: &str = "bge-small-en-v1.5-q8_0.gguf";
 /// Gemma 4 E2B's audio + vision encoder ("multimodal projector"), loaded with the chat model.
 pub const PROJECTOR_FILE: &str = "mmproj-gemma-4-E2B-it-Q8_0.gguf";
+/// Tier-3 grounding model (Qwen3-VL-2B-Instruct) and its vision encoder: points on a
+/// screenshot with no readable elements (MODELS.md: 30/50 held-out vs Gemma's 8/50).
+/// Gemma stays the answering model: Qwen picked the right element far less often.
+pub const GROUNDER_MODEL_FILE: &str = "Qwen3VL-2B-Instruct-Q4_K_M.gguf";
+pub const GROUNDER_PROJECTOR_FILE: &str = "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf";
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -70,8 +78,7 @@ pub trait Embedder: Send + Sync {
     /// Runtime failure or a text longer than the model context.
     fn embed_documents(&self, texts: &[&str]) -> EngineResult<Vec<Vec<f32>>>;
 
-    /// A question being searched with (EmbeddingGemma uses a different prompt
-    /// for queries than for documents).
+    /// A question being searched with (bge prefixes queries, not passages).
     ///
     /// # Errors
     /// Runtime failure.
@@ -168,11 +175,12 @@ pub trait Grounder: Send + Sync {
 
 /// On-device speech-to-text.
 pub trait Transcriber: Send + Sync {
-    /// `pcm` is 16 kHz mono f32 in [-1, 1].
+    /// `pcm` is 16 kHz mono f32 in [-1, 1], English speech. `hint` is vocabulary the
+    /// speaker may use (names and labels on screen); may be empty, never shown to the user.
     ///
     /// # Errors
     /// Runtime failure.
-    fn transcribe(&self, pcm: &[f32], language: Language) -> EngineResult<String>;
+    fn transcribe(&self, pcm: &[f32], hint: &str) -> EngineResult<String>;
 }
 
 /// On-device text-to-speech through OS voices.
@@ -180,18 +188,11 @@ pub trait Speaker: Send + Sync {
     fn voices(&self) -> Vec<Voice>;
 
     /// Queue `text` after anything already queued; returns immediately.
-    /// `voice_id: None` uses the best installed voice for `language`, falling
-    /// back to English (BR-23).
+    /// `voice_id: None` uses the requested voice or best installed English voice.
     ///
     /// # Errors
     /// Runtime failure.
-    fn speak(
-        &self,
-        text: &str,
-        voice_id: Option<&str>,
-        language: Language,
-        rate: f32,
-    ) -> EngineResult<()>;
+    fn speak(&self, text: &str, voice_id: Option<&str>, rate: f32) -> EngineResult<()>;
 
     /// Silence now and drop the queue (BR-22).
     fn stop(&self);
@@ -215,6 +216,8 @@ pub trait Microphone: Send + Sync {
 pub struct Engine {
     pub chat: Option<Arc<dyn ChatModel>>,
     pub embedder: Option<Arc<dyn Embedder>>,
+    /// Tier 3 only; without it tier 3 falls back to text read off the screenshot.
+    pub grounder: Option<Arc<dyn Grounder>>,
     pub transcriber: Option<Arc<dyn Transcriber>>,
     pub speaker: Option<Arc<dyn Speaker>>,
     pub microphone: Option<Arc<dyn Microphone>>,
@@ -237,8 +240,19 @@ impl Engine {
             });
         };
 
+        let mut grounder = None;
         let (chat, embedder) = match llama::Runtime::init() {
             Ok(rt) => {
+                match llama::OnDemand::grounder(
+                    &rt,
+                    &models_dir.join(GROUNDER_MODEL_FILE),
+                    &models_dir.join(GROUNDER_PROJECTOR_FILE),
+                ) {
+                    Ok(model) => grounder = Some(Arc::new(model) as Arc<dyn Grounder>),
+                    Err(error) => {
+                        tracing::warn!(%error, "no grounding model; tier 3 reads text instead");
+                    }
+                }
                 let chat = llama::LlamaChat::load(
                     &rt,
                     &models_dir.join(CHAT_MODEL_FILE),
@@ -246,19 +260,34 @@ impl Engine {
                 )
                 .map(Arc::new);
                 let embedder =
-                    llama::LazyEmbedder::new(&rt, &models_dir.join(EMBEDDING_MODEL_FILE))
+                    llama::OnDemand::embedder(&rt, &models_dir.join(EMBEDDING_MODEL_FILE))
                         .map(|lazy| Arc::new(lazy) as Arc<dyn Embedder>);
                 (chat, embedder)
             }
             Err(err) => (Err(EngineError::Runtime(err.to_string())), Err(err)),
         };
         // The same loaded Gemma serves chat and, when its projector loaded, speech-to-text.
-        let transcriber: Result<Arc<dyn Transcriber>, String> = match &chat {
-            Ok(model) if model.supports_audio() => Ok(Arc::clone(model) as Arc<dyn Transcriber>),
-            Ok(_) => Err(format!(
-                "{PROJECTOR_FILE} missing or without an audio encoder"
+        // Whisper small.en in its helper process (MODELS.md: ~0.2 s per clip vs
+        // 440-670 ms for Gemma's audio encoder; base.en garbled accented English); Gemma when the helper or its model is missing.
+        let whisper = whisper::WhisperTranscriber::locate_helper()
+            .ok_or_else(|| "speech helper not built (scripts/build-whisper.sh)".to_owned())
+            .and_then(|helper| {
+                whisper::WhisperTranscriber::start(
+                    &helper,
+                    &models_dir.join(whisper::WHISPER_MODEL_FILE),
+                )
+                .map_err(|error| error.to_string())
+            });
+        let transcriber: Result<Arc<dyn Transcriber>, String> = match (whisper, &chat) {
+            (Ok(whisper), _) => Ok(Arc::new(whisper)),
+            (Err(reason), Ok(model)) if model.supports_audio() => {
+                tracing::warn!(%reason, "Whisper unavailable; Gemma transcribes speech");
+                Ok(Arc::clone(model) as Arc<dyn Transcriber>)
+            }
+            (Err(reason), Ok(_)) => Err(format!(
+                "{reason}; {PROJECTOR_FILE} missing or without an audio encoder"
             )),
-            Err(err) => Err(err.to_string()),
+            (Err(reason), Err(err)) => Err(format!("{reason}; {err}")),
         };
         let chat = chat.map(|m| m as Arc<dyn ChatModel>);
         let speaker = speaker::OsSpeaker::new().map(|s| Arc::new(s) as Arc<dyn Speaker>);
@@ -288,6 +317,7 @@ impl Engine {
         Self {
             chat: chat.ok(),
             embedder: embedder.ok(),
+            grounder,
             transcriber: transcriber.ok(),
             speaker: speaker.ok(),
             microphone: microphone.ok(),

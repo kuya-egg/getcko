@@ -1,8 +1,9 @@
-//! Taglish answer check: the Taglish Explainer agent answers the questions in
-//! `scripts/fixtures/taglish-questions.json` (target pass, then answer) with the
-//! current prompt. Prints each answer and writes JSON lines to
-//! `$TMPDIR/taglish-<label>.jsonl` (`GETCKO_TAGLISH_LABEL`, default `current`) so two
-//! prompt versions can be compared side by side (docs/MODELS.md).
+//! Answer check: the Office Helper agent answers the questions in
+//! `scripts/fixtures/answer-questions.json` (target pass, then answer) with the current
+//! prompt and model (`GETCKO_CHAT=qwen3-vl` for Qwen3-VL). Prints each answer and writes
+//! JSON lines to `$TMPDIR/answers-<label>.jsonl` (`GETCKO_ANSWERS_LABEL`, default
+//! `current`) so two prompt or model versions can be compared side by side
+//! (docs/MODELS.md).
 use std::{io::Write, path::PathBuf, time::Instant};
 
 use getcko_lib::{
@@ -16,20 +17,25 @@ use getcko_lib::{
 };
 use serde_json::Value;
 
+#[path = "common/mod.rs"]
+mod common;
+
 fn main() {
-    let label = std::env::var("GETCKO_TAGLISH_LABEL").unwrap_or_else(|_| "current".into());
+    let label = std::env::var("GETCKO_ANSWERS_LABEL").unwrap_or_else(|_| "current".into());
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture: Value = serde_json::from_str(
-        &std::fs::read_to_string(manifest.join("../scripts/fixtures/taglish-questions.json"))
+        &std::fs::read_to_string(manifest.join("../scripts/fixtures/answer-questions.json"))
             .expect("fixture"),
     )
     .expect("json");
     let m = manifest.join("models");
     let rt = Runtime::init().expect("rt");
-    let chat =
-        LlamaChat::load(&rt, &m.join("gemma-4-E2B-it-Q4_0.gguf"), &m.join("none")).expect("gemma");
-    let agent = templates::get(TemplateId::TaglishExplainer).draft;
-    let out_path = std::env::temp_dir().join(format!("taglish-{label}.jsonl"));
+    let gemma: std::sync::Arc<dyn ChatModel> = std::sync::Arc::new(
+        LlamaChat::load(&rt, &m.join("gemma-4-E2B-it-Q4_0.gguf"), &m.join("none")).expect("gemma"),
+    );
+    let chat = common::chat_under_test(gemma, &m);
+    let agent = templates::get(TemplateId::OfficeHelper).draft;
+    let out_path = std::env::temp_dir().join(format!("answers-{label}.jsonl"));
     let mut out = std::fs::File::create(&out_path).expect("out");
     for q in fixture["questions"].as_array().expect("questions") {
         let (key, question) = (q[0].as_str().expect("key"), q[1].as_str().expect("q"));

@@ -8,8 +8,7 @@
 //! The screen part can be evaluated while the user is still speaking
 //! ([`TurnPrompt::warm_user`]), before the question is known.
 use crate::model::{
-    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenMode, ScreenSnapshot,
-    TaskStep,
+    AgentDraft, AnswerLength, BaseRulesMode, ScreenElement, ScreenMode, ScreenSnapshot, TaskStep,
 };
 
 /// General grounding and answer-quality rules (BR-6).
@@ -59,16 +58,7 @@ impl TurnPrompt {
             system.push_str("\n\nAgent instructions: ");
             system.push_str(&agent.instructions);
         }
-        system.push_str("\n\nLanguage: ");
-        system.push_str(match agent.language {
-            Language::English => "English.",
-            Language::Filipino => "Filipino.",
-            // Measured on scripts/fixtures/taglish-questions.json (MODELS.md): more
-            // natural than "a natural mix of Filipino and English", no less correct.
-            Language::Taglish => {
-                "Taglish: write the way a Filipino co-teacher talks: Filipino sentence structure with everyday English words mixed in (\"i-click mo\", \"yung\", \"tapos\"). Keep screen labels exactly as shown and never name element roles (textField, comboBox). Only give the steps the question asks for. These style rules never override the rules above."
-            }
-        });
+        system.push_str("\n\nAnswer in English. Keep screen labels exactly as shown, never name element roles, and only give the steps the question asks for.");
         let max_tokens = match agent.answer_length {
             AnswerLength::Short => {
                 system.push_str("\nLength: 1-2 sentences.");
@@ -588,6 +578,12 @@ mod tests {
         assert!(turn.system.contains(GUARANTEES));
         assert!(!turn.system.contains(BASE_RULES));
         assert_eq!(turn.warm_user(), "(no screen)\n\n");
+    }
+    #[test]
+    fn system_prompt_requires_english_and_hides_element_roles() {
+        let turn = TurnPrompt::new(&templates_draft(), None, &[]);
+        assert!(turn.system.contains("Answer in English."));
+        assert!(turn.system.contains("never name element roles"));
     }
     #[test]
     fn target_grammar_and_reply_mapping() {

@@ -25,6 +25,9 @@ use getcko_lib::{
     screenshot, templates,
 };
 
+#[path = "common/mod.rs"]
+mod common;
+
 struct Task {
     question: &'static str,
     /// Accessibility label or value (any case) of the element the pointer should land on.
@@ -46,7 +49,7 @@ const CLASS_RECORD: &[Task] = &[
         expect: "Q2, Ana Santos",
     },
     Task {
-        question: "Saan ko ilalagay ang grade ni Maria Reyes sa third quarter?",
+        question: "Where do I put Maria Reyes's grade for the third quarter?",
         expect: "Q3, Maria Reyes",
     },
     Task {
@@ -310,7 +313,10 @@ fn main() {
     }
 
     let ai = engine::Engine::load(&manifest.join("models"));
-    let chat = ai.chat.clone().expect("chat model loads");
+    let chat = common::chat_under_test(
+        ai.chat.clone().expect("chat model loads"),
+        &manifest.join("models"),
+    );
     // Tier-3 grounding model under test: GETCKO_GROUNDER=qwen3-vl.
     let grounder = std::env::var("GETCKO_GROUNDER").ok().map(|name| {
         assert_eq!(name, "qwen3-vl", "unknown GETCKO_GROUNDER");
@@ -319,8 +325,8 @@ fn main() {
         let started = Instant::now();
         let grounder = LlamaGrounder::load(
             &rt,
-            &models.join("Qwen3VL-2B-Instruct-Q4_K_M.gguf"),
-            &models.join("mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"),
+            &models.join(engine::GROUNDER_MODEL_FILE),
+            &models.join(engine::GROUNDER_PROJECTOR_FILE),
         )
         .expect("grounder loads");
         eprintln!(

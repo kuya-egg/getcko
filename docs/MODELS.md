@@ -4,12 +4,17 @@ Everything runs on the device; nothing downloads at runtime. `bun run models` fe
 
 | Role | File | Size | Notes |
 | --- | --- | ---: | --- |
-| Chat, speech-to-text, vision | `gemma-4-E2B-it-Q4_0.gguf` | 2.65 GiB | Gemma 4 E2B instruct, llama.cpp in-process (Metal on macOS, Vulkan on Windows, CPU fallback) |
-| Audio and image projector | `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.52 GiB | Loaded with the chat model through llama-cpp-2 `mtmd`; gives Gemma its audio (speech-to-text) and vision encoders |
-| Embeddings | `embeddinggemma-300M-Q8_0.gguf` | 0.31 GiB | 256-d (Matryoshka), sqlite-vector exact scan |
+| Chat, element picking (tiers 1–2), answers, tier-2 screenshots | `gemma-4-E2B-it-Q4_0.gguf` | 2.65 GiB | Unchanged |
+| Gemma projector | `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.52 GiB | Vision; audio encoder is only a fallback when the Whisper helper/model is missing |
+| Tier-3 grounding | `Qwen3VL-2B-Instruct-Q4_K_M.gguf` + `mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf` | 1056 MB + 424 MB (≈1.48 GB) | Apache-2.0; `engine::llama::OnDemand`, loaded on first tier-3 turn; replies `point_2d` in 0–1000. Skips text recognition and sends the unmarked screenshot when present; otherwise falls back to OCR text. `Engine.grounder`, `GROUNDER_MODEL_FILE` / `GROUNDER_PROJECTOR_FILE` |
+| Embeddings | `bge-small-en-v1.5-q8_0.gguf` | 36 MB | MIT; CLS pooling, 384 dimensions (full, no truncation); query prefix "Represent this sentence for searching relevant passages: ", no document prefix; 512-token input (longer chunks use their first 512 tokens). `OnDemand::embedder`, loaded on first search (33 ms) |
+| Speech-to-text | `ggml-small.en.bin` (whisper.cpp) | 466 MiB (488 MB) | `getcko-whisper` helper process; whisper-rs 0.16, Metal on macOS |
 | Text-to-speech | OS voices | — | `tts` crate (AVFoundation on macOS, WinRT on Windows) |
 
-Why Gemma's own audio encoder instead of whisper.cpp: see [ADR 0004](../.monozukuri/decisions/0004-gemma-audio-speech-to-text.md).
+Whisper.cpp runs out of process because whisper-rs and llama-cpp-2 each bundle ggml (195 duplicate symbols at link time); see [ADR 0005](../.monozukuri/decisions/0005-whisper-helper-process.md).
+
+The helper protocol starts with READY byte `0xA5`; requests contain a `u32` sample count, `f32` samples, `u32` hint length and UTF-8 hint; replies contain `u8` status, `u32` length and UTF-8 text. A dead helper is restarted once. The app supplies a screen-derived initial prompt (comma-split labels, element values, control roles first; at most 400 characters). `scripts/build-whisper.sh` builds `src-tauri/binaries/getcko-whisper-<target-triple>`, bundled through `externalBin`.
+
 
 ## How a turn runs
 
@@ -22,7 +27,7 @@ sequenceDiagram
     P->>P: read screen (AX)
     P->>G: prefill system + screen (while the user speaks)
     U->>P: released
-    P->>G: transcribe (audio encoder, separate context)
+    P->>P: transcribe via getcko-whisper (small.en; screen-derived hint)
     P->>P: retrieve 5 passages
     P->>G: target pass: + question + passages, reply limited to the element ids
     G-->>P: e24 → pointer moves
@@ -207,5 +212,19 @@ An earlier survey over 15 apps (Safari, Chrome, Finder, Calculator, TextEdit, Sy
 30. **Decision input for tier 3.** On screens with an accessibility tree, tiers 1–2 already score 42–44/50 on held-out pages without any extra model. Only screenshot-only screens (canvas apps, games, remote desktops, some Electron/Java apps) reach tier 3, where Gemma alone scores 8/50 and the on-demand Qwen3-VL-2B grounder 30/50 at +1.48 GB on disk, ~+1 GB memory while loaded, and ~1–1.4 s per point. Making Gemma itself ground would need fine-tuning (LoRA on screenshot → box data, e.g. Qwen3-VL predictions checked by hand), not prompting.
 31. **Fixed: empty table cells filled the element list.** Chrome exposes each `<td>` as an unnamed `AXCell`; on the held-out grade grid 90 of the 150 listed elements were these wrappers and only 11 of the 72 grade fields made the list. Unnamed, valueless `cell` and `row` elements are now dropped like unnamed `other` ones (the field or text inside is listed itself): all 72 fields listed. Held-out tier 1 42 → **47/50** (grade grid 6 → 10), tier 2 44 → **46/50**, tier 3 unchanged (8/50). Regression set: tier 1 and 2 28 → 27/30 (Finder "Applications": Gemma picked the AirDrop icon once the ids shifted; the item is still listed), tier 3 15 → 14/30.
 32. **Fixed: role names in answers.** The answer pass was told "the pointer is showing this textField", and repeated it ("sa textField na …"). It now gets the role in plain words (`prompt::plain_role`: field, drop-down, option, …). Taglish set: 0 of 20 answers name a role (before: 1–2 per run), no-source "don't know" answers still 3/3. The Taglish fixture now uses the shared `ROLES` only (it had macOS names like popUpButton).
-33. **EmbeddingGemma loads on first search** (`engine::llama::LazyEmbedder`). Sessions whose agents have no documents never load it. Measured: +62 MB physical footprint once loaded, first search 306 ms (load + embed), later searches 13 ms. Unloading after idle was tried and dropped: the footprint stayed at 163 MB after release (llama.cpp keeps the allocation) and every first search after idle would pay the 0.3 s again.
+33. **EmbeddingGemma loads on first search** (`engine::llama::LazyEmbedder`; now `OnDemand`, the generic lazy loader also used by the grounder). Sessions whose agents have no documents never load it. Measured: +62 MB physical footprint once loaded, first search 306 ms (load + embed), later searches 13 ms. Unloading after idle was tried and dropped: the footprint stayed at 163 MB after release (llama.cpp keeps the allocation) and every first search after idle would pay the 0.3 s again.
 34. **First token: the 0.3 s budget is out of reach with the current prompt.** Prompt processing runs at ~1,170 tokens/s on the M4 Pro with any setting tried (flash attention default/on/off, `n_ubatch` 512/1024; 398 tokens in 335–344 ms), so the ~400-token question + passages alone take ~0.34 s. Reaching 0.3 s means fewer prompt tokens (e.g. 3 passages instead of 5, shorter chunks), which needs a retrieval/answer-quality check first. End of speech → first spoken word stays 1.4–1.5 s against the ~3 s budget.
+35. **Whisper cannot run in-process.** whisper-rs and llama-cpp-2 each bundle ggml, producing 195 duplicate symbols at link time; whisper.cpp therefore runs as a helper process.
+36. **Whisper small.en beats base.en for accented English.** On an accented-English clip ("hwan", macOS voice Paulina reading the demo question) with the app's screen hint, base.en transcribed "Where do we put Juan Scranton in the Clash records? And how is the final Graint computers?" while small.en returned "Where do we put Juan's grade in the class records, and how is the final grade computed?" (235 ms). small.en takes ≈160–230 ms per clip versus base.en ≈60–96 ms; Gemma's audio encoder took 440–670 ms. Chose small.en.
+37. **Qwen3-VL-2B was rejected as the main answering and element-picking model.** Tier 1 regression: 15/30 vs Gemma 27/30; held-out: 26/50 vs Gemma 47/50. Tier 2 regression: 15/30; held-out: 26/50 vs Gemma 46/50. Misses included "How do I save the class record?" → Print, Finder sidebar questions → nothing, and "Ana Santos's second quarter" → Q4 cell. Though faster (benchmark, Whisper base.en, US clip, 10 runs), end of speech → first spoken word was 846 ms vs Gemma 1023 ms; answer first token 433 vs 639 ms; target pass 383 vs 568 ms. Hybrid decision: Gemma answers and picks elements; Qwen3-VL-2B grounds tier 3 only (30/50 held-out vs Gemma 8/50; finding 30).
+38. **bge-small-en-v1.5 replaces EmbeddingGemma.** Retrieval over 24 questions and 18 sections from grading, enrollment and office-IT manuals:
+
+| Model | Dim | Recall@1 | Recall@3 | MRR | ms/query | Size |
+|---|---:|---:|---:|---:|---:|---:|
+| EmbeddingGemma-300M (old) | 768 | 24/24 | 24/24 | 1.00 | 6.1 | 314 MB |
+| Qwen3-Embedding-0.6B | 1024 | 22/24 | 24/24 | 0.96 | 15.9 | 624 MB |
+| bge-small-en-v1.5 | 384 | 24/24 | 24/24 | 1.00 | 4.5 | 36 MB |
+
+   nomic-embed-text-v1.5 crashed the harness (llama.cpp abort) and was not pursued because bge matched the best result.
+39. **Existing databases are re-embedded, not discarded.** The store records `embedding_model` and `embedding_dim` in `meta`; on a model change (or a database with no recorded model, interpreted as EmbeddingGemma), documents with passages enter `processing` and leave search while their kept passage text is re-embedded in the background after engine load (`pipeline::reembed_documents`). They then become ready, or fail with "could not re-index after a model update; import the file again". A quit midway resumes next start. Smoke: an old-style 256-dimensional database with two passages re-embedded in 59 ms at app start, ended at 384 dimensions, document ready.
+40. **Spoken benchmark with Whisper small.en + screen hint (Gemma answering, bge search, 10 runs).** Accented clip ("hwan", Paulina): correct target spoken **10/10** (base.en: 0/10), typed 10/10, STT 218 ms, end of speech → first spoken word 1.04 s, answer first token 628 ms; transcript "Where do we put Juan's grade in the class record, and how is the final grade computed?". US clip (Samantha): spoken 0/10, typed 10/10, 1.19 s; small.en still hears her "Juan" as "one's" even with "Juan Dela Cruz" in the hint, so the target pass picks a generic grade field. Open: names that Whisper misses (e.g. matching transcript words to on-screen names by sound).

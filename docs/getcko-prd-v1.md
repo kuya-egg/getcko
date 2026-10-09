@@ -89,8 +89,8 @@ An agent is a saved preset: a name, instructions, attached knowledge bases, answ
 | A1 | Create, edit, duplicate and delete agents, stored locally | P0 | Survives app restart, Wi-Fi off |
 | A2 | Instructions field plus a toggle to include or replace GetCko's base rules | P0 | Turning the base rules off changes the behaviour in the next answer |
 | A3 | Attach up to 5 knowledge bases | P0 | Answers draw only from the attached knowledge bases |
-| A4 | Templates: Office Helper (new software), Teacher (DepEd forms), Study Buddy (my notes), Taglish Explainer | P0 | One click makes an editable copy |
-| A5 | Answer language: English, Filipino, Taglish | P1 | Answer follows the setting |
+| A4 | Templates: Office Helper (new software), Teacher (DepEd forms), Study Buddy (my notes) | P0 | One click makes an editable copy |
+| A5 | Answer language: English | P1 | Answers are in English |
 | A6 | Per-agent voice and speaking speed | P1 | Applied by TTS |
 | A7 | "Try this agent" test chat on the agent page | P1 | Not saved |
 
@@ -116,7 +116,7 @@ macOS needs Accessibility and Screen Recording permission once, which goes in on
 | T1 | Speak every answer with on-device TTS (OS voices through the Rust `tts` crate) | P0 | Speech starts within \~0.5 s of the first sentence being ready (streamed by sentence) |
 | T2 | Push-to-talk voice question with on-device speech-to-text | P0 | A 5-second question is transcribed in under 1.5 s, Wi-Fi off |
 | T3 | Stop or skip speech with a hotkey | P0 | Immediate |
-| T4 | Filipino or English voice by agent setting | P1 | Uses an installed OS voice; falls back to English if no Filipino voice exists |
+| T4 | English voice by agent setting | P1 | Uses an installed OS English voice |
 
 ## Architecture
 
@@ -128,16 +128,18 @@ The question, the screen's element list and the retrieved passages all meet in o
 
 **Locked Oct 9, 7:15 PM:** Gemma 4 E2B (thinking off) for chat, element picking and screenshots. EmbeddingGemma-300m at 256 dimensions for RAG. sqlite-vector exact search. OS voices through the Rust `tts` crate for speech. Fallbacks: Qwen3-4B, multilingual-e5-small, Kokoro-82M. Details are in `docs/MODELS.md`.
 
-One small multimodal model does both chat and the vision fallback, which keeps memory low and loading simple. Every choice below must be confirmed by the hour-1 speed test on the M4 Pro, and the measured numbers go in `MODELS.md`.
+**Updated Oct 9:** Current lineup: Gemma 4 E2B Q4_0 for chat, tiers 1–2 element picking, answers and tier-2 screenshots; Qwen3-VL-2B Q4_K_M on demand for tier-3 grounding; bge-small-en-v1.5 Q8_0 for embeddings; whisper.cpp small.en in a helper process for STT; OS voices for TTS. English only.
+
+Gemma handles chat and tiers 1–2; Qwen3-VL-2B is the on-demand tier-3 grounder.
 
 | Job | First choice | Backup | Notes |
 | --- | --- | --- | --- |
 | Chat, element picking, citations | Gemma 4 E2B, 4-bit | Qwen3-4B (Apache-2.0) | Google reports \~160 tok/s and 0.1 s to first token on an M4 GPU via LiteRT-LM ([Google AI Edge](https://developers.google.com/edge/litert-lm/models/gemma-4)). Our runtime (llama.cpp or MLX) will differ, so measure it. License listed as Apache-2.0 there, but the MLX listing says Gemma license; check before disclosing. |
-| Vision fallback (screenshot) | Gemma 4 E2B vision, the same model ([`mlx-community/gemma-4-e2b-it-4bit`](https://aiweekly.co/alerts/mlx-community-ships-4-bit-gemma-4-e2b-vlm-for-apple-silicon), 3.55 GB) | UI-TARS-1.5-7B for hard screens | P1 only |
-| Embeddings | A small multilingual embedding model (e.g. multilingual-e5-small, 384-d) | EmbeddingGemma-300m (gated Gemma license) | Must handle English + Filipino; verify the license on the model card |
+| Vision fallback (tier 3) | Qwen3-VL-2B-Instruct Q4_K_M + projector, on demand | Gemma 4 E2B projector remains for vision; Qwen receives the unmarked screenshot when present, otherwise OCR text |
+| Embeddings | bge-small-en-v1.5 Q8_0 (MIT) | — | 384-dimensional CLS embeddings; query prefix only |
 | Vector store | sqlite-vector, exact `vector_full_scan` | INT8 `vector_quantize_scan` | Project benchmark: 37.6 ms/query on 1M 768-d vectors, INT8 preloaded, Apple M5 Pro ([repo](https://github.com/sqliteai/sqlite-vector)). Our libraries are far smaller. |
-| Speech-to-text | whisper.cpp (`whisper-rs`), large-v3-turbo or small | Apple on-device speech recognition | Pick the size by measured latency |
-| TTS | OS voices via the Rust `tts` crate | — | Filipino voice availability is unverified on macOS |
+| Speech-to-text | whisper.cpp small.en in helper process | — | Screen-derived initial prompt; see ADR 0005 |
+| TTS | OS English voices via the Rust `tts` crate | — | Use an installed English voice |
 
 **Latency budget per question (target about 3 s, Wi-Fi off):**
 
@@ -157,8 +159,8 @@ The 5-minute pitch is mostly the live demo, run in airplane mode with a network 
 
 1. **Hook (30 s).** RA 12254 is moving every office online, and only about 40% of Filipinos have basic ICT skills. Cloud AI help means screenshotting private screens to someone else's server.
 2. **Airplane mode on (10 s).** Show Wi-Fi off and the network monitor at zero.
-3. **Agent (40 s).** Open the "Office Helper" template, attach a knowledge base containing a sample office manual PDF, and pick a Taglish voice.
-4. **Screen Help + RAG (90 s).** In a spreadsheet or form app, press the hotkey and ask aloud: "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta?" ("Where do I put Juan's grade, and how is it computed?"). The gecko flies to the cell, the answer is spoken, and it cites "Manual p. 4".
+3. **Agent (40 s).** Open the "Office Helper" template, attach a knowledge base containing a sample office manual PDF, and select an English voice.
+4. **Screen Help + RAG (90 s).** In a spreadsheet or form app, press the hotkey and ask aloud: “Where do I put Juan's grade, and how is the final grade computed?” The gecko flies to the cell, the answer is spoken, and it cites "Manual p. 4".
 5. **Second app (40 s).** The same question style works in a different app, showing it is a general helper.
 6. **Proof (30 s).** Show measured latency and tokens per second on screen, read from `MODELS.md`.
 7. **Close (30 s).** "Gets mo na." Next: GetCko Lens for iPhone and the SDK for any app.
@@ -191,7 +193,7 @@ The build runs on macOS Tauri 2 + React + Rust on the M4 Pro. P0 must be working
 1. **6:30–7:30 PM:** speed test of the LLM, embeddings and whisper on the M4 Pro. Fresh Tauri repo scaffolded; AX dump of one app printed.
 2. **7:30–11:00 PM:** RAG pipeline (import, chunk, embed, sqlite-vector, retrieve, cite). Overlay window with the gecko pointing at a hard-coded element.
 3. **11:00 PM–1:00 AM:** wire it together. A voice question becomes an answer with the AX element picked, the pointer moved and the answer spoken. **P0 done.**
-4. **1:00–4:00 AM:** agents CRUD and templates, Taglish setting, vision fallback (P1).
+4. **1:00–4:00 AM:** agents CRUD and English-only templates, vision fallback (P1).
 5. **4:00–6:00 AM:** polish, latency tuning, three rehearsals, measured benchmarks.
 6. **6:00–8:30 AM:** demo video, README, disclosures, public repo.
 7. **9:15 AM:** submit on Cerebral Valley, leaving a 45-minute buffer before the 10:00 AM freeze.
@@ -217,14 +219,14 @@ The biggest risk is the judges' first question: "Isn't this just a local ChatGPT
 | Small model picks the wrong element | Demo misfire | Pick from numbered AX elements, not coordinates; scripted demo tasks; pre-recorded backup run |
 | Apps with a thin accessibility tree (Electron, canvas) | Pointer has nothing to target | Demo on apps with good AX trees; vision fallback labeled "best guess" |
 | End-to-end latency over 3 s | Feels slow on stage | Stream answer and TTS by sentence; smaller whisper; warm-load models before the pitch |
-| No Filipino TTS voice on macOS | Taglish answers read in an English voice | Check installed voices in hour 1; text stays Taglish even if the voice is English |
+| No suitable English TTS voice on macOS | Spoken answers unavailable or unclear | Check installed English voices in hour 1 |
 | "Too general" pitch | Weak Problem score | Lead with one persona (a teacher or LGU staffer on a new system) and one manual |
 | License surprises | Disclosure issues | Check Gemma 4, the embedding model and sqlite-vector terms; repo under OSI license |
 
 **Open questions:**
 
 - [ ] Which demo apps have the best AX trees on macOS? Test Numbers, Excel, Finder, Safari and Chrome in hour 1.
-- [ ] Is a Filipino voice installed or available in macOS Settings?
+- [ ] Which English voice is installed or available in macOS Settings?
 - [ ] llama.cpp inside Rust or an Ollama/MLX sidecar: which is faster to wire up tonight?
 - [ ] Which sample manual or PDF for the demo knowledge base: an office manual, the DepEd grading guide, or the team's own?
 - [ ] Keep the name GetCko in the pitch, with the gecko pointer as the hero visual?
