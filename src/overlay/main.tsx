@@ -1,14 +1,7 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
-import "../brand/index.css";
-import "./overlay.css";
-import { initTheme } from "../brand/theme";
 import { Overlay } from "./Overlay";
+import "./overlay.css";
 
-initTheme();
-
-ReactDOM.createRoot(document.getElementById("overlay-root") as HTMLElement).render(
-  <React.StrictMode>
-    <Overlay />
-  </React.StrictMode>,
-);
+// No StrictMode: its double-run effects would register and unregister the global
+// shortcuts twice concurrently, racing the plugin's registration state.
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<Overlay />);

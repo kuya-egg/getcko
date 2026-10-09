@@ -435,7 +435,7 @@ Full map and drawing rules: **`docs/brand/icons.md`**; contact sheet `docs/brand
 | `SegmentedControl` *(in-flight)* | 2–4 exclusive options (answer length, theme) |
 | `Select` *(in-flight)* | Longer lists; `Icon.chevronDown` |
 | `Slider` *(in-flight)* | Speaking speed; value in mono |
-| `VoicePicker`, `LanguagePicker` *(in-flight)* | Installed OS voices; English / Filipino / Taglish |
+| `VoicePicker` *(in-flight)* | Installed OS voices (answers are English only) |
 | `Tooltip` *(in-flight)* | Supplementary only; never the only label |
 | `Composer` | Text input → Hold to talk (accent) → Screen Help → Ask |
 
@@ -527,7 +527,7 @@ Snippets for every recipe: `.claude/skills/getcko-brand/references/recipes.md`. 
 
 | Part | Rule |
 |---|---|
-| Templates | One row of 4: Office Helper, Teacher, Study Buddy, Taglish Explainer. Name `font-display text-title`, one line, "Use template". No icons |
+| Templates | One row of 3: Office Helper, Teacher, Study Buddy. Name `font-display text-title`, one line, "Use template". No icons |
 | List | `AgentCard` grid; "Start"; `NewAgentCard` |
 | Editor | `Panel` sections 48px apart: Instructions · Knowledge bases · Voice and language · Try it |
 | Controls | `SegmentedControl` (answer length), `Slider` (speaking speed), `VoicePicker`, `LanguagePicker` |
@@ -631,7 +631,7 @@ Snippets for every recipe: `.claude/skills/getcko-brand/references/recipes.md`. 
 
 | | |
 |---|---|
-| Name | **GetcKo**: "gecko" + Filipino slang "gets ko" ("I get it"). Same name as the product |
+| Name | **GetcKo**: "gecko" + "gets it". Same name as the product |
 | Form | 2D pixel sprite, 22 × 27 cells, standing, pointing up-right |
 | Code | `src/brand/mascot/`: `<GetCkoSprite pose scale flip label palette />`, `<GetCkoHeadMark size tile="ink\|paper" />`, `buildPose`, `buildHeadMark`, `handTip`, `pointPoseFor`, `POSE_CYCLES`, `validateSprites()` |
 | Poses | Chosen by moment: `MOMENT_POSE[moment]` (§10 Poses); never typed by hand |
@@ -740,7 +740,7 @@ KGGKKGGGGGGGGGGK......
 | Vocabulary | **`docs/brand/lexicon.md`**: assistant/copilot → desktop helper or agent, library → knowledge base, response → answer, citation → source, Retry → Try again, Send → Ask, Upload → Add documents, push to talk → Hold to talk, read aloud → Answer out loud, hotkey → shortcut, local → on this Mac |
 | Category | "A private, offline desktop helper." |
 | Tone | A patient officemate who already knows the system. Friendly, short, specific |
-| Tagline | "Gets mo na." ("Now you get it.") Product line: "Help that sits right next to your cursor." |
+| Tagline | "Now you get it." Product line: "Help that sits right next to your cursor." |
 | Answer order | Action → reason → source. "Ilagay mo sa cell D7. Doon kinukuha ang final grade. (Manual, p. 4)" |
 | Case, marks | Sentence case. No emoji. No "!" except "Ready ka na!" once at onboarding finish |
 | Privacy line | **"Nothing leaves this Mac."** (Windows: "this PC"). One wording only |
@@ -759,6 +759,8 @@ KGGKKGGGGGGGGGGK......
 Users are new to computers and hackathon judges decide in seconds. Test: hide the text; does the picture still say what happens?
 
 ### 11.2 Taglish, done right
+
+> **English only (Oct 10):** user-facing copy and answers are English only; agents no longer have a language setting. This section is kept for reference only.
 
 - English nouns for software things (cell, button, file, settings), Filipino for the glue and the warmth. Only when the agent language is Taglish or Filipino; UI chrome stays English.
 

@@ -1,87 +1,104 @@
-<p>
-  <img src="public/brand/logo/wordmark-light.svg" alt="GetcKo" height="56">
-</p>
+# GetCko
 
-# Help that sits right next to your cursor.
+GetCko is a local, offline desktop helper that stays visible while you work: it answers questions over your local documents with retrieval-augmented generation (RAG), supports configurable agents, helps with what is on screen, and can speak answers aloud. Models run on-device; nothing downloads at runtime.
 
-**Gets mo na.** A private, offline desktop helper. Ask out loud; a pixel gecko points at the answer.
+## Quick start
 
-![GetcKo pointing at cell E7 in a grade sheet, with a spoken answer citing the grading guide](docs/brand/readme-hero.png)
+### Prerequisites
 
-`Wi-Fi off` · `Nothing leaves this Mac` · `Points, never clicks` · `Taglish-ready`
+- **macOS:** Xcode Command Line Tools, Rust, [bun](https://bun.sh/), and CMake (`brew install cmake`).
+- **Windows:** MSVC Build Tools, Rust, bun, CMake, Vulkan SDK, and Git Bash (used by the model-fetch script).
 
-## How it works
+From the repository root:
 
-<table>
-  <tr>
-    <td align="center" width="33%"><img src="public/brand/gifs/listen-light.gif" alt="GetcKo listening" height="124"><br><b>1. Ask</b><br>Press <code>⌥ Space</code>, ask out loud.</td>
-    <td align="center" width="33%"><img src="public/brand/gifs/point-light.gif" alt="GetcKo pointing" height="124"><br><b>2. GetcKo points</b><br>One yellow ring on the exact cell.</td>
-    <td align="center" width="33%"><img src="public/brand/gifs/read-light.gif" alt="GetcKo reading a document" height="124"><br><b>3. Source</b><br><code>Grading guide · p. 4</code></td>
-  </tr>
-</table>
+```sh
+bun install
+bun run models
+bun run tauri dev
+```
 
-## Why on this Mac
+`bun run models` downloads and SHA-256 verifies Gemma 4 E2B, its vision projector, the Qwen3-VL-2B tier-3 grounder and projector, bge-small-en-v1.5 embeddings, and Whisper small.en into `src-tauri/models/` (about 5.2 GB total). To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
 
-| | |
+Build a release with `bun run tauri:build`; this bundles about 5.2 GB of models.
+
+## Tests
+
+```sh
+cd src-tauri
+cargo test
+cargo test -- --ignored
+```
+
+`cargo test` regenerates the TypeScript IPC bindings in `src/bindings/`. The ignored tests require the real models; fetch them first with `bun run models` from the repository root.
+
+## Repository guide
+
+| Path | Contents |
 |---|---|
-| **Private** | Screens with student, citizen or client data never leave the machine |
-| **Offline** | Works in airplane mode; no account, no server, no API bill |
-| **Grounded** | Answers cite your own documents, or say "I don't know" |
-| **Any app** | Reads the macOS accessibility tree; screenshot fallback is labeled "Best guess" |
+| `src-tauri/src/commands.rs` | Tauri IPC commands and app-facing operations |
+| `src-tauri/src/engine/` | Local inference engine and model loading |
+| `src-tauri/src/error.rs` | Shared application error types |
+| `src-tauri/src/ingest.rs` | Document text extraction and ingestion |
+| `src-tauri/src/model.rs` | Serialized domain and IPC data types |
+| `src-tauri/src/paths.rs` | Application data, model, and resource paths |
+| `src-tauri/src/pipeline.rs` | Ask/answer and document-processing orchestration |
+| `src-tauri/src/platform/` | OS screen-accessibility platform interface and implementations |
+| `src-tauri/src/pointer.rs` | Screen element pointer-target selection and geometry |
+| `src-tauri/src/prompt.rs` | Prompt construction for local model tasks |
+| `src-tauri/src/store/` | SQLite persistence and vector search |
+| `src-tauri/src/templates.rs` | Built-in agent templates |
+| `src/lib/getcko.ts` | Typed TypeScript client for Tauri commands and events |
+| `src/bindings/` | Generated TypeScript types from Rust |
+| `docs/architecture.md` | Architecture, IPC contract, setup, and runtime details |
+| `docs/team/` | Team ownership and implementation briefs |
+| `site/` | Landing page (Vite + React), its `PRODUCT.md` / `DESIGN.md`, and approved design mocks in `site/.impeccable/` |
 
-Proof: `Wi-Fi off · Nothing leaves this Mac.` Speed figures appear only once measured (`docs/MODELS.md`).
+## Team briefs
 
-## Run it
+- [Main-window frontend](docs/team/frontend-app.md)
+- [Overlay frontend](docs/team/frontend-overlay.md)
+- [macOS engineer](docs/team/macos-engineer.md)
+- [Windows engineer](docs/team/windows-engineer.md)
+- [Designer](docs/team/designer.md)
 
-| Step | Command |
-|---|---|
-| Install | `bun install` (or `npm install`) |
-| Desktop app | `bun run tauri dev` |
-| Web UI only | `bun run dev` |
-| Build | `bun run tauri build` |
+## Status
 
-- Needs Rust + the Tauri 2 prerequisites, macOS 14+ (Apple silicon for the demo numbers).
-- First run asks for Accessibility → Screen Recording → Microphone, then shows the shortcut.
-- Models download once before use; after that everything runs with Wi-Fi off.
-
-## Disclosures
-
-**Models** (details and measurements: `docs/MODELS.md`)
-
-| Job | Model | License |
+| Area | Status | Owner |
 |---|---|---|
-| Chat, element picking, vision fallback | Gemma 4 E2B, 4-bit | Gemma terms (verify before submission) |
-| Embeddings | EmbeddingGemma-300m | Gemma terms (gated) |
-| Vector search | sqlite-vector | Elastic License 2.0, free for OSI-licensed open-source projects |
-| Speech-to-text | whisper.cpp (`whisper-rs`) | MIT |
-| Text-to-speech | OS voices via the Rust `tts` crate | MIT |
+| Rust core: SQLite + sqlite-vector, local llama.cpp inference, document/RAG and agent pipeline, typed IPC | Implemented and verified | Core |
+| macOS Accessibility screen capture | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) |
+| Windows UI Automation screen capture | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
+| Whisper small.en speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
+| DOCX/PPTX ingestion | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
+| Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
+| Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |
 
-**Frameworks and assets**
+## Landing page (`site/`)
 
-| Item | License |
-|---|---|
-| Tauri 2, React 19, Vite, Tailwind CSS v4 | MIT / Apache-2.0 |
-| GSAP | GSAP standard license (free) |
-| [pixelarticons](https://github.com/halfmage/pixelarticons) © 2019 Gerrit Halfmann | MIT; base set for generic icons |
-| Bricolage Grotesque, Geist, Geist Mono, Silkscreen (fontsource, bundled) | SIL Open Font License |
-| GetcKo sprite, icons, textures, logo | Made for this project (`src/brand/`, `public/brand/`) |
+The marketing site is a separate Vite + React app built on the GetcKo brand kit v0.4 (vendored from `main` into `site/src/brand` and `site/src/components/ui`; rules in `site/DESIGN.md`). Live at https://getcko.vercel.app.
 
-**Submission checklist** (from the PRD)
+```sh
+cd site
+bun install
+bun run dev           # http://localhost:5180 (append ?intro to replay the logo intro)
+bun run build         # typecheck and build into site/dist
+vercel deploy --prod  # deploy to Vercel (project: getcko)
+```
 
-- [ ] Public repo under MIT or Apache-2.0 (also covers the sqlite-vector open-source exception)
-- [ ] Existing code and assets disclosed: anything reused from GetcKo v1, brand art, the `.claude/` config
-- [ ] Models, frameworks and licenses listed (above)
-- [ ] Local vs internet: everything in the core path runs on this Mac; internet only for the first model download
-- [ ] AI dev tools disclosed: Claude Code (Anthropic) for code, docs and brand assets; any others used by the team
-- [ ] "Why does this benefit from running AI locally?" answered (see *Why on this Mac*)
-- [ ] 1-minute demo video + X / LinkedIn post (#AppBuildersPH)
-- [ ] Every number shown is reproducible from the benchmark script
+Before launch, set the flags in `site/src/config.ts`:
 
-## For contributors
+- `DEMO_VIDEO_URL`: the hosted 1-minute demo video. Until it's set, "Watch the 1-min demo" opens a "being recorded" notice.
+- `REPO_PUBLIC`: set to `true` once the repo is public under an OSI license. This shows the GitHub links and the "Open source" line.
 
-| Read | For |
-|---|---|
-| `PRODUCT.md` | Who it's for, what it must do |
-| `DESIGN.md` → `docs/getcko-design-system.md` | Tokens, components, recipes |
-| `.claude/skills/getcko-brand/` | Say "use brand" to Claude Code |
-| `docs/brand/` | Lexicon, icons, mascot poses, textures, video |
+Social card: `site/public/og.png` (1200 × 630) is a capture of the dev-only page `site/og.html`, built from the real brand pieces. After changing the hero copy or form, run `bun run dev`, open http://localhost:5180/og.html at 1200 × 630, and save the screenshot over `public/og.png`.
+
+## Licenses and disclosure
+
+- **sqlite-vector 1.1.2:** Apache-2.0; vendored binaries are in `src-tauri/vendor/sqlite-vector`.
+- **Gemma 4 E2B:** review and comply with the applicable [Gemma Terms of Use](https://ai.google.dev/gemma/terms).
+- **Qwen3-VL-2B-Instruct:** Apache-2.0.
+- **bge-small-en-v1.5:** MIT.
+- **whisper.cpp:** MIT; **Whisper small.en weights:** MIT.
+- **llama.cpp:** MIT, used through `llama-cpp-2`.
+- **Tauri:** Tauri 2 framework and associated crates; see [Tauri’s licensing information](https://tauri.app/).
+- **AI development tools:** Claude Code was used during development. The landing page's design mocks were generated with OpenAI Codex image generation, and its code was written and reviewed with Claude and Codex.

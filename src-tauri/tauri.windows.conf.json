@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "vendor/sqlite-vector/windows-x86_64/vector.dll": "sqlite-vector/vector.dll"
+    }
+  }
+}

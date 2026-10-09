@@ -1,0 +1,229 @@
+{
+  "screens": {
+    "class-record": {
+      "app": "Google Chrome",
+      "window": "Class Record - Grade 7",
+      "elements": [
+        [
+          "button",
+          "Save"
+        ],
+        [
+          "button",
+          "Print"
+        ],
+        [
+          "button",
+          "Compute final grades"
+        ],
+        [
+          "textField",
+          "Search learner"
+        ],
+        [
+          "textField",
+          "Q1, Juan Dela Cruz"
+        ],
+        [
+          "textField",
+          "Q2, Juan Dela Cruz"
+        ],
+        [
+          "textField",
+          "Q3, Maria Reyes"
+        ],
+        [
+          "textField",
+          "Q4, Jose Rizal Mercado"
+        ],
+        [
+          "textField",
+          "Q2, Ana Santos"
+        ]
+      ],
+      "passages": [
+        [
+          "Grading Manual",
+          "Entering grades",
+          "Enter each learner's quarterly grade in the matching quarter column. Confirm the learner name and quarter before typing."
+        ],
+        [
+          "Grading Manual",
+          "Computing the final grade",
+          "Compute the final grade by averaging the four quarterly grades: add Q1, Q2, Q3, and Q4, then divide the sum by four. Record the rounded result as the final grade."
+        ],
+        [
+          "Grading Manual",
+          "Checking entries",
+          "Review each entry against the learner's assessment records. Correct misplaced scores before calculating the quarterly average."
+        ]
+      ]
+    },
+    "finder": {
+      "app": "Finder",
+      "window": "GetCko Demo",
+      "elements": [
+        [
+          "button",
+          "back"
+        ],
+        [
+          "button",
+          "Search"
+        ],
+        [
+          "text",
+          "Grading Manual.pdf"
+        ],
+        [
+          "text",
+          "Class Record Q1.csv"
+        ],
+        [
+          "text",
+          "Attendance.xlsx"
+        ],
+        [
+          "text",
+          "Lesson Plan Week 3.docx"
+        ],
+        [
+          "text",
+          "Photos"
+        ]
+      ],
+      "passages": []
+    },
+    "textedit": {
+      "app": "TextEdit",
+      "window": "GetCko letter.rtf",
+      "elements": [
+        [
+          "comboBox",
+          "Font family"
+        ],
+        [
+          "comboBox",
+          "Font size"
+        ],
+        [
+          "checkbox",
+          "Bold"
+        ],
+        [
+          "checkbox",
+          "Italic"
+        ],
+        [
+          "checkbox",
+          "Underline"
+        ],
+        [
+          "radio",
+          "Align center"
+        ],
+        [
+          "comboBox",
+          "Lists bullet and numbering"
+        ],
+        [
+          "comboBox",
+          "Line and paragraph spacing"
+        ],
+        [
+          "button",
+          "Text color"
+        ]
+      ],
+      "passages": []
+    },
+    "none": {
+      "app": null,
+      "window": null,
+      "elements": [],
+      "passages": []
+    }
+  },
+  "questions": [
+    [
+      "class-record",
+      "Where do I put Juan's first quarter grade?"
+    ],
+    [
+      "class-record",
+      "How is the final grade computed?"
+    ],
+    [
+      "class-record",
+      "How do I save this class record?"
+    ],
+    [
+      "class-record",
+      "I typed Ana's grade wrong, how do I fix it?"
+    ],
+    [
+      "class-record",
+      "How do I find Maria Reyes here?"
+    ],
+    [
+      "class-record",
+      "Do I need to round the final grade?"
+    ],
+    [
+      "class-record",
+      "How do I print this?"
+    ],
+    [
+      "class-record",
+      "What should I check before computing the average?"
+    ],
+    [
+      "finder",
+      "Where's the lesson plan for week 3?"
+    ],
+    [
+      "finder",
+      "How do I go back to the previous folder?"
+    ],
+    [
+      "finder",
+      "Where do I search for a file?"
+    ],
+    [
+      "finder",
+      "Where are the photos?"
+    ],
+    [
+      "textedit",
+      "How do I make the text italic?"
+    ],
+    [
+      "textedit",
+      "I want bigger letters, where do I do that?"
+    ],
+    [
+      "textedit",
+      "How do I center the title?"
+    ],
+    [
+      "textedit",
+      "How do I add bullet points?"
+    ],
+    [
+      "textedit",
+      "Where do I change the text color?"
+    ],
+    [
+      "none",
+      "What does quarterly assessment mean?"
+    ],
+    [
+      "none",
+      "Why is the total of the grades divided by four?"
+    ],
+    [
+      "none",
+      "How do I explain to parents that their child passed?"
+    ]
+  ]
+}

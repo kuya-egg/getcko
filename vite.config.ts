@@ -9,10 +9,10 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
 
-  // Two windows: the main app and the Screen Help overlay.
+  // Two windows, two pages: `main` (index.html) and `overlay` (overlay.html).
+  // GC_SHEETS=1 also builds the brand QA sheets (scripts/brand/*.html) for `vite preview`.
   build: {
-    rollupOptions: {
-      // GC_SHEETS=1 also builds the brand QA sheets (scripts/brand/*.html) for `vite preview`.
+    rolldownOptions: {
       input: {
         main: "index.html",
         overlay: "overlay.html",

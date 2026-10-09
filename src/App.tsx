@@ -1,6 +1,13 @@
-// App shell. For now it renders the brand board; real screens replace this later.
-import Showcase from "./brand/Showcase";
+import { MainWindow } from "./app/MainWindow";
+import { SetupProvider } from "./app/setup";
 
-export default function App() {
-  return <Showcase />;
+/** Main window. Screens live in src/screens/*, the shell in src/app/*. */
+function App() {
+  return (
+    <SetupProvider>
+      <MainWindow />
+    </SetupProvider>
+  );
 }
+
+export default App;
