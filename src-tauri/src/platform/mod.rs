@@ -7,6 +7,8 @@
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 use crate::error::{AppError, ErrorKind};
 use crate::model::{MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenSnapshot};
 
@@ -136,17 +138,17 @@ pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]
     return Box::new(macos::MacPlatform::new());
     #[cfg(target_os = "windows")]
-    return Box::new(Unbuilt("Windows"));
+    return Box::new(windows::WindowsPlatform::new());
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     return Box::new(Unbuilt(std::env::consts::OS));
 }
 
 /// Reports screen reading as unavailable; used until an OS implementation lands
 /// and on unsupported OSes.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 struct Unbuilt(&'static str);
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Platform for Unbuilt {
     fn permission(&self, kind: PermissionKind) -> PermissionStatus {
         match kind {

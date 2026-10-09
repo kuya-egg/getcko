@@ -7,7 +7,7 @@ GetCko is a local, offline desktop helper that stays visible while you work: it 
 ### Prerequisites
 
 - **macOS:** Xcode Command Line Tools, Rust, [bun](https://bun.sh/), and CMake (`brew install cmake`).
-- **Windows:** MSVC Build Tools, Rust, bun, CMake, Vulkan SDK, and Git Bash (used by the model-fetch script).
+- **Windows:** MSVC Build Tools, Rust, bun, CMake, Vulkan SDK, LLVM (`LIBCLANG_PATH` = its `bin` folder, for bindgen), and Git Bash (used by the model-fetch script; run `bun run models` with Git Bash's `bash` first on `PATH`, not WSL's). Build llama.cpp with Ninja: set `CMAKE_GENERATOR=Ninja` and put the `ninja.exe` that ships with the Build Tools (`Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja`) on `PATH`. With the default Visual Studio generator, MSBuild runs the steps of llama.cpp's `vulkan-shaders-gen` sub-build in parallel, and the build fails intermittently with "not a CMake build directory (missing CMakeCache.txt)".
 
 From the repository root:
 

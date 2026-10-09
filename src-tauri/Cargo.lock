@@ -1630,6 +1630,8 @@ dependencies = [
  "tracing-subscriber",
  "ts-rs",
  "tts",
+ "windows 0.62.2",
+ "windows-future",
 ]
 
 [[package]]
