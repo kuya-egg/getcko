@@ -9,6 +9,8 @@ Build GetCko’s main React/Tauri experience for setup, local knowledge and edit
 - `src/assets/`, local font assets, Tailwind configuration and styles
 - Main-window Tauri capabilities/config changes, coordinated with overlay engineer
 
+Closing the main window hides it while the app and overlay session bar keep running. Use the agent chip ("Open GetCko") or the macOS Dock icon to reopen the main window.
+
 ## Consumes
 - [IPC commands, events and generated types](../architecture.md#ipc-contract)
 - [Parity and model setup](../architecture.md#cross-platform-parity), [visual tokens](../getcko-design-system.md#2-color-tokens), [components](../getcko-design-system.md#5-components)

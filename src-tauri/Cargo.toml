@@ -28,6 +28,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.40", features = ["bundled", "load_extension"] }
 sha2 = "0.11"
+ureq = { version = "3", features = ["rustls"] }
+hex = "0.4"
+libc = "0.2"
 ts-rs = "12"
 pdf-extract = "0.12"
 # `mtmd`: Gemma 4 E2B's own audio + vision encoder (mmproj) for speech-to-text and

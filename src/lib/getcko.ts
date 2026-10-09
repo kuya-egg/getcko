@@ -20,6 +20,8 @@ import type { TemplateId } from "../bindings/TemplateId";
 import type { TurnEvent } from "../bindings/TurnEvent";
 import type { TurnId } from "../bindings/TurnId";
 import type { Voice } from "../bindings/Voice";
+import type { ModelsStatus } from "../bindings/ModelsStatus";
+import type { ModelProgress } from "../bindings/ModelProgress";
 
 export function isAppError(e: unknown): e is AppError {
   return (
@@ -103,3 +105,16 @@ export const onTurn = (cb: (e: TurnEvent) => void): Promise<UnlistenFn> => liste
 export const onDocument = (cb: (d: Document) => void): Promise<UnlistenFn> => listen<Document>("document", (event) => cb(event.payload));
 /** Fires once when model loading finishes, with the final component readiness. */
 export const onEngine = (cb: (components: ComponentStatus[]) => void): Promise<UnlistenFn> => listen<ComponentStatus[]>("engine", (event) => cb(event.payload));
+/** Read model download status. */
+export const modelsStatus = (): Promise<ModelsStatus> => command("models_status");
+/** Start downloading missing models. */
+export const modelsDownload = (includeOptional: boolean): Promise<null> => command("models_download", { includeOptional });
+/** Cancel the active model download. */
+export const modelsCancel = (): Promise<null> => command("models_cancel");
+/** Restart to load newly downloaded models. */
+export const appRestart = (): Promise<null> => command("app_restart");
+/** Show and focus the main window. */
+export const mainShow = (): Promise<null> => command("main_show");
+/** Subscribe to model download progress events. */
+export const onModels = (cb: (progress: ModelProgress) => void): Promise<UnlistenFn> =>
+  listen<ModelProgress>("models", (event) => cb(event.payload));

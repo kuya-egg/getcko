@@ -1,6 +1,6 @@
 # Models and measured speed
 
-Everything runs on the device; nothing downloads at runtime. `bun run models` fetches and checksums the files once into `src-tauri/models/`, and release builds bundle them.
+Everything runs on-device; model downloads happen once, with consent during onboarding, and never during use. `bun run models` fetches and checksums the manifest-listed files for development and release bundles.
 
 | Role | File | Size | Notes |
 | --- | --- | ---: | --- |

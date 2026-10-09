@@ -23,9 +23,15 @@ export const ONBOARDING_COPY = {
     title: "Getting the models ready.",
     body: "GetcKo loads them each time it opens.",
   },
-  missing: {
-    title: "Some models are missing.",
-    body: "GetcKo can't answer without them. Nothing downloads.",
+  download: {
+    title: "Download the models once.",
+    body: (size: string) => `GetcKo runs on this Mac. It needs about ${size} of models, downloaded once. After that, nothing leaves this Mac and Wi-Fi can stay off.`,
+    optional: (size: string) => `Also download for voice and hard screens (${size})`,
+    insufficient: (needs: string, free: string) => `Not enough space: needs ${needs}, ${free} free.`,
+    download: "Download",
+    cancel: "Cancel",
+    retry: "Try again",
+    restart: "Restart GetcKo",
   },
 
   /** Component row reasons, shown as the row's one red chip ("Missing"). */

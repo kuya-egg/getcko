@@ -13,7 +13,7 @@ import { placeGecko, placePanel } from "./pointer/placement";
 import { SPRITE_COLS, SPRITE_ROWS } from "./pointer/sprite";
 import { coverMonitor, coverPrimaryMonitor, currentWorkArea, showOverlayOnce, useClickThrough } from "./pointer/window";
 import { geckoPose, initialOverlayState, isBestGuess, MAX_TASK_STEPS, nextTaskSteps, reduceOverlay } from "./state/turn";
-import type { GeckoPlacement, HaloVariant, Size, TurnStatus } from "./types";
+import type { GeckoPlacement, Size, TurnStatus } from "./types";
 import { AnswerCard } from "./ui/AnswerCard";
 import { Composer } from "./ui/Composer";
 import { SessionBar } from "./ui/SessionBar";
@@ -171,7 +171,6 @@ export function Overlay() {
     facing: "right",
     scale: GECKO_SCALE,
   };
-  const haloVariant: HaloVariant = target !== null && isBestGuess(target) ? "soft" : "exact";
   const nextSteps = nextTaskSteps(state);
 
   const closeComposerOnBackdrop = (e: PointerEvent<HTMLDivElement>) => {
@@ -180,7 +179,14 @@ export function Overlay() {
 
   return (
     <div className="gc-overlay-root" onPointerDown={closeComposerOnBackdrop}>
-      {targetShown && <Halo rect={target.rect} variant={haloVariant} />}
+      {targetShown && (
+        <Halo
+          key={`${target.rect.x},${target.rect.y},${target.rect.width},${target.rect.height}`}
+          rect={target.rect}
+          bestGuess={isBestGuess(target)}
+          viewport={viewport}
+        />
+      )}
       <Gecko pose={geckoPose(state)} placement={gecko} />
       <div ref={panelRef} className="gc-panel" style={{ position: "absolute", left: panelAt.x, top: panelAt.y }}>
         {state.cardOpen && (

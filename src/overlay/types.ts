@@ -25,8 +25,6 @@ export type TurnStatus =
 
 export type InputMode = "text" | "voice";
 
-/** How the halo is drawn: exact element box, or a softer marker for tier-3 best-guess points. */
-export type HaloVariant = "exact" | "soft";
 
 export interface OverlayState {
   status: TurnStatus;

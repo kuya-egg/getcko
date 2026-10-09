@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref } from "react";
-
+import { mainShow } from "../../lib/getcko";
 function Icon({ children }: { children: ReactNode }) {
   return (
     <svg
@@ -126,10 +126,10 @@ export interface SessionBarProps {
 export function SessionBar(props: SessionBarProps) {
   return (
     <div ref={props.ref} className="gc-session-bar" role="toolbar" aria-label="GetCko session">
-      <span className="gc-agent-chip">
+      <button type="button" className="gc-agent-chip" aria-label="Open GetCko" onClick={() => void mainShow()}>
         <span className="gc-dot" aria-hidden="true" />
         {props.agentName ?? "GetCko"}
-      </span>
+      </button>
       <MicButton listening={props.listening} onMicDown={props.onMicDown} onMicUp={props.onMicUp} />
       <ScreenHelpToggle on={props.screenHelp} onToggle={props.onToggleScreenHelp} />
       <button

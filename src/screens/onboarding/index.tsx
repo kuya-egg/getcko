@@ -1,7 +1,5 @@
 // Onboarding (first run, full window) and the setup status list for Settings.
-// Reads setupStatus() through useSetup(); asks for permissions with permissionRequest(kind); leaves
-// the "loading models" state when the 'engine' event lands (useSetup listens, nothing polls here).
-// Never triggers a download: missing models are listed as missing.
+// Reads setup and model download state through the browser/Tauri command contract.
 import { useEffect, useMemo, useReducer, useState, type ReactNode } from "react";
 import type { PermissionKind } from "../../bindings/PermissionKind";
 import { GetCkoSprite, MOMENT_POSE } from "../../brand";
@@ -13,6 +11,9 @@ import { errorCopy } from "../../app/errors";
 import { PLATFORM } from "../../app/platform";
 import { permissionOf, useSetup } from "../../app/setup";
 import { useDelayed } from "../../app/useResource";
+import type { ModelProgress } from "../../bindings/ModelProgress";
+import type { ModelsStatus } from "../../bindings/ModelsStatus";
+import { appRestart, modelsCancel, modelsDownload, modelsStatus, onModels } from "../../lib/getcko";
 import { ComponentList } from "./ComponentList";
 import { ONBOARDING_COPY } from "./copy";
 import {
@@ -24,6 +25,8 @@ import {
   gatedPermissions,
   offFeatures,
   readiness,
+  formatModelSize,
+  modelDownloadRows,
   stepsFor,
   type AskState,
   type StepId,
@@ -105,6 +108,33 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const setup = useSetup();
   const { status } = setup;
   const [flow, dispatch] = useReducer(flowReducer, INITIAL_FLOW);
+  const [modelStatus, setModelStatus] = useState<ModelsStatus>();
+  const [modelEvents, setModelEvents] = useState<Record<string, ModelProgress>>({});
+  const [includeOptional, setIncludeOptional] = useState(true);
+  const [downloadError, setDownloadError] = useState<string>();
+  const [downloadDone, setDownloadDone] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    void onModels((event) => {
+      if (!alive) return;
+      if (event.file === "") {
+        if (event.stage === "done") {
+          setDownloadDone(true);
+          setModelStatus((current) => current ? { ...current, downloading: false } : current);
+        } else if (event.stage === "failed") {
+          setDownloadError(event.error ?? "The download failed.");
+          setModelStatus((current) => current ? { ...current, downloading: false } : current);
+        } else if (event.stage === "cancelled") setModelStatus((current) => current ? { ...current, downloading: false } : current);
+        return;
+      }
+      setModelEvents((current) => ({ ...current, [event.file]: event }));
+      if (event.stage === "failed") setDownloadError(event.error ?? "The download failed.");
+    }).then((stop) => { if (alive) unlisten = stop; else stop(); });
+    void modelsStatus().then((value) => { if (alive) setModelStatus(value); });
+    return () => { alive = false; unlisten?.(); };
+  }, []);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(undefined);
   const steps = useMemo(() => stepsFor(status, PLATFORM), [status]);
@@ -197,7 +227,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const frame = { stepKey: step, dir: flow.dir, step: index + 1, total: steps.length, back: backButton };
 
   // ---- Permission steps ---------------------------------------------------------------------
-  if (step !== "ready") {
+  if (step !== "ready" && step !== "models") {
     const kind = step;
     const p = PERMISSION[kind];
     const current = permissionOf(status, kind);
@@ -246,6 +276,79 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       />
     );
   }
+  if (step === "models") {
+    const files = modelStatus?.files ?? [];
+    const rows = modelDownloadRows(files);
+    const missingRequired = files.filter((file) => file.required && !file.present).reduce((sum, file) => sum + file.bytes, 0);
+    const missingOptional = files.filter((file) => !file.required && !file.present).reduce((sum, file) => sum + file.bytes, 0);
+    const optionalBytes = missingOptional;
+    const totalBytes = missingRequired + (includeOptional ? optionalBytes : 0);
+    const running = modelStatus?.downloading === true && !downloadDone;
+    const insufficient = modelStatus?.freeBytes !== null && modelStatus?.freeBytes !== undefined && modelStatus.freeBytes < totalBytes;
+    const downloaded = Object.values(modelEvents).reduce((sum, event) => sum + Math.min(event.received, event.total), 0);
+    const size = formatModelSize(totalBytes);
+    const pct = totalBytes > 0 ? Math.min(100, Math.floor((downloaded / totalBytes) * 100)) : 0;
+    const downloadAction = async () => {
+      setDownloadError(undefined);
+      setModelEvents({});
+      setDownloadDone(false);
+      try {
+        await modelsDownload(includeOptional);
+        setModelStatus((current) => current ? { ...current, downloading: true } : current);
+      } catch (error) {
+        setDownloadError(error instanceof Error ? error.message : String(error));
+      }
+    };
+    return (
+      <StepFrame
+        {...frame}
+        stepLabel={T.settings.models}
+        title={ONBOARDING_COPY.download.title}
+        body={modelStatus ? ONBOARDING_COPY.download.body(size) : "Checking model files and available space."}
+        notice={insufficient ? <Notice title="Not enough space">{ONBOARDING_COPY.download.insufficient(size, formatModelSize(modelStatus.freeBytes ?? 0))}</Notice> : downloadError ? <Notice title="Download failed">{downloadError}</Notice> : failureNotice}
+        moment={running ? "processing" : downloadDone ? "ready" : "offline"}
+        grounded
+        visual={
+          <StageCard title={T.settings.models}>
+            <div className="flex flex-col gap-3">
+              <p className="pt-1 text-caption text-text-3">Required</p>
+              {rows.filter((row) => row.required).map((row) => {
+                const received = row.files.reduce((sum, file) => {
+                  const progress = modelEvents[file.file];
+                  return sum + (file.present ? file.bytes : Math.min(progress?.received ?? 0, progress?.total ?? 0));
+                }, 0);
+                const ready = received >= row.bytes;
+                const failed = row.files.some((file) => modelEvents[file.file]?.stage === "failed");
+                const state = failed ? "Failed" : ready ? "Ready" : received > 0 ? `${Math.floor((received / Math.max(1, row.bytes)) * 100)}%` : "Waiting";
+                return <div key={row.key} className="flex items-center justify-between gap-3 text-body"><span>{row.name} · {formatModelSize(row.bytes)}</span><StatusChip status={failed ? "failed" : ready ? "ready" : "processing"}>{state}</StatusChip></div>;
+              })}
+              <label className="flex items-center gap-2 border-t border-border pt-3 text-caption">
+                <input type="checkbox" checked={includeOptional} onChange={(event) => setIncludeOptional(event.target.checked)} disabled={running} />
+                {ONBOARDING_COPY.download.optional(formatModelSize(optionalBytes))}
+              </label>
+              {rows.filter((row) => !row.required).map((row) => {
+                const received = row.files.reduce((sum, file) => {
+                  const progress = modelEvents[file.file];
+                  return sum + (file.present ? file.bytes : Math.min(progress?.received ?? 0, progress?.total ?? 0));
+                }, 0);
+                const ready = received >= row.bytes;
+                const failed = row.files.some((file) => modelEvents[file.file]?.stage === "failed");
+                const state = failed ? "Failed" : ready ? "Ready" : received > 0 ? `${Math.floor((received / Math.max(1, row.bytes)) * 100)}%` : "Waiting";
+                return <div key={row.key} className="flex items-center justify-between gap-3 text-body"><span>{row.name} · {formatModelSize(row.bytes)}</span><StatusChip status={failed ? "failed" : ready ? "ready" : "processing"}>{state}</StatusChip></div>;
+              })}
+              {running && <div role="progressbar" aria-label="Model download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2 overflow-hidden rounded-pill bg-border"><div className="h-full bg-accent" style={{ width: `${pct}%` }} /></div>}
+            </div>
+          </StageCard>
+        }
+        actions={
+          downloadDone ? <Button size="lg" onClick={() => void appRestart()}>{ONBOARDING_COPY.download.restart}</Button> :
+          running ? <Button variant="ghost" size="lg" onClick={() => void modelsCancel()}>{ONBOARDING_COPY.download.cancel}</Button> :
+          <Button size="lg" disabled={!modelStatus || insufficient || busy} onClick={() => void downloadAction()}>{downloadError ? ONBOARDING_COPY.download.retry : ONBOARDING_COPY.download.download}</Button>
+        }
+      />
+    );
+  }
+
 
   // ---- Ready step: models, then the shortcut ---------------------------------------------------
   const models = readiness(status);
@@ -292,7 +395,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
   // The headline says it once; the list carries one chip per model (no extra status line).
   const loadingModels = models === "loading";
-  const c = loadingModels ? ONBOARDING_COPY.loading : ONBOARDING_COPY.missing;
+  const c = ONBOARDING_COPY.loading;
   return (
     <StepFrame
       {...frame}

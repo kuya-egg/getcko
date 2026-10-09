@@ -25,6 +25,7 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 The Windows element walk must call `platform::drop_control_captions` on its candidates before ranking and capping (macOS does in `snapshot`; MODELS.md finding 45). The look-alike tie-break is shared pipeline code.
 
 Speech-to-text is shared through whisper.cpp small.en in the `getcko-whisper` helper; the model choice is settled. Windows must run `scripts/build-whisper.sh` on Windows to produce `src-tauri/binaries/getcko-whisper-x86_64-pc-windows-msvc`. Choose a whisper-rs GPU feature (Vulkan or CPU; CPU works). User-facing speech and text are English only. The T2 dependency in task 3 is microphone capture (`cpal`).
+- The model downloader is shared Rust code (`models` module); Windows should use the same manifest, commands, and app-data destination, not add a Windows-specific downloader.
 3. Implement microphone capture with `cpal`: default input device, resample to 16 kHz mono `f32` in [-1,1], `start`/`stop` per `Microphone` trait. This cross-platform code must build and work on macOS too; coordinate macOS build/API with macOS engineer. Acceptance: PTT captured 5-second English input transcribes in ≤1.5 s with Wi-Fi off (T2; shared whisper.cpp transcriber). Commands: `ptt_start`, `ask`.
    Windows build must compile `llama-cpp-2` with `mtmd` enabled; this feature is already in `Cargo.toml`.
 

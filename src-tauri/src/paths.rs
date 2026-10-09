@@ -30,22 +30,36 @@ pub fn vector_extension(app: &tauri::AppHandle) -> AppResult<PathBuf> {
     Ok(bundled)
 }
 
-pub fn models_dir(app: &tauri::AppHandle) -> PathBuf {
+pub fn download_dir(app: &tauri::AppHandle) -> AppResult<PathBuf> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::new(crate::error::ErrorKind::Io, e.to_string()))?
+        .join("models");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+pub fn models_dir(app: &tauri::AppHandle) -> AppResult<PathBuf> {
     if let Some(path) = std::env::var_os("GETCKO_MODELS_DIR") {
-        return PathBuf::from(path);
+        return Ok(PathBuf::from(path));
     }
-    let resource = app.path().resource_dir().unwrap_or_default().join("models");
+    let resource = app
+        .path()
+        .resource_dir()
+        .map_err(|e| AppError::new(crate::error::ErrorKind::Io, e.to_string()))?
+        .join("models");
     if resource.join(CHAT_MODEL_FILE).is_file() {
-        return resource;
+        return Ok(resource);
     }
     #[cfg(debug_assertions)]
     {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models")
+        let development = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+        if development.join(CHAT_MODEL_FILE).is_file() {
+            return Ok(development);
+        }
     }
-    #[cfg(not(debug_assertions))]
-    {
-        resource
-    }
+    download_dir(app)
 }
 
 pub fn database(app: &tauri::AppHandle) -> AppResult<PathBuf> {

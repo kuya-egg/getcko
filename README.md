@@ -17,7 +17,7 @@ bun run models
 bun run tauri dev
 ```
 
-`bun run models` downloads and SHA-256 verifies Gemma 4 E2B, its vision projector, the Qwen3-VL-2B tier-3 grounder and projector, bge-small-en-v1.5 embeddings, and Whisper small.en into `src-tauri/models/` (about 5.2 GB total). To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
+`bun run models` downloads and SHA-256 verifies the manifest-listed files into `src-tauri/models/` for development and release bundles. In normal use, required models download once with consent during onboarding; optional speech and grounding models can also be selected then. The app does not fetch models during use. `GETCKO_MODELS_DIR` overrides the model directory; otherwise bundled models take precedence and downloads are stored in app data.
 
 Build a release with `bun run tauri:build`; this bundles about 5.2 GB of models.
 
