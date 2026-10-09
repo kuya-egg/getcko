@@ -23,6 +23,9 @@ pub const EVENT_DOCUMENT: &str = "document";
 /// Event channel carrying the final `Vec<ComponentStatus>` once models finish loading,
 /// so onboarding can leave its "loading models" state without polling.
 pub const EVENT_ENGINE: &str = "engine";
+/// Event channel carrying the active [`model::Agent`] (`null` when none) whenever an
+/// agent is created, edited, deleted or made active.
+pub const EVENT_AGENT: &str = "agent";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -62,7 +65,7 @@ pub fn run() {
             let store = Arc::new(store::Store::open(&db, &vector, engine::EMBEDDING_DIM, engine::EMBEDDING_MODEL_ID).map_err(Box::<dyn std::error::Error>::from)?);
             match store.vector_version() { Ok(version) => tracing::info!(%version, "sqlite-vector loaded"), Err(error) => tracing::warn!("sqlite-vector version unavailable: {error}") }
             let engine = Arc::new(OnceLock::new());
-            let state = Arc::new(pipeline::AppState { store, engine: Arc::clone(&engine), platform: Arc::from(platform::current()), turns: Arc::new(pipeline::TurnControl::new()), prepared: std::sync::Mutex::new(None) });
+            let state = Arc::new(pipeline::AppState { store, engine: Arc::clone(&engine), platform: Arc::from(platform::current()), turns: Arc::new(pipeline::TurnControl::new()), prepared: std::sync::Mutex::new(None), guide: std::sync::Mutex::new(None) });
             let models = paths::models_dir(app.handle()).map_err(Box::<dyn std::error::Error>::from)?;
             let handle = app.handle().clone();
             let reembed_store = Arc::clone(&state.store);

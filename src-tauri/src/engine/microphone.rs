@@ -77,6 +77,9 @@ struct Recording {
     _stream: cpal::Stream,
     samples: Arc<Mutex<Vec<f32>>>,
     rate: u32,
+    /// When the stream was asked to start: the audio captured falls short of the time
+    /// held by the device's start-up delay.
+    started: std::time::Instant,
 }
 
 fn run(commands: &Receiver<Command>) {
@@ -95,6 +98,7 @@ fn run(commands: &Receiver<Command>) {
                         _stream,
                         samples,
                         rate,
+                        started,
                     }) => {
                         drop(_stream);
                         let mono = samples
@@ -104,6 +108,7 @@ fn run(commands: &Receiver<Command>) {
                         tracing::debug!(
                             device_rate = rate,
                             seconds = mono.len() as f64 / f64::from(rate.max(1)),
+                            held_seconds = started.elapsed().as_secs_f64(),
                             "recording stopped"
                         );
                         Ok(resample(&mono, rate, TARGET_RATE))
@@ -117,6 +122,7 @@ fn run(commands: &Receiver<Command>) {
 }
 
 fn open() -> EngineResult<Recording> {
+    let started = std::time::Instant::now();
     let device = cpal::default_host()
         .default_input_device()
         .ok_or_else(|| EngineError::Runtime("no microphone found".into()))?;
@@ -170,6 +176,7 @@ fn open() -> EngineResult<Recording> {
         _stream: stream,
         samples,
         rate,
+        started,
     })
 }
 

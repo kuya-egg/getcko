@@ -4,7 +4,7 @@ import type { AskInput } from "../bindings/AskInput";
 import type { TaskStep } from "../bindings/TaskStep";
 import type { MonitorFrame } from "../bindings/MonitorFrame";
 import type { Rect } from "../bindings/Rect";
-import { agentActive, ask, onTurn, pttStart, stop } from "../lib/getcko";
+import { agentActive, ask, onAgent, onTurn, pttStart, stop } from "../lib/getcko";
 import { registerAskHotkey, setStopKeyActive } from "./input/hotkeys";
 import { detectPlatform } from "./input/platform";
 import { Gecko } from "./pointer/Gecko";
@@ -153,6 +153,25 @@ export function Overlay() {
     return () => observer.disconnect();
   }, []);
 
+  // The bar and the ask box are clamped and anchored by their current size: read once
+  // per render, an expanded bar kept its compact width and ran off the screen edge.
+  const [barSize, setBarSize] = useState<Size>({ width: 280, height: 64 });
+  const [composerSize, setComposerSize] = useState<Size>({ width: 480, height: 60 });
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setBarSize({ width: el.offsetWidth, height: el.offsetHeight }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [barVisible]);
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setComposerSize({ width: el.offsetWidth, height: el.offsetHeight }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [state.composerOpen]);
+
   // Move to the target's monitor. Never react to the core's capture hide/show.
   useEffect(() => {
     if (!target) return;
@@ -164,22 +183,25 @@ export function Overlay() {
       .catch((e: unknown) => console.error("overlay could not cover monitor", e));
   }, [target]);
 
-  // Re-read the active agent on every local ask; the main window can switch it at any time.
+  // The bar names the active agent; the main window can switch it at any time.
   useEffect(() => {
-    if (!state.awaiting) return;
     void agentActive()
       .then((agent) => setAgentName(agent?.name ?? null))
       .catch(() => setAgentName(null));
-  }, [state.awaiting]);
+    const unlisten = onAgent((agent) => setAgentName(agent?.name ?? null));
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
 
-  /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5). */
-  const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[]) => {
+  /** `help` reads the screen for this turn; `task` holds earlier guided-task steps (S5); `next` asks for the plan's next step. */
+  const startAsk = useCallback((input: AskInput, question: string | null, help: boolean, task: TaskStep[], next = false) => {
     setBarVisible(true);
     localStorage.setItem("getcko.barHidden", "false");
     const run = pendingAsk.current.then(async () => {
       dispatch({ type: "asked", input: input.type, screenHelp: help, question, task });
       try {
-        const turnId = await ask({ input, screenHelp: help, agentId: null, task });
+        const turnId = await ask({ input, screenHelp: help, agentId: null, task, ...(next ? { nextStep: true } : {}) });
         dispatch({ type: "askResolved", turnId });
       } catch (e: unknown) {
         dispatch({ type: "askRejected", message: e instanceof Error ? e.message : String(e) });
@@ -252,10 +274,10 @@ export function Overlay() {
   // placePanel works in work-area coordinates; shift into it and back out.
   const area: Rect = workArea ?? { x: 0, y: 0, ...viewport };
   const toArea = (r: Rect): Rect => ({ ...r, x: r.x - area.x, y: r.y - area.y });
-  const barBounds = { width: barRef.current?.offsetWidth ?? 280, height: barRef.current?.offsetHeight ?? 64 };
+  const barBounds = barSize;
   const barPoint = positionFromFractions(barPosition, viewport, barBounds);
-  // The ask box opens attached to the bar (480 px wide by CSS until measured).
-  const composerBounds = { width: composerRef.current?.offsetWidth ?? 480, height: composerRef.current?.offsetHeight ?? 60 };
+  // The ask box opens attached to the bar.
+  const composerBounds = composerSize;
   const composerAt = composerBesideBar({ ...barPoint, ...barBounds }, composerBounds, viewport);
   // The answer card opens attached to the widget too (above the ask box when it is open,
   // else the bar), unless that would cover the target or the gecko at it; then it takes
@@ -332,9 +354,12 @@ export function Overlay() {
             target={state.target}
             onStop={handleStop}
             onDismiss={() => dispatch({ type: "dismiss" })}
-            step={state.task.length > 0 ? state.task.length + 1 : null}
-            taskEnded={state.status === "finished" && state.task.length + 1 >= MAX_TASK_STEPS}
-            onNext={nextSteps ? () => startAsk({ type: "text", text: NEXT_STEP }, NEXT_STEP, true, nextSteps) : undefined}
+            step={state.planStep ?? (state.task.length > 0 ? { number: state.task.length + 1, total: null } : null)}
+            taskEnded={
+              state.status === "finished" &&
+              (state.planStep !== null ? state.planStep.number >= state.planStep.total : state.task.length + 1 >= MAX_TASK_STEPS)
+            }
+            onNext={nextSteps ? () => startAsk({ type: "text", text: NEXT_STEP }, NEXT_STEP, true, nextSteps, true) : undefined}
           />
         )}
         <div style={{ position: "fixed", left: composerAt.x, top: composerAt.y }}>
