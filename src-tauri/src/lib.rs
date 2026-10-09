@@ -39,6 +39,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let vector = paths::vector_extension(app.handle()).map_err(Box::<dyn std::error::Error>::from)?;
             let db = paths::database(app.handle()).map_err(Box::<dyn std::error::Error>::from)?;

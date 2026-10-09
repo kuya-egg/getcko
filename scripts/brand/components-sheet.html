@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GetcKo components</title>
+    <script>
+      // ?theme=dark|light before first paint; ?dialog opens the confirm dialog.
+      document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") || "light";
+    </script>
+  </head>
+  <body>
+    <!-- Component QA sheet (v0.3 components). Serve with `npx vite`, open /scripts/brand/components-sheet.html.
+         Screenshots: docs/brand/components-light.png, docs/brand/components-dark.png. -->
+    <div id="root"></div>
+    <script type="module" src="./components-sheet.tsx"></script>
+  </body>
+</html>
