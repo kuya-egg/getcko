@@ -4,9 +4,7 @@
 //
 // Two layers:
 //   T      UI chrome. English only (design system §11: "UI chrome stays English by default").
-//   say    GetcKo's own lines (status lines, answers' fixed phrases, empty and error
-//          messages). These follow the agent language, so they exist in `en` and `tl`
-//          (Taglish). `tl` is typed against `en`, so a missing or extra key is a type error.
+//   say    GetcKo's own lines in English.
 //
 // Rules baked in: sentence case, verbs on buttons, no emoji, no exclamation marks
 // (except `say.*.onboardingDone`), numbers as "0.9 s", location as "on this Mac".
@@ -15,8 +13,6 @@
 import type { Moment } from "./mascot/moments";
 
 export type Platform = "mac" | "win";
-/** Agent answer language as stored on the agent (PRD A5). */
-export type AgentLanguage = "English" | "Filipino" | "Taglish";
 /** Status chip states (design system §8). */
 export type Status = "processing" | "ready" | "failed" | "offline";
 /** Knowledge-base file types (PRD R1, R6). */
@@ -224,7 +220,6 @@ export const T = {
     baseRulesLabel: "Include GetcKo's base rules",
     baseRulesHelp: "Turn off to use only your instructions.",
     knowledgeBasesHelp: "Attach up to 5. Answers come only from these.",
-    languageLabel: "Answer language",
     lengthLabel: "Answer length",
     lengthShort: "Short",
     lengthMedium: "Medium",
@@ -233,7 +228,6 @@ export const T = {
     speedLabel: "Speaking speed",
     answerOutLoudLabel: "Answer out loud",
     answerOutLoudHelp: "GetcKo speaks each answer. Esc stops it.",
-    noFilipinoVoice: "No Filipino voice on this Mac. GetcKo uses an English one.",
     tryNotSaved: "This test chat is not saved.",
     newAgentHint: "Start from instructions and your own documents.",
     maxKnowledgeBases: "An agent can use up to 5 knowledge bases.",
@@ -243,7 +237,6 @@ export const T = {
     officeHelper: { name: "Office Helper", line: "Learn new office software, step by step." },
     teacher: { name: "Teacher", line: "DepEd forms and grade sheets." },
     studyBuddy: { name: "Study Buddy", line: "Answers from your own notes." },
-    taglishExplainer: { name: "Taglish Explainer", line: "Explains in Taglish, like an officemate." },
   },
 
   knowledgeBase: {
@@ -353,12 +346,6 @@ export const T = {
     added: (n: number) => `${fmtCount(n, "document")} added`,
   },
 
-  /** Answer languages (agent setting). Also the LanguagePicker options. */
-  languages: {
-    English: "English",
-    Filipino: "Filipino",
-    Taglish: "Taglish",
-  } as const satisfies Record<AgentLanguage, string>,
 
   /** Proof line parts: "Wi-Fi off · 0 bytes sent · on this Mac". Numbers only from MEASURED. */
   proof: {
@@ -399,7 +386,7 @@ export const T = {
     off: "Off",
     waiting: "Waiting for macOS…",
     checkAgain: "Check again",
-    /** Last step's primary button. The finish headline is GetcKo's line: linesFor(lang).onboardingDone. */
+    /** Last step's primary button. The finish headline is GetcKo's line: say.onboardingDone. */
     finish: "Finish",
     nothingLeaves: "Nothing leaves this Mac.",
   },
@@ -462,7 +449,6 @@ export const T = {
     { word: "On this Mac", line: "Everything runs on this Mac." },
     { word: "Honest", line: "Measured numbers, real sources, or I don't know." },
     { word: "Patient", line: "A calm officemate for people new to computers." },
-    { word: "Pinoy", line: "Taglish is first-class." },
     { word: "Pixel-plain", line: "Paper, ink, one green creature, one yellow ring." },
   ],
 
@@ -495,7 +481,7 @@ export const T = {
       body: "Templates on top, one editor below. GetcKo shows up once, in Try it, facing its own answer.",
       roleOfficeHelper: "Helps the records section find the right form, field and step.",
       sampleInstructions:
-        "Explain the records section steps. Answer in Taglish. Always say which document you used, and point at the exact button.",
+        "Explain the records section steps. Always say which document you used, and point at the exact button.",
       sourcesAlwaysOn: "Show the source of every answer",
       sourcesAlwaysOnHelp: "Always on. GetcKo never answers without a source.",
     },
@@ -557,8 +543,8 @@ export const T = {
   },
 } as const;
 
-/** GetcKo's own lines in English. The shape every other language must match. */
-const sayEn = {
+
+export const say = {
   listening: "Listening...",
   thinking: "Looking at your screen...",
   searching: "Checking your documents...",
@@ -575,36 +561,7 @@ const sayEn = {
   close: "Now you get it.",
 };
 
-type Lines = typeof sayEn;
-/** Same keys as English; functions keep their parameters. Missing keys fail to compile. */
-type LinesLike = { [K in keyof Lines]: Lines[K] extends (...a: infer A) => string ? (...a: A) => string : string };
 
-const sayTl: LinesLike = {
-  listening: "Nakikinig ako...",
-  thinking: "Tinitingnan ko ang screen mo...",
-  searching: "Hinahanap ko sa mga document mo...",
-  dontKnow: "Hindi ko alam. Wala ito sa mga document mo.",
-  bestGuess: "Best guess ito mula sa screenshot.",
-  emptyDocuments: "Wala pang document. I-add mo ang office manual ninyo.",
-  scannedPdf: "Hindi ko mabasa ang PDF na ito. Mukhang scanned image siya.",
-  noTarget: "Hindi ko makita iyan sa screen na ito.",
-  nextStep: (what) => `Sunod, ${what}.`,
-  pointClick: (element, where) => `I-click mo ang ${element} sa ${where}.`,
-  offlineProof: "Gumagana kahit naka-off ang Wi-Fi.",
-  permission: "Isang beses lang magtatanong ang macOS. Walang lalabas sa Mac na ito.",
-  onboardingDone: "Ready ka na!",
-  close: "Gets mo na.",
-};
-
-export const say: { en: LinesLike; tl: LinesLike } = { en: sayEn, tl: sayTl };
-
-/**
- * GetcKo's lines for an agent language. Filipino uses the Taglish lines until a
- * Filipino set is written (UI nouns like "document" and "screen" stay English either way).
- */
-export function linesFor(language: AgentLanguage): LinesLike {
-  return language === "English" ? say.en : say.tl;
-}
 
 /** Short status label for a chip. */
 export const statusLabel = (s: Status): string => T.status[s];

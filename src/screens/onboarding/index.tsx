@@ -262,7 +262,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           <span className="inline-flex items-center gap-2 font-semibold text-accent-text">
             <Icon.ready {...ICON_PROPS} />
             {/* "You're ready." only when nothing is off; otherwise just the fact about the models. */}
-            {off.length === 0 ? say.en.onboardingDone : T.settings.modelsReady}
+            {off.length === 0 ? say.onboardingDone : T.settings.modelsReady}
           </span>
         }
         notice={

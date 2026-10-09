@@ -1,6 +1,6 @@
 // GetCko first-glance hero: "Ask out loud. GetCko points." beside a mock grade sheet where a voxel
 // GetCko (three.js, the real sprite map extruded) hops to the right cell, rings it, answers in
-// Taglish and cites the manual, offline. Choreography: ./timeline.ts (shared with the demo video).
+// The sample exchange cites the manual and runs offline. Choreography: ./timeline.ts (shared with the demo video).
 // Spec: docs/brand/hero.md.
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";

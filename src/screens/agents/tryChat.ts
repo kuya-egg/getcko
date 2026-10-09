@@ -147,7 +147,7 @@ export function tryReducer(s: TryState, a: TryAction): TryState {
 }
 
 const squash = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, " ").trim();
-const DONT_KNOW = new Set([squash(say.en.dontKnow), squash(say.tl.dontKnow)]);
+const DONT_KNOW = new Set([squash(say.dontKnow)]);
 
 /** GetcKo said its "I don't know" line (the only no-answer signal a finished turn carries). */
 export const saidDontKnow = (t: TryTurn): boolean => DONT_KNOW.has(squash(t.sentences.join(" ")));

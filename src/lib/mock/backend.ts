@@ -193,7 +193,7 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
     const ready = docs.filter((d) => agent.knowledgeBaseIds.includes(d.knowledgeBaseId) && d.status === "ready");
     const c = canned(agent.templateId);
     const grounded = ready.length > 0;
-    const sentences = grounded ? c.sentences : [say.en.dontKnow];
+    const sentences = grounded ? c.sentences : [say.dontKnow];
     const citations: Citation[] = grounded
       ? [{ marker: 1, passageId: 1000 + ready[0].id, documentId: ready[0].id, documentName: ready[0].fileName, location: ready[0].pageCount ? "p. 4" : "Overview" }]
       : [];
