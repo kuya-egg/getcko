@@ -36,6 +36,11 @@ export interface OverlayState {
    * Set to `turnId + 1` on a new local ask, because `turn` events can arrive before `ask()` resolves.
    */
   minTurnId: TurnId;
+  /**
+   * A local ask is in flight and its turn id is not known yet. Only then may an unseen turn id be
+   * adopted; other ids are turns started elsewhere (e.g. the main window's "Try this agent").
+   */
+  awaiting: boolean;
   screenHelp: boolean;
   question: string | null;
   /** `undefined` until the turn's single `target` event; `null` = answer has no on-screen target. */
