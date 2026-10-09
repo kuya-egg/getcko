@@ -85,7 +85,7 @@ Contract additions (one PR containing both OS implementations, per the parity ru
 | Piece | Addition | Owner |
 |---|---|---|
 | `Platform` trait | `fn capture(&self) -> Result<ScreenCapture, PlatformError>`: RGBA8 pixels of the monitor containing the focused window, `width`, `height`, and that monitor's `MonitorFrame` (desktop physical px). `PermissionDenied(ScreenRecording)` when not granted. | macOS engineer (`macos.rs`, ScreenCaptureKit), Windows engineer (`windows.rs`, Windows.Graphics.Capture or DXGI duplication) |
-| Engine | llama-cpp-2 `mtmd` feature; `ChatRequest.image: Option<&EncodedImage>`; `mmproj-gemma-4-E2B-it-Q8_0.gguf` (557 MB) added to `scripts/fetch-models.sh` and `tauri.models.conf.json` | macOS engineer |
+| Engine | llama-cpp-2 `mtmd` feature; `ChatRequest.image: Option<&EncodedImage>`; load `mmproj-gemma-4-E2B-it-Q8_0.gguf` (already downloaded by `bun run models` and bundled by `tauri.models.conf.json`) | macOS engineer |
 | Core | Tier choice, resize to the model's image size, numbered-box drawing (set-of-mark), coordinate mapping image px → monitor → `PointerTarget`; parser accepts `TARGET: x,y` only in tier 3 | macOS engineer |
 | IPC types | `PointerTarget.elementId` becomes `string \| null` (null for tier-3 points); `Answer.screenMode: ScreenMode`; `Latency.captureMs` | macOS engineer; consumed by frontend |
 
@@ -101,7 +101,7 @@ macOS and Windows expose identical commands and behaviour. OS code lives only in
 |---|---:|---|
 | `gemma-4-E2B-it-Q4_0.gguf` | 2.8 GB | Chat, target selection; vision fallback when enabled |
 | `embeddinggemma-300M-Q8_0.gguf` | 0.33 GB | Local embeddings, 256 dimensions |
-| `mmproj-gemma-4-E2B-it-Q8_0.gguf` (planned, tiers 2–3) | 0.56 GB | Gemma 4 E2B vision projector for screenshots |
+| `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 0.56 GB | Gemma 4 E2B vision projector for screenshots (tiers 2–3); downloaded and bundled now, loaded once vision lands |
 
 `bun run models` fetches and SHA-256 verifies models using `scripts/fetch-models.sh`. Development uses `src-tauri/models/`; release bundles models via `bun run tauri:build` and `src-tauri/tauri.models.conf.json`. `GETCKO_MODELS_DIR` overrides model location. Nothing downloads at runtime; the only network use is explicit model setup.
 

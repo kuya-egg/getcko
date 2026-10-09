@@ -26,7 +26,7 @@ Deliver macOS screen accessibility and platform setup while keeping the Rust eng
 ### P1 — 1–4 AM
 5. Build screen tiers 2 and 3 ([three tiers](../architecture.md#screen-understanding-three-tiers), S4) in one PR with the Windows engineer's `capture`:
    - `Platform::capture` in `macos.rs` with ScreenCaptureKit (monitor containing the focused window, RGBA8 + `MonitorFrame`); `PermissionDenied(ScreenRecording)` when not granted.
-   - Engine vision: llama-cpp-2 `mtmd`, `ChatRequest.image`, mmproj file in `fetch-models.sh` + `tauri.models.conf.json` with SHA-256.
+   - Engine vision: llama-cpp-2 `mtmd`, `ChatRequest.image`; load `src-tauri/models/mmproj-gemma-4-E2B-it-Q8_0.gguf` (already fetched with SHA-256 by `bun run models` and bundled by `tauri.models.conf.json`). Rerun `bun run models` to get it.
    - Core: tier choice in `pipeline.rs`, hide `overlay` → capture → show, resize, numbered-box drawing with element IDs, `TARGET: x,y` parsing for tier 3 only, image px → `PointerTarget` with `elementId: null` and `Confidence::BestGuess`; add `Answer.screenMode`, `Latency.captureMs`; `GETCKO_SCREEN_MODE` override for benchmarks.
    - Acceptance: tier 2 still answers with an element ID; tier 3 is labelled best guess; Screen Recording denied → tier 1 only, empty snapshot → targetless answer; regenerate `src/bindings` and tell both frontend engineers about the changed types.
 6. Add benchmark script and `docs/MODELS.md` with PRD latency table values measured over 10 runs on the demo Mac; include machine/model/date and method. Acceptance: median spoken-response ≤3 s target is reported honestly, with all latency figures reproducible (BR-24); do not publish estimates as measurements.

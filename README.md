@@ -17,9 +17,9 @@ bun run models
 bun run tauri dev
 ```
 
-`bun run models` downloads and SHA-256 verifies the models into `src-tauri/models/`. The two model files total about 3.2 GB. To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
+`bun run models` downloads and SHA-256 verifies the models into `src-tauri/models/`: Gemma 4 E2B (chat), its vision projector (screenshots, screen tiers 2–3) and EmbeddingGemma (search), about 3.7 GB in total. To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
 
-Build a release with `bun run tauri:build`; this uses the release configuration that bundles the approximately 3.2 GB models.
+Build a release with `bun run tauri:build`; this uses the release configuration that bundles the approximately 3.7 GB of models.
 
 ## Tests
 
