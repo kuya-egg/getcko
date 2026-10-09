@@ -1,0 +1,8 @@
+/* The overlay window is transparent: only the gecko, halo and panels draw. */
+html,
+body {
+  background: transparent !important;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+}

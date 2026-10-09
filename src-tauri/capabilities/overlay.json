@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Screen Help overlay window and the dev-only practice sheet: events, click-through toggle, focus, hide, opening the practice window",
+  "windows": ["overlay", "demo"],
+  "platforms": ["macOS", "windows", "linux"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-set-focus",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-unminimize",
+    "core:webview:allow-create-webview-window"
+  ]
+}
