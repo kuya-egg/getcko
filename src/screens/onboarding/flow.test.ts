@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SetupStatus } from "../../bindings/SetupStatus";
 import type { PermissionStatus } from "../../bindings/PermissionStatus";
+import type { ModelFile } from "../../bindings/ModelFile";
 import * as seed from "../../lib/mock/seed";
 import {
   askState,
@@ -15,6 +16,8 @@ import {
   offFeatures,
   readiness,
   stepsFor,
+  formatModelSize,
+  modelDownloadRows,
   visibleComponentRows,
 } from "./flow";
 
@@ -33,6 +36,10 @@ describe("stepsFor", () => {
   it("one step per gated permission, then ready", () => {
     expect(stepsFor(status({}))).toEqual(["accessibility", "screenRecording", "microphone", "ready"]);
   });
+  it("adds a download step for missing required models", () => {
+    const steps = stepsFor(status({}, "missing"));
+    expect(steps[steps.length - 2]).toBe("models");
+  });
   it("skips permissions the OS doesn't gate (Windows)", () => {
     const s = status({ accessibility: "notRequired", screenRecording: "notRequired", microphone: "notRequired" });
     expect(stepsFor(s)).toEqual(["ready"]);
@@ -47,8 +54,8 @@ describe("firstOpenStep", () => {
     expect(firstOpenStep(status({ accessibility: "notAsked" }))).toBe("accessibility");
     expect(firstOpenStep(status({ screenRecording: "denied" }))).toBe("screenRecording");
   });
-  it("goes straight to ready when only models need a look", () => {
-    expect(firstOpenStep(status({}, "missing"))).toBe("ready");
+  it("goes to the download step when required models are missing", () => {
+    expect(firstOpenStep(status({}, "missing"))).toBe("models");
   });
 });
 
@@ -210,5 +217,28 @@ describe("visibleComponentRows", () => {
       ],
     };
     expect(visibleComponentRows(s).map((r) => r.component)).toContain("microphone");
+  });
+});
+describe("model download helpers", () => {
+  it("formats decimal gigabytes with one decimal place", () => {
+    expect(formatModelSize(5_200_000_000)).toBe("5.2 GB");
+  });
+  it("shows sizes under a gigabyte in megabytes, never 0.0 GB", () => {
+    expect(formatModelSize(36_806_944)).toBe("37 MB");
+    expect(formatModelSize(999_600_000)).toBe("1.0 GB");
+    expect(formatModelSize(1_000_000_000)).toBe("1.0 GB");
+  });
+  it("groups projector files into human rows", () => {
+    const files: ModelFile[] = [
+      { file: "chat.gguf", role: "chat", required: true, bytes: 1_000_000_000, present: false },
+      { file: "vision.gguf", role: "chatProjector", required: true, bytes: 500_000_000, present: false },
+      { file: "ground.gguf", role: "grounder", required: false, bytes: 700_000_000, present: false },
+      { file: "ground-projector.gguf", role: "grounderProjector", required: false, bytes: 300_000_000, present: false },
+    ];
+    expect(modelDownloadRows(files)).toEqual([
+      { key: "Answer model", name: "Answer model", files: [files[0]], required: true, bytes: 1_000_000_000 },
+      { key: "Screenshot reading", name: "Screenshot reading", files: [files[1]], required: true, bytes: 500_000_000 },
+      { key: "Pointing on hard screens", name: "Pointing on hard screens", files: [files[2], files[3]], required: false, bytes: 1_000_000_000 },
+    ]);
   });
 });

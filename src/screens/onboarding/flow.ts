@@ -8,6 +8,46 @@ import type { PermissionKind } from "../../bindings/PermissionKind";
 import type { PermissionStatus } from "../../bindings/PermissionStatus";
 import type { SetupStatus } from "../../bindings/SetupStatus";
 import type { Platform } from "../../brand/lexicon";
+import type { ModelFile } from "../../bindings/ModelFile";
+import type { ModelRole } from "../../bindings/ModelRole";
+
+export function formatModelSize(bytes: number): string {
+  const megabytes = Math.max(1, Math.round(bytes / 1_000_000));
+  if (megabytes < 1000) return `${megabytes} MB`;
+  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+}
+
+export interface DownloadRow {
+  key: string;
+  name: string;
+  files: ModelFile[];
+  required: boolean;
+  bytes: number;
+}
+
+const MODEL_NAMES: Record<ModelRole, string> = {
+  chat: "Answer model",
+  chatProjector: "Screenshot reading",
+  embeddings: "Document search",
+  speech: "Speech to text",
+  grounder: "Pointing on hard screens",
+  grounderProjector: "Pointing on hard screens",
+};
+
+export function modelDownloadRows(files: ModelFile[]): DownloadRow[] {
+  const grouped: Record<string, ModelFile[]> = {};
+  for (const file of files) {
+    const name = MODEL_NAMES[file.role];
+    (grouped[name] ??= []).push(file);
+  }
+  return Object.entries(grouped).map(([name, groupedFiles]) => ({
+    key: name,
+    name,
+    files: groupedFiles,
+    required: groupedFiles.some((file) => file.required),
+    bytes: groupedFiles.reduce((sum, file) => sum + file.bytes, 0),
+  })).sort((a, b) => Number(b.required) - Number(a.required));
+}
 import {
   REQUIRED_COMPONENTS,
   isAllowed,
@@ -17,7 +57,7 @@ import {
   permissionOf,
 } from "../../app/setup";
 
-export type StepId = PermissionKind | "ready";
+export type StepId = PermissionKind | "models" | "ready";
 
 /** Accessibility first: Screen Help needs it most (T.onboarding.order). */
 export const PERMISSION_ORDER: readonly PermissionKind[] = ["accessibility", "screenRecording", "microphone"];
@@ -43,14 +83,14 @@ export function gatedPermissions(status: SetupStatus | undefined, platform: Plat
   return PERMISSION_ORDER.filter((k) => isGated(status, k, platform));
 }
 
-/** The steps this computer needs. Always ends with "ready". */
+/** The steps this computer needs. Missing required models get their own download step. */
 export function stepsFor(status: SetupStatus | undefined, platform: Platform = "mac"): StepId[] {
-  return [...gatedPermissions(status, platform), "ready"];
+  return [...gatedPermissions(status, platform), ...(readiness(status) === "missing" ? ["models" as const] : []), "ready"];
 }
 
-/** Where to start: the first permission that isn't on, else the ready step. */
+/** Where to start: the first permission that isn't on, then required models, else ready. */
 export function firstOpenStep(status: SetupStatus | undefined, platform: Platform = "mac"): StepId {
-  return stepsFor(status, platform).find((s) => s === "ready" || !isAllowed(permissionOf(status, s))) ?? "ready";
+  return stepsFor(status, platform).find((s) => s === "models" || s === "ready" || !isAllowed(permissionOf(status, s))) ?? "ready";
 }
 
 /**

@@ -7,7 +7,7 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 - `src-tauri/src/platform/windows.rs`
 - Windows arm of `src-tauri/src/platform/mod.rs::current()`
 - Cross-platform `Microphone` implementation using `cpal`
-- `src-tauri/src/ingest.rs` DOCX/PPTX extraction
+- ~~`src-tauri/src/ingest.rs` DOCX/PPTX extraction~~: done by the macOS engineer (shared Rust code, PR #17)
 - Windows build, installer and GPU/CPU fallback acceptance evidence
 
 ## Consumes
@@ -25,11 +25,12 @@ Deliver Windows UI Automation, microphone capture and P1 office-document ingesti
 The Windows element walk must call `platform::drop_control_captions` on its candidates before ranking and capping (macOS does in `snapshot`; MODELS.md finding 45). The look-alike tie-break is shared pipeline code.
 
 Speech-to-text is shared through whisper.cpp small.en in the `getcko-whisper` helper; the model choice is settled. Windows must run `scripts/build-whisper.sh` on Windows to produce `src-tauri/binaries/getcko-whisper-x86_64-pc-windows-msvc`. Choose a whisper-rs GPU feature (Vulkan or CPU; CPU works). User-facing speech and text are English only. The T2 dependency in task 3 is microphone capture (`cpal`).
+- The model downloader is shared Rust code (`models` module); Windows should use the same manifest, commands, and app-data destination, not add a Windows-specific downloader.
 3. Implement microphone capture with `cpal`: default input device, resample to 16 kHz mono `f32` in [-1,1], `start`/`stop` per `Microphone` trait. This cross-platform code must build and work on macOS too; coordinate macOS build/API with macOS engineer. Acceptance: PTT captured 5-second English input transcribes in ≤1.5 s with Wi-Fi off (T2; shared whisper.cpp transcriber). Commands: `ptt_start`, `ask`.
    Windows build must compile `llama-cpp-2` with `mtmd` enabled; this feature is already in `Cargo.toml`.
 
 ### P1 — 1–4 AM
-4. Replace Unsupported extraction arms in `src-tauri/src/ingest.rs` for DOCX and PPTX (R6). Acceptance: imports use existing queued processing and live `document` events; preserve page/section location where available; DOCX/PPTX reaches Ready with extractable text; 20-page PDF remains Ready <60 s on M4 Pro (R1 baseline). Commands/events: `doc_import`, `onDocument`.
+4. Done by the macOS engineer in PR #17 (shared code, nothing Windows-specific): `ingest::extract` reads DOCX (`word/document.xml`, one "Document" section) and PPTX (one "Slide N" section per slide, in slide order) with `zip` and `quick-xml`. Checked: unit tests for runs, tabs, entities and slide order; a TextEdit-made .docx extracts. Not yet seen: a real PowerPoint-made .pptx through the app to Ready.
 5. Implement `Platform::capture` in `windows.rs` for screen tiers 2 and 3 ([three tiers](../architecture.md#screen-understanding-three-tiers)), in the same PR as the macOS engineer's core and vision work. Use Windows.Graphics.Capture (or DXGI desktop duplication) for the monitor containing the focused window; return RGBA8, `width`, `height`, `x`/`y` (desktop physical position of the top-left pixel; crop to the target window like macOS, or use the monitor origin) and that monitor's `MonitorFrame` in desktop physical pixels. The macOS reference is `capture_display` in `macos.rs`. Also implement `Platform::recognize_text` (tier 3 fallback reads screenshot text) with `Windows.Media.Ocr`: return each line's text and box in desktop physical pixels; the macOS reference is `recognize_text` using Vision. Shared `Engine` already has an on-demand Qwen3-VL grounder for tier 3; Windows work is capture and `recognize_text` only. Acceptance: tier 2 and 3 run through the shared pipeline; Screen Recording denied → tier 1 only; coordinates map to the correct monitor; no Windows-specific screen mode or command.
 6. Produce a Windows `bun run tauri:build` installer with models. Build prerequisites: MSVC Build Tools, Rust, bun, CMake, Vulkan SDK for GPU, Git Bash for `bun run models`. Verify on a Windows machine: Vulkan GPU path and CPU fallback both load the same model files; record actual logs and installer outcome.
 
@@ -49,7 +50,7 @@ Speech-to-text is shared through whisper.cpp small.en in the `getcko-whisper` he
 - [ ] UIA snapshot excludes own PID, maps roles, is DPI-aware and passes conformance.
 - [ ] Windows permissions and screen-reading behaviour match shared API semantics.
 - [ ] `cpal` microphone gives 16 kHz mono and works on both Windows and macOS; shared Whisper small.en helper transcription meets T2.
-- [ ] DOCX and PPTX extractable text imports meet R6 and document status events.
+- [x] DOCX and PPTX extractable text imports meet R6 and document status events (macOS engineer, PR #17).
 - [ ] `capture` shipped in the same PR as the macOS side; Windows tier measurements recorded.
 - [ ] Windows installer bundles the same models; Vulkan and CPU fallback have recorded machine evidence.
 - [ ] Same acceptance scripts and parity checklist pass on Windows as on macOS.

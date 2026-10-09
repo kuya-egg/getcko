@@ -37,12 +37,16 @@ export function MainWindow() {
   const setup = useSetup();
   const [route] = useState(initialRoute);
   const [screen, setScreen] = useState<Screen>(route.screen);
-  /** null = not decided yet (waiting for the first setup read). */
+  /** null = not decided yet (no setup read, or models still loading with nothing else missing). */
   const [onboarding, setOnboarding] = useState<boolean | null>(route.onboarding ? true : null);
 
-  // Decide once, on the first setup read. After that only onDone / showOnboarding change it,
-  // so granting a permission mid-flow never yanks the person out of onboarding.
-  if (onboarding === null && setup.status) setOnboarding(needsSetup(setup.status));
+  // Decide once. A missing permission decides at the first setup read; otherwise the decision waits
+  // until the models have loaded, since a missing model only shows up then (the main screens show
+  // meanwhile). After that only onDone / showOnboarding change it, so granting a permission
+  // mid-flow never yanks the person out of onboarding.
+  if (onboarding === null && setup.status && (needsSetup(setup.status) || !modelsLoading(setup.status))) {
+    setOnboarding(needsSetup(setup.status));
+  }
   if (onboarding === null && setup.error) setOnboarding(false);
 
   const go = useCallback((s: Screen) => setScreen(s), []);
@@ -63,9 +67,10 @@ export function MainWindow() {
     else proceed();
   };
 
-  const waiting = useDelayed(onboarding === null);
+  const unread = onboarding === null && !setup.status;
+  const waiting = useDelayed(unread);
 
-  if (onboarding === null) return <Checking shown={waiting} />;
+  if (unread) return <Checking shown={waiting} />;
 
   if (onboarding) {
     return (

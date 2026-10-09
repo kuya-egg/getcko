@@ -17,7 +17,7 @@ bun run models
 bun run tauri dev
 ```
 
-`bun run models` downloads and SHA-256 verifies Gemma 4 E2B, its vision projector, the Qwen3-VL-2B tier-3 grounder and projector, bge-small-en-v1.5 embeddings, and Whisper small.en into `src-tauri/models/` (about 5.2 GB total). To use models stored elsewhere, set `GETCKO_MODELS_DIR` to their directory. Nothing is fetched by the running app.
+`bun run models` downloads and SHA-256 verifies the manifest-listed files into `src-tauri/models/` for development and release bundles. In normal use, required models download once with consent during onboarding; optional speech and grounding models can also be selected then. The app does not fetch models during use. `GETCKO_MODELS_DIR` overrides the model directory; otherwise bundled models take precedence and downloads are stored in app data.
 
 Build a release with `bun run tauri:build`; this bundles about 5.2 GB of models.
 
@@ -69,7 +69,7 @@ cargo test -- --ignored
 | macOS Accessibility screen capture | Not yet implemented | [macOS engineer](docs/team/macos-engineer.md) |
 | Windows UI Automation screen capture | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
 | Whisper small.en speech-to-text, microphone capture, and text-to-speech | Speech and TTS implemented; microphone capture pending | [macOS engineer](docs/team/macos-engineer.md) (shared engine); [Windows engineer](docs/team/windows-engineer.md) (microphone) |
-| DOCX/PPTX ingestion | Not yet implemented | [Windows engineer](docs/team/windows-engineer.md) |
+| DOCX/PPTX ingestion | Implemented (shared Rust code) | [macOS engineer](docs/team/macos-engineer.md) |
 | Main application UI | Not yet implemented | [Main-window frontend](docs/team/frontend-app.md) |
 | Visible overlay UI | Not yet implemented | [Overlay frontend](docs/team/frontend-overlay.md) |
 

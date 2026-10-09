@@ -19,12 +19,15 @@ import type { ScreenSnapshot } from "../../bindings/ScreenSnapshot";
 import type { SetupStatus } from "../../bindings/SetupStatus";
 import type { TemplateId } from "../../bindings/TemplateId";
 import type { TurnEvent } from "../../bindings/TurnEvent";
+import type { ModelFile } from "../../bindings/ModelFile";
+import type { ModelProgress } from "../../bindings/ModelProgress";
+import type { ModelsStatus } from "../../bindings/ModelsStatus";
 import { say } from "../../brand/lexicon";
 import type { MockOptions } from "./params";
 import * as seed from "./seed";
 
 /** Event names: the same strings src/lib/getcko.ts listens to. */
-export const MOCK_EVENTS = { turn: "turn", document: "document", engine: "engine" } as const;
+export const MOCK_EVENTS = { turn: "turn", document: "document", engine: "engine", models: "models" } as const;
 
 export type Emit = (event: string, payload: unknown) => void;
 export type Handler = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -69,6 +72,16 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
   const voices = seed.voices();
   /** Requests per permission; a denied one turns on at the second ask ("Check again" after System Settings). */
   const asks = new Map<PermissionKind, number>();
+  const modelFiles: ModelFile[] = [
+    { file: "gemma-4-E2B-it-Q4_0.gguf", role: "chat", required: true, bytes: 2_841_481_184, present: opts.setup !== "missing" },
+    { file: "mmproj-gemma-4-E2B-it-Q8_0.gguf", role: "chatProjector", required: true, bytes: 557_368_064, present: opts.setup !== "missing" },
+    { file: "bge-small-en-v1.5-q8_0.gguf", role: "embeddings", required: true, bytes: 36_806_944, present: opts.setup !== "missing" },
+    { file: "ggml-small.en.bin", role: "speech", required: false, bytes: 487_614_201, present: opts.setup !== "missing" },
+    { file: "Qwen3VL-2B-Instruct-Q4_K_M.gguf", role: "grounder", required: false, bytes: 1_107_409_952, present: opts.setup !== "missing" },
+    { file: "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf", role: "grounderProjector", required: false, bytes: 445_053_216, present: opts.setup !== "missing" },
+  ];
+  let downloadTimers: number[] = [];
+  let downloadRunning = false;
 
   // ---- seed --------------------------------------------------------------------------------
   if (!opts.empty) {
@@ -242,8 +255,48 @@ export function createMockBackend(opts: MockOptions, emit: Emit, now: () => numb
     ["Org chart.xlsx"],
   ];
 
+  const downloadModels = (includeOptional: boolean) => {
+    if (downloadRunning) throw fail("invalid", "A model download is already running.");
+    const targets = modelFiles.filter((f) => !f.present && (f.required || includeOptional));
+    downloadRunning = true;
+    const steps = Math.max(1, targets.length * 5);
+    for (let i = 1; i <= steps; i++) {
+      downloadTimers.push(setTimeout(() => {
+        if (!downloadRunning) return;
+        const file = targets[Math.min(targets.length - 1, Math.floor((i - 1) / 5))];
+        const received = Math.floor(file.bytes * (((i - 1) % 5 + 1) / 5));
+        emit(MOCK_EVENTS.models, { file: file.file, received, total: file.bytes, stage: "downloading", error: null } satisfies ModelProgress);
+        if (i % 5 === 0) file.present = true;
+        if (i === steps) {
+          downloadRunning = false;
+          emit(MOCK_EVENTS.models, { file: "", received: 0, total: 0, stage: "done", error: null } satisfies ModelProgress);
+        }
+      }, Math.floor(i * 3000 / steps)));
+    }
+    return null;
+  };
+  const cancelModels = () => {
+    if (!downloadRunning) return null;
+    downloadRunning = false;
+    downloadTimers.forEach(clearTimeout);
+    downloadTimers = [];
+    emit(MOCK_EVENTS.models, { file: "", received: 0, total: 0, stage: "cancelled", error: null } satisfies ModelProgress);
+    return null;
+  };
+
   // ---- commands ----------------------------------------------------------------------------
   const commands: Record<string, (a: Record<string, unknown>) => unknown> = {
+    models_status: (): ModelsStatus => ({
+      dir: "/mock/models",
+      files: modelFiles.map((file) => ({ ...file })),
+      missingBytes: modelFiles.filter((file) => !file.present && file.required).reduce((sum, file) => sum + file.bytes, 0),
+      freeBytes: 8_000_000_000,
+      downloading: downloadRunning,
+    }),
+    models_download: (a) => downloadModels(Boolean(a.includeOptional)),
+    models_cancel: cancelModels,
+    app_restart: () => null,
+    main_show: () => null,
     setup_status: (): SetupStatus => ({ permissions: permissions.map((p) => ({ ...p })), components: components.map((c) => ({ ...c })) }),
     permission_request: (a): PermissionStatus => {
       const kind = a.kind as PermissionKind;

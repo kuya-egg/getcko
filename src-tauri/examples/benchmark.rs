@@ -159,7 +159,7 @@ fn main() {
             })
             .collect();
         let grammar = prompt::target_grammar(snapshot);
-        let body = prompts.body(question, &retrieved);
+        let body = prompts.body(question);
         let mut reply = String::new();
         chat.generate(
             &ChatRequest {
@@ -185,10 +185,7 @@ fn main() {
         chat.generate(
             &ChatRequest {
                 system: &prompts.system,
-                user: &format!(
-                    "{body}{}",
-                    TurnPrompt::answer_task(pointed, !retrieved.is_empty())
-                ),
+                user: &format!("{body}{}", TurnPrompt::answer_task(pointed, &retrieved)),
                 max_tokens: prompts.max_tokens,
                 grammar: None,
                 image: None,

@@ -348,7 +348,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         })
         .collect();
 
-    let body = turn.body(&question, &passages);
+    let body = turn.body(&question);
 
     // Pass 1: where to point.
     let mut pointed = Pointed::Nothing;
@@ -437,7 +437,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         }
     };
     let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
-    let answer_task = TurnPrompt::answer_task(pointed, !passages.is_empty());
+    let answer_task = TurnPrompt::answer_task(pointed, &passages);
     let answer_user = with_task(&body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {

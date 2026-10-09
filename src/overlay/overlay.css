@@ -11,7 +11,13 @@
   --gc-shadow-1:0 1px 2px rgba(14,15,12,.06), 0 4px 12px rgba(14,15,12,.06);
   --gc-shadow-2:0 2px 4px rgba(14,15,12,.06), 0 16px 40px rgba(14,15,12,.12);
   --gc-halo:0 0 0 3px var(--gc-sun);
+  --gc-target:var(--gc-sun);
 }
+
+/* Halo shapes that are not a box-shadow ring (brackets, best guess) fade in like the ring draws (140ms). */
+.gc-halo--guess, .gc-halo--brackets { animation: gc-halo-in 140ms ease-out both; }
+@keyframes gc-halo-in { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .gc-halo--guess, .gc-halo--brackets { animation: none; } }
 
 html, body, #root {
   margin: 0;
@@ -211,6 +217,9 @@ body {
   color: var(--gc-paper);
   box-shadow: var(--gc-shadow-2);
 }
+.gc-session-grip { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; min-height: 32px; color: #C9CCC4; cursor: grab; touch-action: none; }
+.gc-session-grip:active { cursor: grabbing; }
+.gc-session-bar--compact { gap: 4px; padding: 6px; }
 .gc-agent-chip {
   white-space: nowrap;
   display: inline-flex;
@@ -218,10 +227,15 @@ body {
   gap: 8px;
   min-height: 44px;
   padding: 0 16px;
+  border: 0;
   border-radius: var(--gc-r-pill);
   background: #1E201B;
+  color: inherit;
   font: 500 14px/20px var(--gc-font-ui);
+  cursor: pointer;
 }
+.gc-agent-chip:hover { background: #343730; }
+.gc-agent-chip:focus-visible { outline: 3px solid var(--gc-gecko-wash); outline-offset: 0; }
 .gc-session-bar .gc-icon-btn--toggle { color: var(--gc-paper); }
 .gc-session-bar .gc-icon-btn--toggle:hover { background: #1E201B; }
 .gc-session-bar .gc-icon-btn--toggle[aria-pressed="true"] { background: var(--gc-gecko-wash); color: var(--gc-gecko-deep); }

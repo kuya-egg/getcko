@@ -73,7 +73,7 @@ fn main() {
             })
             .collect();
         let turn = TurnPrompt::new(&agent, screen.as_ref(), &[]);
-        let body = turn.body(question, &passages);
+        let body = turn.body(question);
         let element = screen
             .as_ref()
             .filter(|s| !s.elements.is_empty())
@@ -105,7 +105,7 @@ fn main() {
                     "{body}{}",
                     TurnPrompt::answer_task(
                         element.as_ref().map_or(Pointed::Nothing, Pointed::Element),
-                        !passages.is_empty()
+                        &passages
                     )
                 ),
                 max_tokens: turn.max_tokens,

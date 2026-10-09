@@ -581,3 +581,63 @@ pub enum TurnEvent {
         message: String,
     },
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ModelRole {
+    Chat,
+    ChatProjector,
+    Embeddings,
+    Speech,
+    Grounder,
+    GrounderProjector,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ModelFile {
+    pub file: String,
+    pub role: ModelRole,
+    pub required: bool,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    pub present: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ModelsStatus {
+    pub dir: String,
+    pub files: Vec<ModelFile>,
+    #[ts(type = "number")]
+    pub missing_bytes: u64,
+    #[ts(type = "number")]
+    pub free_bytes: Option<u64>,
+    pub downloading: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum DownloadStage {
+    Downloading,
+    Verifying,
+    Done,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ModelProgress {
+    pub file: String,
+    #[ts(type = "number")]
+    pub received: u64,
+    #[ts(type = "number")]
+    pub total: u64,
+    pub stage: DownloadStage,
+    pub error: Option<String>,
+}
