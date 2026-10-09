@@ -17,8 +17,15 @@ printf 'Benchmark machine: %s\n' "$machine"
 
 fixture_dir="$(mktemp -d)"
 trap 'rm -rf "$fixture_dir"' EXIT
-wav="$fixture_dir/q.wav"
-say -v Samantha -o "$wav" --data-format=LEI16@16000 "Where do I put Juan's grade in the class record, and how is the final grade computed?"
+# English question, English voice. macOS ships no Filipino voice; the Spanish (Mexico)
+# voice reads Tagalog spelling close to how a Filipino speaker says it ("Juan" = "hwan").
+say -v Samantha -o "$fixture_dir/en.wav" --data-format=LEI16@16000 \
+  "Where do I put Juan's grade in the class record, and how is the final grade computed?"
+say -v Paulina -o "$fixture_dir/taglish.wav" --data-format=LEI16@16000 \
+  "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta ang final grade?"
 
 cd "$ROOT/src-tauri"
-BENCH_DATE="$(date +%Y-%m-%d)" BENCH_MACHINE="$machine" cargo run --release --example benchmark -- --runs "${RUNS:-10}" --wav "$wav"
+for language in ${LANGUAGES:-taglish en}; do
+  BENCH_DATE="$(date +%Y-%m-%d)" BENCH_MACHINE="$machine" cargo run --release --example benchmark -- \
+    --runs "${RUNS:-10}" --wav "$fixture_dir/$language.wav" --language "$language"
+done

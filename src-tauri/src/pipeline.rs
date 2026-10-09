@@ -3,14 +3,14 @@ use crate::{
     error::{AppError, AppResult},
     model::*,
     platform::Platform,
-    prompt::{self, AnswerParser, ParseEvent, RetrievedPassage},
+    prompt::{self, AnswerParser, RetrievedPassage, TurnPrompt},
     store::{NewPassage, Store},
 };
 use std::sync::{
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicU32, Ordering},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 pub struct TurnControl {
@@ -44,6 +44,68 @@ pub struct AppState {
     pub engine: Arc<OnceLock<Engine>>,
     pub platform: Arc<dyn Platform>,
     pub turns: Arc<TurnControl>,
+    /// Screen read when push-to-talk started; a voice turn uses it if fresh.
+    pub prepared: Mutex<Option<PreparedScreen>>,
+}
+
+/// A snapshot taken at push-to-talk start, whose prompt prefix was evaluated
+/// while the user was speaking.
+pub struct PreparedScreen {
+    taken: Instant,
+    snapshot: ScreenSnapshot,
+}
+
+/// A prepared screen older than this is re-read instead.
+const PREPARED_MAX_AGE: Duration = Duration::from_secs(60);
+/// Element ids are a few tokens; the grammar ends the reply after one.
+const TARGET_MAX_TOKENS: u32 = 8;
+
+/// Reads the screen and evaluates the active agent's prompt prefix for it, so a
+/// voice turn only evaluates the question and passages. Runs while the user speaks;
+/// failures only cost that head start.
+pub fn prepare_turn(state: &AppState) {
+    let snapshot = match state
+        .platform
+        .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            tracing::debug!(%error, "screen not prepared");
+            return;
+        }
+    };
+    let taken = Instant::now();
+    if let Ok(mut prepared) = state.prepared.lock() {
+        *prepared = Some(PreparedScreen {
+            taken,
+            snapshot: snapshot.clone(),
+        });
+    }
+    let prefilled = (|| -> AppResult<()> {
+        let agent = state
+            .store
+            .active_agent()?
+            .ok_or_else(|| AppError::invalid("no active agent"))?;
+        let engine = state
+            .engine
+            .get()
+            .ok_or_else(|| AppError::unavailable("models are loading"))?;
+        let chat = engine
+            .chat
+            .as_ref()
+            .ok_or_else(|| AppError::unavailable("chat model is not available"))?;
+        let turn = TurnPrompt::new(&agent.draft, Some(&snapshot));
+        chat.prefill(&ChatRequest {
+            system: &turn.system,
+            user: turn.warm_user(),
+            max_tokens: turn.max_tokens,
+            choices: &[],
+        })
+        .map_err(AppError::from)
+    })();
+    if let Err(error) = prefilled {
+        tracing::debug!(error = %error.message, "prompt not prefilled");
+    }
 }
 
 pub fn run_turn(
@@ -129,6 +191,30 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             .active_agent()?
             .ok_or_else(|| AppError::invalid("no agent — pick a template first"))?,
     };
+    // A voice turn reuses the screen read (and prefilled) when push-to-talk started.
+    let prepared = state.prepared.lock().ok().and_then(|mut p| p.take());
+    let mut screen_ms = None;
+    let snapshot = if request.screen_help {
+        let fresh = prepared
+            .filter(|p| {
+                matches!(request.input, AskInput::Voice) && p.taken.elapsed() < PREPARED_MAX_AGE
+            })
+            .map(|p| p.snapshot);
+        match fresh {
+            Some(snapshot) => Some(snapshot),
+            None => {
+                let t = Instant::now();
+                let s = state
+                    .platform
+                    .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
+                    .map_err(AppError::from)?;
+                screen_ms = Some(ms(t));
+                Some(s)
+            }
+        }
+    } else {
+        None
+    };
     let mut transcribe_ms = None;
     let question = match request.input {
         AskInput::Text { text } => {
@@ -180,18 +266,13 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             phase: TurnPhase::Thinking,
         },
     );
-    let mut screen_ms = None;
-    let snapshot = if request.screen_help {
-        let t = Instant::now();
-        let s = state
-            .platform
-            .snapshot(crate::platform::MAX_SNAPSHOT_ELEMENTS)
-            .map_err(AppError::from)?;
-        screen_ms = Some(ms(t));
-        Some(s)
-    } else {
-        None
-    };
+    let thinking = Instant::now();
+    let chat = engine
+        .chat
+        .as_ref()
+        .ok_or_else(|| AppError::unavailable("chat model is not available"))?;
+    let turn = TurnPrompt::new(&agent.draft, snapshot.as_ref());
+
     let mut retrieval_ms = 0;
     let mut hits = Vec::new();
     if !agent.draft.knowledge_base_ids.is_empty() {
@@ -212,99 +293,95 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
             text: &h.text,
         })
         .collect();
-    let prompt = prompt::build(&prompt::PromptInput {
-        agent: &agent.draft,
-        question: &question,
-        snapshot: snapshot.as_ref(),
-        passages: &passages,
-    });
-    let ids = snapshot
-        .as_ref()
-        .map(|s| s.elements.iter().map(|e| e.id.clone()).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let mut target = None;
-    let mut sent_target = false;
-    let mut answering = false;
-    let monitors = snapshot.as_ref().map(|_| crate::pointer::monitors(app));
-    let mut on_event = |event| match event {
-        ParseEvent::Target(element_id) => {
-            let position = element_id
-                .as_ref()
-                .and_then(|eid| snapshot.as_ref()?.elements.iter().find(|e| &e.id == eid))
-                .and_then(|element| crate::pointer::locate(element, monitors.as_deref()?));
-            target = position.clone();
-            emit(
-                app,
-                TurnEvent::Target {
-                    turn_id: id,
-                    target: position,
+
+    // Pass 1: which element to point at, constrained to the ids on screen.
+    let pointed = match snapshot.as_ref().filter(|s| !s.elements.is_empty()) {
+        Some(screen) => {
+            let choices = prompt::target_choices(screen);
+            let mut reply = String::new();
+            chat.generate(
+                &ChatRequest {
+                    system: &turn.system,
+                    user: &turn.target_user(&question, &passages),
+                    max_tokens: TARGET_MAX_TOKENS,
+                    choices: &choices,
                 },
-            );
-            sent_target = true;
+                &mut |piece| {
+                    reply.push_str(piece);
+                    if check() { Flow::Continue } else { Flow::Stop }
+                },
+            )
+            .map_err(AppError::from)?;
+            prompt::target_element(&reply, screen)
         }
-        ParseEvent::Sentence(sentence) => {
-            if !sent_target {
-                emit(
-                    app,
-                    TurnEvent::Target {
-                        turn_id: id,
-                        target: None,
-                    },
-                );
-                sent_target = true;
-            }
-            if !answering {
-                emit(
-                    app,
-                    TurnEvent::Phase {
-                        turn_id: id,
-                        phase: TurnPhase::Answering,
-                    },
-                );
-                answering = true;
-            }
+        None => None,
+    };
+    if !check() {
+        emit(app, TurnEvent::Cancelled { turn_id: id });
+        return Ok(());
+    }
+    let target =
+        pointed.and_then(|element| crate::pointer::locate(element, &crate::pointer::monitors(app)));
+    emit(
+        app,
+        TurnEvent::Target {
+            turn_id: id,
+            target: target.clone(),
+        },
+    );
+
+    // Pass 2: the spoken answer; shares the prompt prefix evaluated by pass 1.
+    let mut answering = false;
+    let mut first_token_ms = None;
+    let mut on_sentence = |sentence: String| {
+        if !answering {
             emit(
                 app,
-                TurnEvent::Sentence {
+                TurnEvent::Phase {
                     turn_id: id,
-                    text: sentence.clone(),
+                    phase: TurnPhase::Answering,
                 },
             );
-            if let Some(speaker) = &engine.speaker
-                && let Err(e) = speaker.speak(
-                    &sentence,
-                    agent.draft.voice_id.as_deref(),
-                    agent.draft.language,
-                    agent.draft.speech_rate,
-                )
-            {
-                tracing::warn!("speech failed: {e}");
-            }
+            answering = true;
+        }
+        emit(
+            app,
+            TurnEvent::Sentence {
+                turn_id: id,
+                text: sentence.clone(),
+            },
+        );
+        if let Some(speaker) = &engine.speaker
+            && let Err(e) = speaker.speak(
+                &sentence,
+                agent.draft.voice_id.as_deref(),
+                agent.draft.language,
+                agent.draft.speech_rate,
+            )
+        {
+            tracing::warn!("speech failed: {e}");
         }
     };
-    let mut parser = AnswerParser::new(ids, u32::try_from(hits.len()).unwrap_or(u32::MAX));
-    let chat = engine
-        .chat
-        .as_ref()
-        .ok_or_else(|| AppError::unavailable("chat model is not available"))?;
-    let stats = chat
-        .generate(
-            &ChatRequest {
-                system: &prompt.system,
-                user: &prompt.user,
-                max_tokens: prompt.max_tokens,
-            },
-            &mut |piece| {
-                if !check() {
-                    return Flow::Stop;
-                }
-                for event in parser.push(piece) {
-                    on_event(event);
-                }
-                Flow::Continue
-            },
-        )
-        .map_err(AppError::from)?;
+    let mut parser = AnswerParser::new(u32::try_from(hits.len()).unwrap_or(u32::MAX));
+    chat.generate(
+        &ChatRequest {
+            system: &turn.system,
+            user: &turn.answer_user(&question, &passages, pointed),
+            max_tokens: turn.max_tokens,
+            choices: &[],
+        },
+        &mut |piece| {
+            if !check() {
+                return Flow::Stop;
+            }
+            first_token_ms.get_or_insert_with(|| ms(thinking));
+            for sentence in parser.push(piece) {
+                on_sentence(sentence);
+            }
+            Flow::Continue
+        },
+    )
+    .map_err(AppError::from)?;
     if !check() {
         if let Some(s) = &engine.speaker {
             s.stop();
@@ -312,19 +389,9 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         emit(app, TurnEvent::Cancelled { turn_id: id });
         return Ok(());
     }
-    let (events, parsed) = parser.finish();
-    for event in events {
-        on_event(event);
-    }
-    drop(on_event);
-    if !sent_target {
-        emit(
-            app,
-            TurnEvent::Target {
-                turn_id: id,
-                target: None,
-            },
-        );
+    let (sentences, parsed) = parser.finish();
+    for sentence in sentences {
+        on_sentence(sentence);
     }
     let answer_text = parsed.text;
     let citations = parsed
@@ -354,7 +421,7 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                     transcribe_ms,
                     screen_ms,
                     retrieval_ms,
-                    first_token_ms: Some(stats.first_token_ms),
+                    first_token_ms,
                     total_ms: ms(started),
                 },
             },

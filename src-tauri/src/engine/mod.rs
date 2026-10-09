@@ -88,6 +88,9 @@ pub struct ChatRequest<'a> {
     pub system: &'a str,
     pub user: &'a str,
     pub max_tokens: u32,
+    /// When non-empty, the reply is constrained to exactly one of these strings
+    /// (greedy). Used to pick a screen element id.
+    pub choices: &'a [String],
 }
 
 /// Measured during generation (BR-24).
@@ -100,6 +103,9 @@ pub struct GenerationStats {
 }
 
 /// Instruction-tuned text generation.
+///
+/// Implementations keep the evaluated prompt between calls, so a request that
+/// starts with the same text as the previous one only evaluates the new suffix.
 pub trait ChatModel: Send + Sync {
     /// Streams decoded text pieces to `on_text` until end of turn,
     /// `max_tokens`, or `on_text` returns [`Flow::Stop`].
@@ -111,6 +117,13 @@ pub trait ChatModel: Send + Sync {
         request: &ChatRequest<'_>,
         on_text: &mut dyn FnMut(&str) -> Flow,
     ) -> EngineResult<GenerationStats>;
+
+    /// Evaluates the prompt for `request` without generating, so a later
+    /// [`ChatModel::generate`] whose prompt extends it starts sooner.
+    ///
+    /// # Errors
+    /// Runtime failure or a prompt longer than the context window.
+    fn prefill(&self, request: &ChatRequest<'_>) -> EngineResult<()>;
 }
 
 /// On-device speech-to-text.

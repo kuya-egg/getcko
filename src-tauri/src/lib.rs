@@ -43,7 +43,7 @@ pub fn run() {
             let store = Arc::new(store::Store::open(&db, &vector, engine::EMBEDDING_DIM).map_err(Box::<dyn std::error::Error>::from)?);
             match store.vector_version() { Ok(version) => tracing::info!(%version, "sqlite-vector loaded"), Err(error) => tracing::warn!("sqlite-vector version unavailable: {error}") }
             let engine = Arc::new(OnceLock::new());
-            let state = Arc::new(pipeline::AppState { store, engine: Arc::clone(&engine), platform: Arc::from(platform::current()), turns: Arc::new(pipeline::TurnControl::new()) });
+            let state = Arc::new(pipeline::AppState { store, engine: Arc::clone(&engine), platform: Arc::from(platform::current()), turns: Arc::new(pipeline::TurnControl::new()), prepared: std::sync::Mutex::new(None) });
             let models = paths::models_dir(app.handle());
             let handle = app.handle().clone();
             std::thread::spawn(move || {

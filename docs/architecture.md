@@ -41,7 +41,7 @@ The typed client is [`src/lib/getcko.ts`](../src/lib/getcko.ts); wire types are 
 | agent_delete | id | null |
 | agent_active | – | Agent \| null |
 | agent_set_active | id | Agent |
-| ptt_start | – | null (starts mic recording) |
+| ptt_start | – | null (starts mic recording; in the background also reads the screen and prefills the model's prompt with it while the user speaks) |
 | ask | request: AskRequest | TurnId (returns immediately; progress via `turn` events) |
 | stop | – | null (cancels current turn, silences speech) |
 | screen_snapshot | – | ScreenSnapshot (debug/dev aid) |
@@ -64,15 +64,26 @@ The `overlay` and `main` are Tauri window labels. Types crossing IPC are defined
 
 Engine and platform trait calls block. Run them on worker threads, never the async runtime. Keep at most one targeted element and ensure the panel does not cover it.
 
+## Turn flow
+
+A turn asks Gemma twice (`pipeline.rs`, `prompt.rs`). Both prompts start with the same text — system rules, screen elements, question, retrieved passages — and the chat model keeps one llama context, evaluating only the tokens after the prefix it already holds.
+
+1. `ptt_start`: read the screen; prefill system + screen while the user speaks. A voice `ask` within 60 s uses that snapshot.
+2. Transcribe (voice) → retrieve passages.
+3. **Target pass**: + "name the element" task; the reply is grammar-constrained to the element IDs or `none` (`ChatRequest.choices`). The pointer moves as soon as it returns.
+4. **Answer pass**: + "the pointer is showing …" + answer task; sentences stream to the panel and TTS. The answer never contains element IDs.
+
+Measured timings per stage: [`docs/MODELS.md`](MODELS.md).
+
 ## Screen understanding: three tiers
 
 The model points by **element ID** whenever it can. A small local model picks an ID from a list reliably, but guessing pixel coordinates is error-prone. Clicky (farzaa/clicky) is screenshot-only with `[POINT:x,y]` from Claude's computer-use model; that works for a cloud frontier model, not for Gemma 4 E2B. Screenshots are therefore *context* for hard screens, and coordinates are a last resort.
 
 | Tier | `ScreenMode` | When the core picks it | Model input | Model answers | Pointer | `Confidence` |
 |---|---|---|---|---|---|---|
-| 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 elements | Element list only | `TARGET: e12` | exact element bounds | `normal` |
-| 2 | `elementsWithImage` | Snapshot non-empty but fails the tier-1 test (unlabelled icons, look-alike cells) | Element list **plus** a screenshot with a numbered box drawn on every listed element, labelled with the same IDs | `TARGET: e12` | exact element bounds | `normal` |
-| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot only | `TARGET: 640,312` (image pixels) | point mapped to the monitor | `bestGuess` (BR-18) |
+| 1 | `elements` | Snapshot has ≥ 5 labelled elements and no label shared by > 3 elements | Element list only | element ID (target pass) | exact element bounds | `normal` |
+| 2 | `elementsWithImage` | Snapshot non-empty but fails the tier-1 test (unlabelled icons, look-alike cells) | Element list **plus** a screenshot with a numbered box drawn on every listed element, labelled with the same IDs | element ID (target pass) | exact element bounds | `normal` |
+| 3 | `imageOnly` | Snapshot empty (canvas, images, thin Electron trees) | Screenshot only | `640,312` (image pixels; target-pass grammar allows coordinates only in this tier) | point mapped to the monitor | `bestGuess` (BR-18) |
 
 Rules:
 - Screen Recording denied or no capture available → tier 1 only; an empty snapshot gives a targetless answer ("can't read this app"), never a guess.
@@ -86,7 +97,7 @@ Contract additions (one PR containing both OS implementations, per the parity ru
 |---|---|---|
 | `Platform` trait | `fn capture(&self) -> Result<ScreenCapture, PlatformError>`: RGBA8 pixels of the monitor containing the focused window, `width`, `height`, and that monitor's `MonitorFrame` (desktop physical px). `PermissionDenied(ScreenRecording)` when not granted. | macOS engineer (`macos.rs`, ScreenCaptureKit), Windows engineer (`windows.rs`, Windows.Graphics.Capture or DXGI duplication) |
 | Engine | llama-cpp-2 `mtmd` feature; `ChatRequest.image: Option<&EncodedImage>`; load `mmproj-gemma-4-E2B-it-Q8_0.gguf` (already downloaded by `bun run models` and bundled by `tauri.models.conf.json`) | macOS engineer |
-| Core | Tier choice, resize to the model's image size, numbered-box drawing (set-of-mark), coordinate mapping image px → monitor → `PointerTarget`; parser accepts `TARGET: x,y` only in tier 3 | macOS engineer |
+| Core | Tier choice, resize to the model's image size, numbered-box drawing (set-of-mark), coordinate mapping image px → monitor → `PointerTarget`; target-pass grammar allows `x,y` only in tier 3 | macOS engineer |
 | IPC types | `PointerTarget.elementId` becomes `string \| null` (null for tier-3 points); `Answer.screenMode: ScreenMode`; `Latency.captureMs` | macOS engineer; consumed by frontend |
 
 Measurement protocol (decides whether tier 2 is worth its cost): the PRD's 10 scripted tasks × 3 demo apps, each run in all three forced tiers, on the demo Mac and on a Windows machine. Record per tier: correct element out of 10 (target ≥ 8/10, S2), first-token and total latency (budget ≈ 3 s end to end), into `docs/MODELS.md`. Tier 2 stays enabled only if it raises accuracy on the screens that trigger it without breaking the budget; otherwise those screens fall back to tier 1.

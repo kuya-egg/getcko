@@ -1,12 +1,25 @@
 //! Prompt construction and streaming answer parsing.
-use std::collections::HashSet;
-
-use crate::model::{AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenSnapshot};
+//!
+//! A turn asks the model twice with prompts that share one prefix (system, screen,
+//! question, passages), so the second request only evaluates its own short suffix:
+//! 1. target: which screen element to point at, constrained to the element ids;
+//! 2. answer: prose that cites passages, told which element the pointer shows.
+//!
+//! The screen part can be evaluated while the user is still speaking
+//! ([`TurnPrompt::warm_user`]), before the question is known.
+use crate::model::{
+    AgentDraft, AnswerLength, BaseRulesMode, Language, ScreenElement, ScreenSnapshot,
+};
 
 /// General grounding and answer-quality rules (BR-6).
 pub const BASE_RULES: &str = "Be grounded and honest: answer from the supplied screen and passages. If neither supports an answer, say \"I don't know\". Be brief; lead with the action, then the reason, then the source.";
 /// Product guarantees that remain in force for every agent configuration.
-pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages (BR-4). Only point to element ids listed in the screen (BR-15). Never offer to click or type for the user (BR-14). Output protocol: first line exactly TARGET: <element id> or TARGET: none (always none with no screen); then, on the next line, answer prose citing passages inline as [n]. Never write element ids in the prose.\nExample:\nTARGET: e3\nClick Save [1].";
+pub const GUARANTEES: &str = "Never claim a source that is not among the numbered passages (BR-4). Never offer to click or type for the user (BR-14). Never write screen element ids such as e12 in an answer.";
+/// Choice meaning "no element fits" in the target pass.
+pub const NO_TARGET: &str = "none";
+
+const TARGET_TASK: &str = "Task: name the one screen element where the user should act to do what the question asks. Match the people, names, labels and values in the question to the screen elements; the question may come from speech recognition, so a name can be spelled differently or heard as a similar-sounding word, so match names by sound too. For a value to enter, pick the cell or field where it goes, not a button or a column header. Reply with the element id only, or none if nothing on the screen fits.";
+const ANSWER_TASK: &str = "Task: answer the question. Cite the passages you use inline as [n].";
 
 /// One retrieved passage and its display location.
 pub struct RetrievedPassage<'a> {
@@ -14,90 +27,149 @@ pub struct RetrievedPassage<'a> {
     pub location: &'a str,
     pub text: &'a str,
 }
-/// Inputs used to build one model prompt.
-pub struct PromptInput<'a> {
-    pub agent: &'a AgentDraft,
-    pub question: &'a str,
-    pub snapshot: Option<&'a ScreenSnapshot>,
-    pub passages: &'a [RetrievedPassage<'a>],
-}
-/// Complete model prompt and generation budget.
-pub struct Prompt {
+
+/// The shared parts of one turn's prompts.
+pub struct TurnPrompt {
     pub system: String,
-    pub user: String,
+    /// Generation budget for the answer.
     pub max_tokens: u32,
+    /// Screen description; every user prompt of the turn starts with it.
+    context: String,
 }
 
-/// Builds the system and user prompts without performing I/O.
-pub fn build(input: &PromptInput<'_>) -> Prompt {
-    let mut system = String::from(GUARANTEES);
-    if input.agent.base_rules == BaseRulesMode::Include {
-        system.push_str("\n\n");
-        system.push_str(BASE_RULES);
-    }
-    if !input.agent.instructions.is_empty() {
-        system.push_str("\n\nAgent instructions: ");
-        system.push_str(&input.agent.instructions);
-    }
-    system.push_str("\n\nLanguage: ");
-    system.push_str(match input.agent.language {
-        Language::English => "English.",
-        Language::Filipino => "Filipino.",
-        Language::Taglish => "Taglish: use a natural mix of Filipino and English.",
-    });
-    let max_tokens = match input.agent.answer_length {
-        AnswerLength::Short => {
-            system.push_str("\nLength: 1-2 sentences.");
-            80
+impl TurnPrompt {
+    /// Builds the system prompt for `agent` and the screen description.
+    pub fn new(agent: &AgentDraft, snapshot: Option<&ScreenSnapshot>) -> Self {
+        let mut system = String::from(GUARANTEES);
+        if agent.base_rules == BaseRulesMode::Include {
+            system.push_str("\n\n");
+            system.push_str(BASE_RULES);
         }
-        AnswerLength::Normal => {
-            system.push_str("\nLength: up to 4 sentences.");
-            160
+        if !agent.instructions.is_empty() {
+            system.push_str("\n\nAgent instructions: ");
+            system.push_str(&agent.instructions);
         }
-    };
+        system.push_str("\n\nLanguage: ");
+        system.push_str(match agent.language {
+            Language::English => "English.",
+            Language::Filipino => "Filipino.",
+            Language::Taglish => "Taglish: use a natural mix of Filipino and English.",
+        });
+        let max_tokens = match agent.answer_length {
+            AnswerLength::Short => {
+                system.push_str("\nLength: 1-2 sentences.");
+                80
+            }
+            AnswerLength::Normal => {
+                system.push_str("\nLength: up to 4 sentences.");
+                160
+            }
+        };
+        let mut context = String::new();
+        if let Some(snapshot) = snapshot {
+            context.push_str("Screen:\nApp: ");
+            context.push_str(&snapshot.app_name);
+            context.push_str("\nWindow: ");
+            context.push_str(snapshot.window_title.as_deref().unwrap_or("(none)"));
+            for element in &snapshot.elements {
+                context.push('\n');
+                context.push_str(&element.id);
+                context.push_str(" | ");
+                context.push_str(&element.role);
+                context.push_str(" | ");
+                context.push_str(&truncate_chars(&element.label, 60));
+                context.push_str(" | ");
+                context.push_str(element.value.as_deref().unwrap_or(""));
+            }
+        } else {
+            context.push_str("(no screen)");
+        }
+        context.push_str("\n\n");
+        Self {
+            system,
+            max_tokens,
+            context,
+        }
+    }
 
-    let mut user = String::new();
-    if let Some(snapshot) = input.snapshot {
-        user.push_str("Screen:\nApp: ");
-        user.push_str(&snapshot.app_name);
-        user.push_str("\nWindow: ");
-        user.push_str(snapshot.window_title.as_deref().unwrap_or("(none)"));
-        for element in &snapshot.elements {
-            user.push('\n');
-            user.push_str(&element.id);
-            user.push_str(" | ");
-            user.push_str(&element.role);
-            user.push_str(" | ");
-            user.push_str(&truncate_chars(&element.label, 60));
-            user.push_str(" | ");
-            user.push_str(element.value.as_deref().unwrap_or(""));
-        }
-    } else {
-        user.push_str("(no screen)");
+    /// User prompt to evaluate ahead of time: a prefix of every prompt below.
+    pub fn warm_user(&self) -> &str {
+        &self.context
     }
-    if input.passages.is_empty() {
-        user.push_str("\n\n(no documents)");
-    } else {
-        user.push_str("\n\nPassages:");
-        for (index, passage) in input.passages.iter().enumerate() {
-            use std::fmt::Write;
+
+    /// User prompt for the target pass; pair it with the element ids plus
+    /// [`NO_TARGET`] as the allowed replies. Passages are included because a manual
+    /// often says which field to use.
+    pub fn target_user(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
+        let mut user = self.body(question, passages);
+        user.push_str(TARGET_TASK);
+        user
+    }
+
+    /// User prompt for the answer pass. `pointed` is the element the pointer shows.
+    /// Shares everything before the task with [`TurnPrompt::target_user`].
+    pub fn answer_user(
+        &self,
+        question: &str,
+        passages: &[RetrievedPassage<'_>],
+        pointed: Option<&ScreenElement>,
+    ) -> String {
+        use std::fmt::Write;
+        let mut user = self.body(question, passages);
+        if let Some(element) = pointed {
             let _ = write!(
                 user,
-                "\n[{}] {}, {}: {}",
-                index + 1,
-                passage.document_name,
-                passage.location,
-                passage.text
+                "The pointer is showing the user this {}: \"{}\"",
+                element.role,
+                truncate_chars(&element.label, 60)
             );
+            if let Some(value) = &element.value {
+                let _ = write!(user, " (value: {})", truncate_chars(value, 60));
+            }
+            user.push_str(". Refer to it by what it shows.\n\n");
         }
+        user.push_str(ANSWER_TASK);
+        user
     }
-    user.push_str("\n\nQuestion: ");
-    user.push_str(input.question);
-    Prompt {
-        system,
-        user,
-        max_tokens,
+
+    /// Screen, question and passages: the part both passes share.
+    fn body(&self, question: &str, passages: &[RetrievedPassage<'_>]) -> String {
+        use std::fmt::Write;
+        let mut user = format!("{}Question: {question}\n\n", self.context);
+        if passages.is_empty() {
+            user.push_str("(no documents)\n\n");
+        } else {
+            user.push_str("Passages:");
+            for (index, passage) in passages.iter().enumerate() {
+                let _ = write!(
+                    user,
+                    "\n[{}] {}, {}: {}",
+                    index + 1,
+                    passage.document_name,
+                    passage.location,
+                    passage.text
+                );
+            }
+            user.push_str("\n\n");
+        }
+        user
     }
+}
+
+/// Allowed replies for the target pass: every element id plus [`NO_TARGET`].
+pub fn target_choices(snapshot: &ScreenSnapshot) -> Vec<String> {
+    snapshot
+        .elements
+        .iter()
+        .map(|element| element.id.clone())
+        .chain(std::iter::once(NO_TARGET.to_owned()))
+        .collect()
+}
+
+/// The element named by a target-pass reply, if it is on the screen.
+pub fn target_element<'a>(reply: &str, snapshot: &'a ScreenSnapshot) -> Option<&'a ScreenElement> {
+    let id = reply.trim();
+    snapshot.elements.iter().find(|element| element.id == id)
 }
 
 fn truncate_chars(text: &str, limit: usize) -> String {
@@ -110,120 +182,63 @@ fn truncate_chars(text: &str, limit: usize) -> String {
     }
 }
 
-/// Streaming parser output, either the validated target or a complete sentence.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseEvent {
-    Target(Option<String>),
-    Sentence(String),
-}
-/// Parsed target, prose and valid unique citation numbers.
+/// Parsed prose and valid unique citation numbers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedAnswer {
-    pub target: Option<String>,
     pub text: String,
     pub cited: Vec<u32>,
 }
-/// Incrementally parses model output, buffering incomplete lines and sentences.
+/// Incrementally splits model output into sentences, removing citation markers.
 pub struct AnswerParser {
     buffer: String,
-    first_line: bool,
-    target_emitted: bool,
-    element_ids: HashSet<String>,
     passage_count: u32,
-    target: Option<String>,
     sentences: Vec<String>,
     cited: Vec<u32>,
 }
 impl AnswerParser {
-    /// Creates a parser with the valid screen ids and passage count.
-    pub fn new(element_ids: impl IntoIterator<Item = String>, passage_count: u32) -> Self {
+    /// Creates a parser accepting citations `[1]..=[passage_count]`.
+    pub fn new(passage_count: u32) -> Self {
         Self {
             buffer: String::new(),
-            first_line: true,
-            target_emitted: false,
-            element_ids: element_ids.into_iter().collect(),
             passage_count,
-            target: None,
             sentences: Vec::new(),
             cited: Vec::new(),
         }
     }
-    /// Adds a token fragment and emits any newly complete output.
-    pub fn push(&mut self, piece: &str) -> Vec<ParseEvent> {
+    /// Adds a token fragment and returns any newly complete sentences.
+    pub fn push(&mut self, piece: &str) -> Vec<String> {
         self.buffer.push_str(piece);
         self.process(false)
     }
-    /// Flushes buffered output and returns all remaining events and parsed answer.
-    pub fn finish(mut self) -> (Vec<ParseEvent>, ParsedAnswer) {
-        let events = self.process(true);
+    /// Flushes buffered output and returns the remaining sentences and parsed answer.
+    pub fn finish(mut self) -> (Vec<String>, ParsedAnswer) {
+        let sentences = self.process(true);
         let parsed = ParsedAnswer {
-            target: self.target,
             text: self.sentences.join(" "),
             cited: self.cited,
         };
-        (events, parsed)
+        (sentences, parsed)
     }
-    fn process(&mut self, finishing: bool) -> Vec<ParseEvent> {
-        let mut events = Vec::new();
-        if self.first_line {
-            let Some(pos) = self
-                .buffer
-                .find('\n')
-                .or_else(|| finishing.then_some(self.buffer.len()))
-            else {
-                return events;
-            };
-            let line = self.buffer[..pos].trim_end_matches('\r').to_owned();
-            let consumed = if pos < self.buffer.len() {
-                pos + 1
-            } else {
-                pos
-            };
-            self.buffer.drain(..consumed);
-            self.first_line = false;
-            let target = target_value(&line).and_then(|value| self.valid_target(value));
-            self.emit_target(target, &mut events);
-            if target_value(&line).is_none() {
-                self.buffer.insert_str(0, &line);
-                self.buffer.insert(line.len(), '\n');
-            }
-        }
+    fn process(&mut self, finishing: bool) -> Vec<String> {
+        let mut out = Vec::new();
         while let Some(end) = prose_boundary(&self.buffer) {
             let text = self.buffer.drain(..end).collect::<String>();
-            self.consume_prose(&text, &mut events);
+            self.consume_prose(&text, &mut out);
         }
         if finishing {
             let text = std::mem::take(&mut self.buffer);
-            self.consume_prose(&text, &mut events);
+            self.consume_prose(&text, &mut out);
         }
-        events
+        out
     }
-    fn valid_target(&self, value: &str) -> Option<String> {
-        let id = value.trim();
-        if id.eq_ignore_ascii_case("none") {
-            None
-        } else {
-            self.element_ids.contains(id).then(|| id.to_owned())
-        }
-    }
-    fn emit_sentence(&mut self, sentence: String, events: &mut Vec<ParseEvent>) {
-        if !sentence.is_empty() {
-            self.sentences.push(sentence.clone());
-            events.push(ParseEvent::Sentence(sentence));
-        }
-    }
-    fn emit_target(&mut self, target: Option<String>, events: &mut Vec<ParseEvent>) {
-        if !self.target_emitted {
-            self.target = target.clone();
-            self.target_emitted = true;
-            events.push(ParseEvent::Target(target));
-        }
-    }
-    fn consume_prose(&mut self, text: &str, events: &mut Vec<ParseEvent>) {
+    fn consume_prose(&mut self, text: &str, out: &mut Vec<String>) {
         let cleaned = clean_markers(text, self.passage_count, &mut self.cited);
         for line in cleaned.split('\n') {
             let sentence = normalize_sentence(line);
-            self.emit_sentence(sentence, events);
+            if !sentence.is_empty() {
+                self.sentences.push(sentence.clone());
+                out.push(sentence);
+            }
         }
     }
 }
@@ -246,14 +261,6 @@ fn prose_boundary(text: &str) -> Option<usize> {
         }
     }
     None
-}
-fn target_value(line: &str) -> Option<&str> {
-    let trimmed = line.trim().trim_matches('*').trim();
-    let (prefix, value) = trimmed.split_once(':')?;
-    prefix
-        .trim()
-        .eq_ignore_ascii_case("target")
-        .then_some(value.trim().trim_matches('*').trim())
 }
 fn is_protected_period(text: &str, byte: usize) -> bool {
     let before = &text[..byte];
@@ -330,76 +337,109 @@ fn normalize_sentence(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn parser() -> AnswerParser {
-        AnswerParser::new(vec!["e3".into()], 2)
-    }
-    fn finish_text(chunks: &[&str]) -> (Vec<ParseEvent>, ParsedAnswer) {
-        let mut p = parser();
-        let mut events = Vec::new();
+    use crate::model::Rect;
+
+    fn finish_text(chunks: &[&str]) -> (Vec<String>, ParsedAnswer) {
+        let mut p = AnswerParser::new(2);
+        let mut sentences = Vec::new();
         for chunk in chunks {
-            events.extend(p.push(chunk));
+            sentences.extend(p.push(chunk));
         }
         let (last, answer) = p.finish();
-        events.extend(last);
-        (events, answer)
+        sentences.extend(last);
+        (sentences, answer)
     }
-    #[test]
-    fn target_can_be_split_across_pieces() {
-        let (events, answer) = finish_text(&["**TAR", "GET:** e", "3\nSaved."]);
-        assert_eq!(answer.target.as_deref(), Some("e3"));
-        assert!(matches!(events[0], ParseEvent::Target(Some(_))));
+    fn element(id: &str, label: &str, value: Option<&str>) -> ScreenElement {
+        ScreenElement {
+            id: id.into(),
+            role: "cell".into(),
+            label: label.into(),
+            value: value.map(Into::into),
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            },
+        }
     }
-    #[test]
-    fn markdown_bold_target_is_accepted() {
-        let (_, answer) = finish_text(&["**TARGET:** e3\nSaved."]);
-        assert_eq!(answer.target.as_deref(), Some("e3"));
+    fn snapshot() -> ScreenSnapshot {
+        ScreenSnapshot {
+            app_name: "Numbers".into(),
+            window_title: Some("Grades".into()),
+            elements: vec![
+                element("e1", "Name, row 1", Some("Juan Dela Cruz")),
+                element("e2", "Q1, Juan Dela Cruz", None),
+                element("e3", "Final, Juan Dela Cruz", Some("88.5")),
+            ],
+        }
     }
-    #[test]
-    fn unknown_target_is_none() {
-        let (_, answer) = finish_text(&["TARGET: e4\nHello."]);
-        assert_eq!(answer.target, None);
+    fn templates_draft() -> AgentDraft {
+        crate::templates::get(crate::model::TemplateId::OfficeHelper).draft
     }
-    #[test]
-    fn missing_target_line_is_prose() {
-        let (events, answer) = finish_text(&["Hello there."]);
-        assert_eq!(answer.target, None);
-        assert_eq!(answer.text, "Hello there.");
-        assert!(matches!(events[0], ParseEvent::Target(None)));
-    }
+
     #[test]
     fn markers_are_removed_invalid_dropped_and_valid_deduplicated() {
-        let (_, answer) = finish_text(&["TARGET: none\nFact [1, 9] and [1][2]."]);
+        let (_, answer) = finish_text(&["Fact [1, 9] and [1][2]."]);
         assert_eq!(answer.text, "Fact and.");
         assert_eq!(answer.cited, vec![1, 2]);
     }
     #[test]
     fn abbreviations_and_decimal_do_not_split() {
-        let (_, answer) = finish_text(&["TARGET: none\nSee p. 4 and e.g. 3.5 items."]);
+        let (sentences, answer) = finish_text(&["See p. 4 and e.g. 3.5 items."]);
         assert_eq!(answer.text, "See p. 4 and e.g. 3.5 items.");
+        assert_eq!(sentences.len(), 1);
     }
     #[test]
     fn character_stream_matches_whole_string() {
-        let text = "TARGET: e3\nUse Save [1]. Then wait!";
+        let text = "Use Save [1]. Then wait!";
         let whole = finish_text(&[text]);
         let chunks: Vec<String> = text.chars().map(|ch| ch.to_string()).collect();
         let refs: Vec<&str> = chunks.iter().map(String::as_str).collect();
         assert_eq!(finish_text(&refs), whole);
+        assert_eq!(whole.0, vec!["Use Save.", "Then wait!"]);
     }
     #[test]
-    fn prompt_replace_still_has_guarantees_and_no_base_rules() {
+    fn every_turn_prompt_extends_the_warm_prefix() {
+        let draft = templates_draft();
+        let screen = snapshot();
+        let turn = TurnPrompt::new(&draft, Some(&screen));
+        let passages = [RetrievedPassage {
+            document_name: "Manual",
+            location: "p. 4",
+            text: "Enter grades in the Q1 column.",
+        }];
+        let question = "Where do I put Juan's grade?";
+        let target = turn.target_user(question, &passages);
+        let answer = turn.answer_user(question, &passages, Some(&screen.elements[1]));
+        assert!(target.starts_with(turn.warm_user()));
+        // Everything up to the target task, passages included, is reused by the answer.
+        let shared = &target[..target.find("Task:").expect("target task")];
+        assert!(shared.contains("[1] Manual, p. 4: Enter grades"));
+        assert!(answer.starts_with(shared));
+        assert!(turn.warm_user().contains("e2 | cell | Q1, Juan Dela Cruz"));
+        assert!(answer.contains("[1] Manual, p. 4: Enter grades"));
+        assert!(answer.contains("\"Q1, Juan Dela Cruz\""));
+        assert!(!answer[turn.warm_user().len()..].contains("e2"));
+    }
+    #[test]
+    fn replace_mode_keeps_guarantees_and_drops_base_rules() {
         let mut draft = templates_draft();
         draft.base_rules = BaseRulesMode::Replace;
-        let result = build(&PromptInput {
-            agent: &draft,
-            question: "Help?",
-            snapshot: None,
-            passages: &[],
-        });
-        assert!(result.system.contains(GUARANTEES));
-        assert!(!result.system.contains(BASE_RULES));
-        assert!(result.system.contains("TARGET: none"));
+        let turn = TurnPrompt::new(&draft, None);
+        assert!(turn.system.contains(GUARANTEES));
+        assert!(!turn.system.contains(BASE_RULES));
+        assert_eq!(turn.warm_user(), "(no screen)\n\n");
     }
-    fn templates_draft() -> AgentDraft {
-        crate::templates::get(crate::model::TemplateId::OfficeHelper).draft
+    #[test]
+    fn target_choices_and_reply_mapping() {
+        let screen = snapshot();
+        assert_eq!(target_choices(&screen), vec!["e1", "e2", "e3", NO_TARGET]);
+        assert_eq!(
+            target_element(" e2", &screen).map(|e| e.id.as_str()),
+            Some("e2")
+        );
+        assert!(target_element(NO_TARGET, &screen).is_none());
+        assert!(target_element("e9", &screen).is_none());
     }
 }

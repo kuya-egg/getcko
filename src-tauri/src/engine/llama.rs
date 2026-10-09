@@ -18,10 +18,11 @@ use llama_cpp_2::{
     },
     llama_backend::LlamaBackend,
     llama_batch::LlamaBatch,
-    model::{LlamaChatMessage, LlamaModel, params::LlamaModelParams},
+    model::{LlamaModel, params::LlamaModelParams},
     mtmd::{MtmdBitmap, MtmdContext, MtmdContextParams, MtmdInputText, mtmd_default_marker},
     sampling::LlamaSampler,
     send_logs_to_tracing,
+    token::LlamaToken,
 };
 fn token_text_piece(
     vocab: &llama_cpp_2::vocab::LlamaVocab<'_>,
@@ -116,12 +117,84 @@ fn context<'a>(
 }
 
 /// Chat model loaded from a GGUF file.
+///
+/// `session` and `mtmd` hold pointers into `model`; they are declared first so
+/// Rust drops them before it.
 pub struct LlamaChat {
-    backend: Arc<LlamaBackend>,
-    model: Mutex<LlamaModel>,
+    session: Mutex<Session>,
     mtmd: Option<Mutex<MtmdContext>>,
+    model: Box<LlamaModel>,
+    backend: Arc<LlamaBackend>,
     device: &'static str,
 }
+
+/// The long-lived chat context and the tokens its KV cache currently holds.
+struct Session {
+    ctx: LlamaContext<'static>,
+    cached: Vec<LlamaToken>,
+}
+
+/// Prompt tokens evaluated per `decode` call (llama.cpp's default `n_batch` is larger).
+const PREFILL_CHUNK: usize = 512;
+
+impl Session {
+    /// Makes the KV cache hold exactly `tokens`, re-evaluating only the part after
+    /// the prefix shared with what is cached. Always evaluates at least the last
+    /// token so fresh logits are available. Returns how many tokens were reused.
+    fn evaluate(&mut self, tokens: &[LlamaToken]) -> EngineResult<usize> {
+        let shared = self
+            .cached
+            .iter()
+            .zip(tokens)
+            .take_while(|(cached, new)| cached == new)
+            .count();
+        let mut keep = shared.min(tokens.len().saturating_sub(1));
+        if keep < self.cached.len() {
+            let from = u32::try_from(keep).map_err(runtime_error)?;
+            if !self
+                .ctx
+                .clear_kv_cache_seq(Some(0), Some(from), None)
+                .unwrap_or(false)
+            {
+                self.ctx.clear_kv_cache();
+                keep = 0;
+            }
+            self.cached.truncate(keep);
+        }
+        let result = self.decode_tokens(&tokens[keep..]);
+        if result.is_err() {
+            self.reset();
+        }
+        result.map(|()| keep)
+    }
+
+    /// Appends `tokens` after the cached ones; logits only for the final token.
+    fn decode_tokens(&mut self, tokens: &[LlamaToken]) -> EngineResult<()> {
+        let chunks = tokens.chunks(PREFILL_CHUNK);
+        let last_chunk = chunks.len().saturating_sub(1);
+        for (index, chunk) in chunks.enumerate() {
+            let mut batch = LlamaBatch::new(chunk.len(), 1);
+            let base = i32::try_from(self.cached.len()).map_err(runtime_error)?;
+            for (offset, token) in chunk.iter().enumerate() {
+                let position = base + i32::try_from(offset).map_err(runtime_error)?;
+                let logits = index == last_chunk && offset + 1 == chunk.len();
+                batch
+                    .add(*token, position, &[0], logits)
+                    .map_err(runtime_error)?;
+            }
+            self.ctx.decode(&mut batch).map_err(runtime_error)?;
+            self.cached.extend_from_slice(chunk);
+        }
+        Ok(())
+    }
+
+    /// Forgets the cache; used when a decode failed and its state is unknown.
+    fn reset(&mut self) {
+        self.ctx.clear_kv_cache();
+        self.cached.clear();
+    }
+}
+
 impl LlamaChat {
     /// Loads a chat model, trying full GPU offload before CPU fallback.
     ///
@@ -160,6 +233,18 @@ impl LlamaChat {
             }
         };
         tracing::info!(device, "loaded chat model");
+        let model = Box::new(model);
+        // SAFETY: the model is boxed, so its address is stable for the box's lifetime;
+        // the box is never moved out of or replaced, and `LlamaChat` drops `session`
+        // (the only holder of this reference) before `model`.
+        let model_ref: &'static LlamaModel = unsafe { &*std::ptr::from_ref::<LlamaModel>(&model) };
+        let ctx = context(
+            model_ref,
+            &rt.backend,
+            CHAT_CONTEXT,
+            false,
+            LlamaPoolingType::Unspecified,
+        )?;
         let mtmd = if projector.is_file() {
             let projector_path = projector.to_string_lossy();
             let params = MtmdContextParams {
@@ -179,9 +264,13 @@ impl LlamaChat {
             None
         };
         Ok(Self {
-            backend: Arc::clone(&rt.backend),
-            model: Mutex::new(model),
+            session: Mutex::new(Session {
+                ctx,
+                cached: Vec::new(),
+            }),
             mtmd,
+            model,
+            backend: Arc::clone(&rt.backend),
             device,
         })
     }
@@ -197,49 +286,12 @@ impl LlamaChat {
             })
         })
     }
-}
 
-impl ChatModel for LlamaChat {
-    fn generate(
-        &self,
-        request: &ChatRequest<'_>,
-        on_text: &mut dyn FnMut(&str) -> Flow,
-    ) -> EngineResult<GenerationStats> {
-        let start = Instant::now();
-        let model = self.model.lock().map_err(runtime_error)?;
-        let mut ctx = context(
-            &model,
-            &self.backend,
-            CHAT_CONTEXT,
-            false,
-            LlamaPoolingType::Unspecified,
-        )?;
-        let prompt = match model.chat_template(None) {
-            Ok(template) => {
-                let messages = [
-                    LlamaChatMessage::new("system".to_owned(), request.system.to_owned())
-                        .map_err(runtime_error)?,
-                    LlamaChatMessage::new("user".to_owned(), request.user.to_owned())
-                        .map_err(runtime_error)?,
-                ];
-                model
-                    .apply_chat_template(&template, &messages, true)
-                    .unwrap_or_else(|_| {
-                        format!(
-                            "<start_of_turn>user\n{}\n\n{}<end_of_turn>\n<start_of_turn>model\n",
-                            request.system, request.user
-                        )
-                    })
-            }
-            Err(_) => format!(
-                "<start_of_turn>user\n{}\n\n{}<end_of_turn>\n<start_of_turn>model\n",
-                request.system, request.user
-            ),
-        };
-        let vocab = model.vocab();
-        let tokens = vocab.tokenize(prompt.as_bytes(), true, true);
-        let count = tokens.len();
-        let total = count.saturating_add(request.max_tokens as usize);
+    /// Formats the request as Gemma 4 turns and tokenizes, checking the context budget.
+    fn prompt_tokens(&self, request: &ChatRequest<'_>) -> EngineResult<Vec<LlamaToken>> {
+        let prompt = gemma4_prompt(Some(request.system), request.user);
+        let tokens = self.model.vocab().tokenize(prompt.as_bytes(), true, true);
+        let total = tokens.len().saturating_add(request.max_tokens as usize);
         if total > CHAT_CONTEXT as usize {
             return Err(EngineError::TooLong {
                 tokens: total,
@@ -249,27 +301,78 @@ impl ChatModel for LlamaChat {
         if tokens.is_empty() {
             return Err(runtime_error("chat prompt tokenized to empty input"));
         }
-        let mut batch = LlamaBatch::new(count.max(1), 1);
-        batch
-            .add_sequence(&tokens, 0, true)
+        Ok(tokens)
+    }
+
+    fn sampler(&self, choices: &[String]) -> EngineResult<LlamaSampler> {
+        if choices.is_empty() {
+            return Ok(LlamaSampler::chain_simple([
+                LlamaSampler::temp(0.2),
+                LlamaSampler::dist(0),
+            ]));
+        }
+        let grammar = LlamaSampler::grammar(&self.model, &choices_grammar(choices), "root")
             .map_err(runtime_error)?;
-        ctx.decode(&mut batch).map_err(runtime_error)?;
+        Ok(LlamaSampler::chain_simple([
+            grammar,
+            LlamaSampler::greedy(),
+        ]))
+    }
+}
+
+/// Gemma 4's turn format (the GGUF's Jinja template, which llama.cpp's built-in
+/// template detection does not recognise), without thinking, ending where the
+/// model's reply starts. BOS is added by the tokenizer.
+fn gemma4_prompt(system: Option<&str>, user: &str) -> String {
+    let mut prompt = String::with_capacity(system.map_or(0, str::len) + user.len() + 64);
+    if let Some(system) = system {
+        prompt.push_str("<|turn>system\n");
+        prompt.push_str(system);
+        prompt.push_str("<turn|>\n");
+    }
+    prompt.push_str("<|turn>user\n");
+    prompt.push_str(user);
+    prompt.push_str("<turn|>\n<|turn>model\n");
+    prompt
+}
+
+/// GBNF accepting exactly one of `choices`.
+fn choices_grammar(choices: &[String]) -> String {
+    let alternatives = choices
+        .iter()
+        .map(|choice| format!("\"{}\"", choice.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    format!("root ::= {alternatives}")
+}
+
+impl ChatModel for LlamaChat {
+    fn generate(
+        &self,
+        request: &ChatRequest<'_>,
+        on_text: &mut dyn FnMut(&str) -> Flow,
+    ) -> EngineResult<GenerationStats> {
+        let start = Instant::now();
+        let tokens = self.prompt_tokens(request)?;
+        let mut sampler = self.sampler(request.choices)?;
+        let mut session = self.session.lock().map_err(runtime_error)?;
+        let reused = session.evaluate(&tokens)?;
+        // Decoding is asynchronous on the GPU; its time shows up in `first_token_ms`.
+        tracing::debug!(prompt_tokens = tokens.len(), reused, "chat prompt queued");
+        let vocab = self.model.vocab();
         let mut stats = GenerationStats {
-            prompt_tokens: u32::try_from(count).unwrap_or(u32::MAX),
+            prompt_tokens: u32::try_from(tokens.len()).unwrap_or(u32::MAX),
             ..GenerationStats::default()
         };
         let mut raw = Vec::with_capacity(8);
         let mut pending = Vec::with_capacity(4);
-        let mut sampler =
-            LlamaSampler::chain_simple([LlamaSampler::temp(0.2), LlamaSampler::dist(0)]);
         for index in 0..request.max_tokens {
-            let token = sampler.sample(&ctx, -1);
-            sampler.accept(token);
+            // `sample` also accepts the token into the sampler (grammar state).
+            let token = sampler.sample(&session.ctx, -1);
             stats.generated_tokens = index.saturating_add(1);
             if vocab.is_eog(token) {
                 break;
             }
-            raw.clear();
             let valid = token_text_piece(&vocab, token, &mut raw, &mut pending)?;
             if valid > 0 {
                 let text = std::str::from_utf8(&pending[..valid]).map_err(runtime_error)?;
@@ -284,11 +387,11 @@ impl ChatModel for LlamaChat {
                 }
             }
             if index + 1 < request.max_tokens {
-                batch.clear();
-                batch
-                    .add(token, count as i32 + index as i32, &[0], true)
-                    .map_err(runtime_error)?;
-                ctx.decode(&mut batch).map_err(runtime_error)?;
+                let decoded = session.decode_tokens(&[token]);
+                if decoded.is_err() {
+                    session.reset();
+                }
+                decoded?;
             }
         }
         if !pending.is_empty() {
@@ -303,6 +406,23 @@ impl ChatModel for LlamaChat {
         }
         stats.total_ms = u32::try_from(start.elapsed().as_millis()).unwrap_or(u32::MAX);
         Ok(stats)
+    }
+
+    fn prefill(&self, request: &ChatRequest<'_>) -> EngineResult<()> {
+        let start = Instant::now();
+        let tokens = self.prompt_tokens(request)?;
+        let mut session = self.session.lock().map_err(runtime_error)?;
+        let reused = session.evaluate(&tokens)?;
+        // Wait for the GPU so the time below is real and the work is done before the
+        // question arrives.
+        session.ctx.synchronize();
+        tracing::debug!(
+            prompt_tokens = tokens.len(),
+            reused,
+            prefill_ms = start.elapsed().as_millis(),
+            "chat prompt prefilled"
+        );
+        Ok(())
     }
 }
 
@@ -319,7 +439,7 @@ impl Transcriber for LlamaChat {
         }
         let start = Instant::now();
         let audio_seconds = pcm.len() as f64 / 16_000.0;
-        let model = self.model.lock().map_err(runtime_error)?;
+        let model = &*self.model;
         let mut mtmd = self
             .mtmd
             .as_ref()
@@ -341,10 +461,7 @@ impl Transcriber for LlamaChat {
                 "Transcribe this audio exactly as spoken. Output only the transcript. The speaker mixes Filipino (Tagalog) and English; keep each word in the language spoken."
             }
         };
-        let prompt = format!(
-            "<start_of_turn>user\n{}{instruction}<end_of_turn>\n<start_of_turn>model\n",
-            mtmd_default_marker()
-        );
+        let prompt = gemma4_prompt(None, &format!("{}{instruction}", mtmd_default_marker()));
         let chunks = mtmd
             .tokenize(
                 MtmdInputText {
@@ -356,7 +473,7 @@ impl Transcriber for LlamaChat {
             )
             .map_err(runtime_error)?;
         let mut ctx = context(
-            &model,
+            model,
             &self.backend,
             EMBED_CONTEXT,
             false,
@@ -373,7 +490,6 @@ impl Transcriber for LlamaChat {
         let mut batch = LlamaBatch::new(1, 1);
         for index in 0..96_i32 {
             let token = sampler.sample(&ctx, -1);
-            sampler.accept(token);
             if vocab.is_eog(token) {
                 break;
             }
@@ -548,6 +664,7 @@ mod tests {
             system: "Reply with exactly the word OK",
             user: "Reply with exactly the word OK",
             max_tokens: 32,
+            choices: &[],
         };
         let mut answer = String::new();
         let stats = model
@@ -559,6 +676,47 @@ mod tests {
         assert!(answer.contains("OK"));
         assert!(stats.generated_tokens > 0);
         assert!(stats.first_token_ms <= stats.total_ms);
+    }
+    #[test]
+    #[ignore = "needs model files"]
+    fn reused_prefix_picks_the_same_choice_as_a_cold_prompt() {
+        let rt = Runtime::init().expect("runtime initializes");
+        let model = LlamaChat::load(
+            &rt,
+            &model_path("gemma-4-E2B-it-Q4_0.gguf"),
+            &model_path("mmproj-gemma-4-E2B-it-Q8_0.gguf"),
+        )
+        .expect("chat model loads");
+        let screen = "Screen:\ne1 | button | Save\ne2 | cell | Q1, Juan Dela Cruz\ne3 | cell | Q1, Ana Santos\n\n";
+        let choices = ["e1", "e2", "e3", "none"].map(String::from);
+        let pick = |user: &str| {
+            let mut reply = String::new();
+            let request = ChatRequest {
+                system: "Pick the element id where the user should act.",
+                user,
+                max_tokens: 8,
+                choices: &choices,
+            };
+            model
+                .generate(&request, &mut |piece| {
+                    reply.push_str(piece);
+                    Flow::Continue
+                })
+                .expect("choice generation succeeds");
+            reply
+        };
+        let question = format!("{screen}Question: Where do I type Juan's first quarter grade?");
+        model.session.lock().expect("session").reset();
+        let cold = pick(&question);
+        // Same prefix, different suffix, then the question again: mostly reused cache.
+        let _ = pick(&format!("{screen}Question: Where is the save button?"));
+        let warm = pick(&question);
+        assert!(
+            choices.contains(&cold),
+            "reply {cold:?} is one of the choices"
+        );
+        assert_eq!(cold, warm);
+        assert_eq!(cold, "e2");
     }
     #[test]
     #[ignore = "needs model files"]

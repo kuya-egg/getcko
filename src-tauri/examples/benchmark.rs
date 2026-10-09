@@ -9,7 +9,7 @@ use getcko_lib::{
     ingest,
     model::{DocumentKind, Language, Rect, ScreenElement, ScreenSnapshot, TemplateId},
     platform,
-    prompt::{self, AnswerParser, ParseEvent, PromptInput, RetrievedPassage},
+    prompt::{self, AnswerParser, RetrievedPassage, TurnPrompt},
     store::{NewPassage, Store},
     templates,
 };
@@ -37,7 +37,16 @@ Compare the computed final grade with the four quarter values, verify the learne
 "#;
 
 fn main() {
-    let (runs, wav) = parse_args().expect("usage: benchmark --runs N --wav PATH");
+    let (runs, wav, language) =
+        parse_args().expect("usage: benchmark --runs N --wav PATH [--language en|fil|taglish]");
+    // Stage timings from the engine: RUST_LOG=getcko_lib=debug ./scripts/benchmark.sh
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("error")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let models = manifest.join("models");
     // The tts crate's AVFoundation backend registers a process-wide delegate class, so
@@ -117,21 +126,26 @@ fn main() {
         .expect("store grading manual passages");
     let import_ms = millis(import_start.elapsed());
 
-    let (snapshot, target_id) = mock_snapshot();
-    let agent = templates::get(TemplateId::OfficeHelper);
-    let agent = &agent.draft;
+    let mut agent = templates::get(TemplateId::OfficeHelper).draft;
+    agent.language = language;
+    let agent = &agent;
+    let typed_question = match language {
+        Language::English => QUESTION_EN,
+        Language::Filipino | Language::Taglish => QUESTION_TAGLISH,
+    };
     let audio = read_wav(&wav).expect("read 16-bit PCM WAV");
     let audio_seconds = audio.len() as f64 / 16_000.0;
-    let ids: Vec<String> = snapshot.elements.iter().map(|e| e.id.clone()).collect();
 
-    // Retrieval + prompt + streamed generation for one question.
-    let ask = |question: &str| -> Answer {
-        let query_start = Instant::now();
+    // One turn after the question is known, in the pipeline's order: retrieval,
+    // target pass, answer pass. Times are from the start of the turn.
+    let turn = |question: &str, snapshot: &ScreenSnapshot| -> Turn {
+        let started = Instant::now();
+        let prompts = TurnPrompt::new(agent, Some(snapshot));
         let query = embedder.embed_query(question).expect("embed query");
         let hits = store
             .search(&[kb.id], &query, 5)
             .expect("search benchmark knowledge base");
-        let retrieval_ms = millis(query_start.elapsed());
+        let retrieval_ms = millis(started.elapsed());
         let retrieved: Vec<RetrievedPassage<'_>> = hits
             .iter()
             .map(|hit| RetrievedPassage {
@@ -140,74 +154,99 @@ fn main() {
                 text: &hit.text,
             })
             .collect();
-        let built = prompt::build(&PromptInput {
-            agent,
-            question,
-            snapshot: Some(&snapshot),
-            passages: &retrieved,
-        });
-        let mut parser = AnswerParser::new(
-            ids.clone(),
-            u32::try_from(retrieved.len()).expect("passage count fits u32"),
-        );
-        let started = Instant::now();
+        let choices = prompt::target_choices(snapshot);
+        let mut reply = String::new();
+        chat.generate(
+            &ChatRequest {
+                system: &prompts.system,
+                user: &prompts.target_user(question, &retrieved),
+                max_tokens: 8,
+                choices: &choices,
+            },
+            &mut |piece| {
+                reply.push_str(piece);
+                Flow::Continue
+            },
+        )
+        .expect("target pass");
+        let pointed = prompt::target_element(&reply, snapshot);
+        let target_ms = millis(started.elapsed());
+        let mut parser =
+            AnswerParser::new(u32::try_from(retrieved.len()).expect("passage count fits u32"));
+        let mut first_token_ms = None;
         let mut sentence_ms = None;
-        let mut raw = String::new();
-        let stats = chat
-            .generate(
-                &ChatRequest {
-                    system: &built.system,
-                    user: &built.user,
-                    max_tokens: built.max_tokens,
-                },
-                &mut |piece| {
-                    raw.push_str(piece);
-                    for event in parser.push(piece) {
-                        if matches!(event, ParseEvent::Sentence(_)) && sentence_ms.is_none() {
-                            sentence_ms = Some(millis(started.elapsed()));
-                        }
-                    }
-                    Flow::Continue
-                },
-            )
-            .expect("generate benchmark answer");
+        chat.generate(
+            &ChatRequest {
+                system: &prompts.system,
+                user: &prompts.answer_user(question, &retrieved, pointed),
+                max_tokens: prompts.max_tokens,
+                choices: &[],
+            },
+            &mut |piece| {
+                first_token_ms.get_or_insert_with(|| millis(started.elapsed()));
+                if !parser.push(piece).is_empty() && sentence_ms.is_none() {
+                    sentence_ms = Some(millis(started.elapsed()));
+                }
+                Flow::Continue
+            },
+        )
+        .expect("answer pass");
         let (_, parsed) = parser.finish();
-        let sentence_ms = sentence_ms.unwrap_or_else(|| millis(started.elapsed()));
-        Answer {
-            parsed,
-            stats,
+        let total_ms = millis(started.elapsed());
+        Turn {
+            target: pointed.map(|e| e.id.clone()),
+            target_ms,
             retrieval_ms,
-            sentence_ms,
-            raw,
+            first_token_ms: first_token_ms.unwrap_or(total_ms),
+            sentence_ms: sentence_ms.unwrap_or(total_ms),
+            total_ms,
+            parsed,
         }
     };
 
+    let mut prepare = Vec::with_capacity(runs);
+    let mut stt_times = Vec::with_capacity(runs);
+    let mut target_times = Vec::with_capacity(runs);
     let mut retrieval = Vec::with_capacity(runs);
     let mut first_token = Vec::with_capacity(runs);
     let mut first_sentence = Vec::with_capacity(runs);
     let mut full_answer = Vec::with_capacity(runs);
-    let mut stt_times = Vec::with_capacity(runs);
     let mut tts_start_times = Vec::with_capacity(runs);
     let mut e2e = Vec::with_capacity(runs);
     let mut ax_times = Vec::with_capacity(runs);
+    let mut typed_target_times = Vec::with_capacity(runs);
+    let mut typed_sentence = Vec::with_capacity(runs);
     let mut voice_correct = 0usize;
+    let mut typed_correct = 0usize;
     let mut citations = 0usize;
     let mut run_one = None;
     let live_ax = platform::current();
 
     for iteration in 0..=runs {
-        let started = Instant::now();
+        // Voice turn: a new screen each run, read and prefilled while the user speaks.
+        let (snapshot, target_id) = mock_snapshot(iteration);
+        let prompts = TurnPrompt::new(agent, Some(&snapshot));
+        let prepare_start = Instant::now();
+        chat.prefill(&ChatRequest {
+            system: &prompts.system,
+            user: prompts.warm_user(),
+            max_tokens: prompts.max_tokens,
+            choices: &[],
+        })
+        .expect("prefill screen");
+        let prepare_ms = millis(prepare_start.elapsed());
+        let stt_start = Instant::now();
         let transcript = transcriber
-            .transcribe(&audio, Language::English)
+            .transcribe(&audio, language)
             .expect("transcribe benchmark WAV");
-        let stt_ms = millis(started.elapsed());
-        let answer = ask(&transcript);
-        let sentence = answer
+        let stt_ms = millis(stt_start.elapsed());
+        let voice = turn(&transcript, &snapshot);
+        let sentence = voice
             .parsed
             .text
             .split_inclusive(['.', '!', '?'])
             .next()
-            .unwrap_or(&answer.parsed.text)
+            .unwrap_or(&voice.parsed.text)
             .trim()
             .to_owned();
         let mut tts_ms = None;
@@ -240,6 +279,9 @@ fn main() {
                 Err(error) => tts_error = Some(format!("speak: {error}")),
             }
         }
+        // Typed turn on a screen that was not prefilled.
+        let (typed_snapshot, typed_target) = mock_snapshot(1_000 + iteration);
+        let typed = turn(typed_question, &typed_snapshot);
         let ax_start = Instant::now();
         let ax_ms = live_ax
             .snapshot(platform::MAX_SNAPSHOT_ELEMENTS)
@@ -248,40 +290,44 @@ fn main() {
         if iteration == 0 {
             continue; // warm-up
         }
+        prepare.push(prepare_ms);
         stt_times.push(stt_ms);
-        retrieval.push(answer.retrieval_ms);
-        first_token.push(f64::from(answer.stats.first_token_ms));
-        first_sentence.push(answer.sentence_ms);
-        full_answer.push(f64::from(answer.stats.total_ms));
+        target_times.push(voice.target_ms);
+        retrieval.push(voice.retrieval_ms);
+        first_token.push(voice.first_token_ms);
+        first_sentence.push(voice.sentence_ms);
+        full_answer.push(voice.total_ms);
         tts_start_times.extend(tts_ms);
         ax_times.extend(ax_ms);
-        e2e.push(stt_ms + answer.retrieval_ms + answer.sentence_ms + tts_ms.unwrap_or(0.0));
-        voice_correct += usize::from(answer.parsed.target.as_deref() == Some(target_id.as_str()));
-        citations += usize::from(!answer.parsed.cited.is_empty());
+        e2e.push(stt_ms + voice.sentence_ms + tts_ms.unwrap_or(0.0));
+        typed_target_times.push(typed.target_ms);
+        typed_sentence.push(typed.sentence_ms);
+        voice_correct += usize::from(voice.target.as_deref() == Some(target_id.as_str()));
+        typed_correct += usize::from(typed.target.as_deref() == Some(typed_target.as_str()));
+        citations += usize::from(!voice.parsed.cited.is_empty());
         if run_one.is_none() {
-            run_one = Some((transcript, answer.parsed, answer.raw));
+            run_one = Some((transcript, voice, target_id));
         }
     }
-
-    // Same question typed, to separate model accuracy from transcription errors.
-    let typed_correct = (0..runs)
-        .filter(|_| ask(QUESTION).parsed.target.as_deref() == Some(target_id.as_str()))
-        .count();
 
     let mut stages = vec![
         ("Engine load (single)", vec![engine_ms]),
         ("Import (single)", vec![import_ms]),
+        ("Screen prefill (while the user speaks)", prepare),
         ("STT (question clip)", stt_times),
+        ("Pointer target chosen", target_times),
         ("Retrieval", retrieval),
-        ("LLM first token", first_token),
-        ("LLM first sentence", first_sentence),
-        ("LLM full answer", full_answer),
+        ("Answer first token", first_token),
+        ("Answer first sentence", first_sentence),
+        ("Answer complete", full_answer),
     ];
     if !ax_times.is_empty() {
         stages.push(("AX snapshot (live app)", ax_times));
     }
     stages.push(("TTS speech start", tts_start_times));
-    stages.push(("End-to-end (sum of stages)", e2e));
+    stages.push(("End of speech → first spoken word", e2e));
+    stages.push(("Typed, cold screen: pointer target", typed_target_times));
+    stages.push(("Typed, cold screen: first sentence", typed_sentence));
 
     println!("\n## Latency benchmark");
     println!(
@@ -293,7 +339,9 @@ fn main() {
         env::var("BENCH_MACHINE").unwrap_or_else(|_| "unknown".into())
     );
     println!("- Models: {}", model_sizes(&models));
-    println!("- Runs: {runs} after one warm-up; question clip {audio_seconds:.1} s");
+    println!(
+        "- Runs: {runs} after one warm-up; agent language {language:?}; question clip {audio_seconds:.1} s"
+    );
     println!("\n| Stage | Median (ms) | p90 (ms) | Min (ms) | Max (ms) |");
     println!("|---|---:|---:|---:|---:|");
     for (name, values) in stages {
@@ -302,36 +350,42 @@ fn main() {
     println!("\n- Correct target, spoken question: {voice_correct}/{runs}");
     println!("- Correct target, typed question: {typed_correct}/{runs}");
     println!("- Answers with citations: {citations}/{runs}");
-    if let Some((transcript, parsed, raw)) = run_one {
+    if let Some((transcript, voice, target_id)) = run_one {
         println!("- Run 1 transcript: {transcript}");
-        println!("- Run 1 target: {:?} (expected {target_id})", parsed.target);
-        println!("- Run 1 answer: {}", parsed.text.replace('\n', " "));
-        println!("- Run 1 raw model output: {}", raw.replace('\n', " ⏎ "));
+        println!("- Run 1 target: {:?} (expected {target_id})", voice.target);
+        println!("- Run 1 answer: {}", voice.parsed.text);
     }
     if let Some(error) = tts_error {
         println!("- TTS: {error}");
     }
     println!(
-        "\nEnd-to-end = STT + retrieval + first sentence + TTS start, each measured in the same run; \
-         microphone capture is not built yet, so recording time is excluded."
+        "\nTimes after \"Screen prefill\" are from the end of speech (STT) or the start of the turn. \
+         End of speech → first spoken word = STT + first sentence + TTS start in the same run; \
+         microphone capture is not built yet, so a WAV file stands in for it."
     );
 }
 
-const QUESTION: &str =
+const QUESTION_EN: &str =
     "Where do I put Juan's grade in the class record, and how is the final grade computed?";
+/// The PRD demo question.
+const QUESTION_TAGLISH: &str =
+    "Saan ko ilalagay ang grade ni Juan, at paano kinukuwenta ang final grade?";
 
-struct Answer {
-    parsed: prompt::ParsedAnswer,
-    stats: engine::GenerationStats,
+struct Turn {
+    target: Option<String>,
+    target_ms: f64,
     retrieval_ms: f64,
+    first_token_ms: f64,
     sentence_ms: f64,
-    raw: String,
+    total_ms: f64,
+    parsed: prompt::ParsedAnswer,
 }
 
-fn parse_args() -> Result<(usize, PathBuf), String> {
+fn parse_args() -> Result<(usize, PathBuf, Language), String> {
     let mut args = env::args().skip(1);
     let mut runs = 10usize;
     let mut wav = None;
+    let mut language = Language::English;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--runs" => {
@@ -342,13 +396,21 @@ fn parse_args() -> Result<(usize, PathBuf), String> {
                     .map_err(|_| "--runs must be a positive integer")?
             }
             "--wav" => wav = Some(PathBuf::from(args.next().ok_or("missing --wav path")?)),
+            "--language" => {
+                language = match args.next().as_deref() {
+                    Some("en") => Language::English,
+                    Some("fil") => Language::Filipino,
+                    Some("taglish") => Language::Taglish,
+                    _ => return Err("--language must be en, fil or taglish".into()),
+                }
+            }
             _ => return Err(format!("unknown argument: {arg}")),
         }
     }
     if runs == 0 {
         return Err("--runs must be positive".into());
     }
-    Ok((runs, wav.ok_or("--wav is required")?))
+    Ok((runs, wav.ok_or("--wav is required")?, language))
 }
 
 fn millis(duration: Duration) -> f64 {
@@ -358,7 +420,9 @@ fn millis(duration: Duration) -> f64 {
 /// A Numbers-like class record: toolbar, header row, and one row per learner whose
 /// cells are labelled "<column>, <learner>" the way spreadsheet AX trees expose them.
 /// Returns the snapshot and the id of Juan Dela Cruz's empty Q1 cell (the right answer).
-fn mock_snapshot() -> (ScreenSnapshot, String) {
+/// `run` goes into the window title, so each run's screen prompt differs right after
+/// the system prompt, like a new screen would.
+fn mock_snapshot(run: usize) -> (ScreenSnapshot, String) {
     const COLUMNS: [&str; 6] = ["Name", "Q1", "Q2", "Q3", "Q4", "Final"];
     const LEARNERS: [&str; 6] = [
         "Ana Santos",
@@ -433,7 +497,7 @@ fn mock_snapshot() -> (ScreenSnapshot, String) {
     }
     let snapshot = ScreenSnapshot {
         app_name: "Numbers".into(),
-        window_title: Some("Class Record — Grades".into()),
+        window_title: Some(format!("Class Record {run} — Grades")),
         elements,
     };
     (snapshot, target)

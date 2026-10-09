@@ -212,6 +212,9 @@ pub async fn agent_set_active(id: AgentId, s: State<'_, Arc<AppState>>) -> AppRe
 }
 #[tauri::command]
 pub async fn ptt_start(s: State<'_, Arc<AppState>>) -> AppResult<()> {
+    // Read the screen and evaluate its prompt while the user speaks.
+    let prepare = state(&s);
+    tauri::async_runtime::spawn_blocking(move || crate::pipeline::prepare_turn(&prepare));
     let e = Arc::clone(&s.engine);
     tauri::async_runtime::spawn_blocking(move || {
         let engine = e
