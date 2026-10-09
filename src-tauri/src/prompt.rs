@@ -79,7 +79,8 @@ impl TurnPrompt {
                 context.push('\n');
                 context.push_str(&element.id);
                 context.push_str(" | ");
-                context.push_str(&element.role);
+                // Plain words (field, drop-down): the answer pass copied raw roles.
+                context.push_str(plain_role(&element.role));
                 context.push_str(" | ");
                 context.push_str(&truncate_chars(&element.label, 60));
                 context.push_str(" | ");
@@ -561,6 +562,17 @@ mod tests {
         let field_task = TurnPrompt::answer_task(Pointed::Element(&field), true);
         assert!(field_task.contains("this field: "), "{field_task}");
         assert!(!field_task.contains("textField"));
+        let listed = ScreenSnapshot {
+            elements: vec![field.clone()],
+            ..screen.clone()
+        };
+        let listed_prompt = TurnPrompt::new(&draft, Some(&listed), &[]);
+        assert!(
+            listed_prompt
+                .warm_user()
+                .contains("e2 | field | Q1, Juan Dela Cruz")
+        );
+        assert!(!listed_prompt.warm_user().contains("textField"));
         assert!(!answer_task.contains("e2"));
         assert!(TurnPrompt::answer_task(Pointed::Guess, true).contains("best guess"));
         assert!(!TurnPrompt::answer_task(Pointed::Nothing, true).contains("pointer"));
