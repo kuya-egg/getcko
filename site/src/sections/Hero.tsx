@@ -6,7 +6,8 @@ import { buildHeadMark, PALETTE } from "../brand/mascot";
 import { DUR, EASE } from "../brand/motion";
 import { T } from "../brand/lexicon";
 import { Icon } from "../brand/icons";
-import { Button } from "../components/ui";
+import { Button, buttonClass } from "../components/ui";
+import { RELEASES_URL } from "../config";
 import { useVacantSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
@@ -193,9 +194,14 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
         // 0.01 s, not 0: a fresh paused timeline does not render its t=0 set() calls on time(0).
         at={storyOn ? undefined : 0.01}
         actions={
-          <Button size="lg" icon={Icon.start} onClick={onWatch} className="hero-cta">
-            {SITE.watchDemo}
-          </Button>
+          <>
+            <Button size="lg" icon={Icon.start} onClick={onWatch} className="hero-cta">
+              {SITE.watchDemo}
+            </Button>
+            <a className={buttonClass("secondary", "lg")} href={RELEASES_URL} target="_blank" rel="noreferrer">
+              {SITE.download}
+            </a>
+          </>
         }
       />
     </div>
