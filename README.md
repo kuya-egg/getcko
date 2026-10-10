@@ -25,7 +25,7 @@ GetcKo stays on screen while you work. Ask it a question by typing or by holding
 - **Customizable agents:** templates such as Office Helper, Teacher and Study Buddy, each with its own instructions, answer length, voice and knowledge bases.
 - **Voice:** hold to talk, and answers are spoken aloud.
 
-Every model runs on your Mac. Nothing is uploaded, and it works with Wi-Fi off.
+**Everything stays on your computer.** Every model runs on your own computer, so your questions, voice, screenshots, documents and agents never leave it. GetcKo goes online only once, to download its models; after that it works with Wi-Fi off.
 
 ## Tools
 
@@ -67,7 +67,7 @@ All models are downloaded once by `bun run models` (listed with SHA-256 checksum
 
 1. Download `GetCko_0.1.0_aarch64.dmg` (8 MB) from the [latest release](https://github.com/kuya-egg/getcko/releases/latest). It needs a Mac with Apple Silicon (M1 or newer).
 2. Open the DMG and drag **GetcKo** into **Applications**, then open GetcKo from Applications. The app is signed and notarised by Apple, so it opens like any other downloaded app.
-3. **Download the models.** On first launch GetcKo asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
+3. **Download the models.** On first launch GetcKo asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. This is the only time it goes online; after that it runs offline and nothing leaves your computer.
 
 Then continue with [First run](#first-run).
 
