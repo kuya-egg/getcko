@@ -1,10 +1,10 @@
-# GetCko
+# GetcKo
 
-![GetCko](docs/brand/readme-hero.png)
+![GetcKo](docs/brand/readme-hero.png)
 
 ## Project name
 
-**GetCko**, an offline desktop copilot. Built for the AppBuildersPH 2026 "Local AI" challenge.
+**GetcKo**, an offline desktop copilot. Built for the AppBuildersPH 2026 "Local AI" challenge.
 
 ## Problem
 
@@ -18,7 +18,7 @@ Teachers, LGU staff and office workers on newly digitized systems need "where do
 
 ## Brief description
 
-GetCko stays on screen while you work. Ask it a question by typing or by holding a key and talking:
+GetcKo stays on screen while you work. Ask it a question by typing or by holding a key and talking:
 
 - **Screen Help:** it points at the button or field you need with a gecko and a halo, and explains it. For a task with several steps, it points at one step at a time and moves on with **Next step**.
 - **Your documents (RAG):** it answers from your own PDFs, Word, PowerPoint and text files, and cites the passage.
@@ -46,7 +46,7 @@ Every model runs on your Mac. Nothing is uploaded, and it works with Wi-Fi off.
 
 | Asset | Source | License |
 |---|---|---|
-| GetCko gecko sprite, poses, app icon, icons, textures | The team's GetCko brand kit v0.4 (`src/brand/`, `docs/brand/`) | The team's own |
+| GetcKo gecko sprite, poses, app icon, icons, textures | The team's GetcKo brand kit v0.4 (`src/brand/`, `docs/brand/`) | The team's own |
 | Bricolage Grotesque, Geist, Geist Mono, Silkscreen fonts | [Fontsource](https://fontsource.org/), bundled locally | OFL-1.1 |
 | Pixelarticons | [pixelarticons](https://pixelarticons.com/) | MIT |
 
@@ -66,8 +66,8 @@ All models are downloaded once by `bun run models` (listed with SHA-256 checksum
 ### Fastest: download the app (macOS)
 
 1. Download `GetCko_0.1.0_aarch64.dmg` (8 MB) from the [latest release](https://github.com/kuya-egg/getcko/releases/latest). It needs a Mac with Apple Silicon (M1 or newer).
-2. Open the DMG and drag **GetCko** into **Applications**, then open GetCko from Applications. The app is signed and notarised by Apple, so it opens like any other downloaded app.
-3. **Download the models.** On first launch GetCko asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
+2. Open the DMG and drag **GetcKo** into **Applications**, then open GetcKo from Applications. The app is signed and notarised by Apple, so it opens like any other downloaded app.
+3. **Download the models.** On first launch GetcKo asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
 
 Then continue with [First run](#first-run).
 
@@ -79,7 +79,7 @@ Tested from a clean clone on an Apple Silicon Mac (M4 Pro, macOS 27.0.1, Xcode i
 
 - **A Mac with Apple Silicon** (M1 or newer). Intel Macs are not supported. 16 GB of memory is recommended.
 - **About 20 GB of free disk space:** 5.4 GB of models, a 5.1 GB app, and build files.
-- **An internet connection for setup only.** GetCko itself runs offline.
+- **An internet connection for setup only.** GetcKo itself runs offline.
 - **Tools:**
 
   | Tool | Install |
@@ -106,7 +106,7 @@ open src-tauri/target/release/bundle/macos/GetCko.app
 
 The first build takes several minutes because it compiles llama.cpp. Build it in a normal folder, such as your home folder; macOS blocks parts of an app that runs from `/tmp`.
 
-To run without building an app, use `bun run tauri dev` after `bun run models`. In that mode macOS gives the permissions below to the terminal app that started it (Terminal, iTerm, VS Code, …), not to GetCko.
+To run without building an app, use `bun run tauri dev` after `bun run models`. In that mode macOS gives the permissions below to the terminal app that started it (Terminal, iTerm, VS Code, …), not to GetcKo.
 
 To make the downloadable DMG (no models inside; the app downloads them on first launch): `bash scripts/build-whisper.sh`, then `bun run tauri:release`. It is written to `src-tauri/target/release/bundle/dmg/` and is ad-hoc signed.
 
@@ -121,35 +121,35 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" bash scripts/re
 ### First run
 
 1. **Wait for the models.** The first launch shows "Getting the models ready" for about 25 seconds (an app downloaded as a DMG first asks to download them). Later launches take about a second.
-2. **Allow the permissions** GetCko asks for. If macOS sends you to System Settings > Privacy & Security, switch GetCko on there.
+2. **Allow the permissions** GetcKo asks for. If macOS sends you to System Settings > Privacy & Security, switch GetcKo on there.
 
    | Permission | What it is for | Needed? |
    |---|---|---|
-   | Accessibility | Reading the buttons and fields of the app you are using, so GetCko can point at them | Yes, for pointing |
-   | Screen Recording | Screenshots of screens whose buttons cannot be read | Optional. macOS asks you to quit and reopen GetCko. |
+   | Accessibility | Reading the buttons and fields of the app you are using, so GetcKo can point at them | Yes, for pointing |
+   | Screen Recording | Screenshots of screens whose buttons cannot be read | Optional. macOS asks you to quit and reopen GetcKo. |
    | Microphone | Hold to talk | Optional |
 
 3. **Pick an agent.** On the Agents page click **Use Office Helper**.
-4. **Close the main window** (⌘W). The GetCko bar stays at the bottom of the screen; click its agent name to open the window again.
+4. **Close the main window** (⌘W). The GetcKo bar stays at the bottom of the screen; click its agent name to open the window again.
 5. **Ask.** Open any app, tap **⌥ Space** (Option+Space), type a question such as "How do I make the title bold?" in TextEdit, and press Return. Hold **⌥ Space** to ask by voice instead. Press Esc to stop an answer.
 
 ### Windows
 
-Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetCko uses the GPU through Vulkan and falls back to the CPU.
+Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetcKo uses the GPU through Vulkan and falls back to the CPU.
 
 - **Tools:** Visual Studio Build Tools (C++), Rust, [bun](https://bun.sh/), CMake, the [Vulkan SDK](https://vulkan.lunarg.com/), LLVM (set `LIBCLANG_PATH` to its `bin` folder), and Git for Windows (Git Bash runs `bun run models`).
 - **Build llama.cpp with Ninja:** set `CMAKE_GENERATOR=Ninja` and put the `ninja.exe` that ships with the Build Tools (`Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja`) on `PATH`. With the default Visual Studio generator the build fails now and then with "not a CMake build directory (missing CMakeCache.txt)".
 - **Speech helper:** run `scripts\build-whisper.cmd` from Command Prompt or PowerShell instead of `build-whisper.sh`. In Git Bash, Git's own `link.exe` hides the MSVC linker.
 - **Run:** `bun install`, `bun run models`, then `bun run tauri dev`. Windows needs no Accessibility or Screen Recording permission; the microphone follows Settings > Privacy & security > Microphone.
 - **Ask:** tap **Ctrl+Space** to type, hold it to talk.
-- **Memory:** with less than 2 GB free after the model loads, GetCko transcribes speech with Gemma instead of starting the Whisper helper. Close large apps (WSL, chat apps) for the fastest answers.
+- **Memory:** with less than 2 GB free after the model loads, GetcKo transcribes speech with Gemma instead of starting the Whisper helper. Close large apps (WSL, chat apps) for the fastest answers.
 
 ### If something goes wrong
 
 | Problem | Fix |
 |---|---|
 | `bun run models` stops with "checksum mismatch" | The download was cut off. Run it again; it resumes. |
-| A permission is on but GetCko still says it is off | Rebuilding changes the app's signature. Remove GetCko from that list in System Settings with the minus button, open GetCko again and allow it again. `tccutil reset All com.getcko` clears every GetCko permission at once. |
-| ⌥ Space does nothing | Another app may use Option+Space (Raycast, Alfred, ChatGPT and other launchers). Quit it or change its shortcut, then reopen GetCko. |
+| A permission is on but GetcKo still says it is off | Rebuilding changes the app's signature. Remove GetcKo from that list in System Settings with the minus button, open GetcKo again and allow it again. `tccutil reset All com.getcko` clears every GetcKo permission at once. |
+| ⌥ Space does nothing | Another app may use Option+Space (Raycast, Alfred, ChatGPT and other launchers). Quit it or change its shortcut, then reopen GetcKo. |
 | "Pick an agent first." | Agents page > Use Office Helper. |
 | "Apple could not verify GetCko" (a copy someone built and sent you, not the release DMG) | Only the release DMG is notarised. Run `xattr -dr com.apple.quarantine /path/to/GetCko.app`, then open it again. |
