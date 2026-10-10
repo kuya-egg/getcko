@@ -15,7 +15,7 @@ export interface NoticeProps extends Omit<HTMLAttributes<HTMLDivElement>, "title
 
 /**
  * Inline notice, not an error (that is ErrorNotice). Radius 14, no side stripe, no shadow.
- * Use for constraints the user should know: "No Filipino voice on this Mac".
+ * Use for constraints the user should know: "An agent can use up to 5 knowledge bases."
  */
 export function Notice({ tone = "neutral", title, children, action, className, ...rest }: NoticeProps) {
   return (

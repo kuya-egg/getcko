@@ -40,8 +40,6 @@ export interface AgentCardProps extends Omit<HTMLAttributes<HTMLElement>, "title
   icon?: IconComponent;
   /** Knowledge base names shown as tags. */
   knowledgeBases?: string[];
-  /** Answer language tag: "Taglish", "English", "Filipino". */
-  language?: string;
   /** Start pressed. Omit to hide the button. */
   onStart?: () => void;
   startLabel?: string;
@@ -57,7 +55,6 @@ export function AgentCard({
   description,
   icon: NameIcon,
   knowledgeBases = [],
-  language,
   onStart,
   startLabel = T.actions.start,
   startVariant = "primary",
@@ -79,18 +76,13 @@ export function AgentCard({
           </p>
         </div>
       </div>
-      {(knowledgeBases.length > 0 || language) && (
+      {knowledgeBases.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label={T.aria.agentTags}>
           {knowledgeBases.map((kb) => (
             <li key={kb}>
               <Tag>{kb}</Tag>
             </li>
           ))}
-          {language && (
-            <li>
-              <Tag>{language}</Tag>
-            </li>
-          )}
         </ul>
       )}
       {(onStart || footer) && (
