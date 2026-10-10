@@ -1,16 +1,18 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { GetCkoHero } from "../brand/hero";
 import { buildHeadMark, PALETTE } from "../brand/mascot";
 import { DUR, EASE } from "../brand/motion";
 import { T } from "../brand/lexicon";
 import { Icon } from "../brand/icons";
-import { Button } from "../components/ui";
+import { Button, buttonClass } from "../components/ui";
+import { RELEASES_URL } from "../config";
 import { useVacantSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
-gsap.registerPlugin(SplitText);
+gsap.registerPlugin(ScrollTrigger, SplitText);
 
 /** Head-mark cells (rows 0–10 of the real sprite) for the logo entry. */
 const HEAD_CELLS = buildHeadMark().flatMap((row, y) =>
@@ -56,6 +58,10 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
 
     const finish = () => {
       html.classList.remove("intro-pending");
+      // The intro hid the page scrollbar; with classic (always-shown) scrollbars its return narrows the
+      // page by its width without a resize event, so pins measured at the wider width (How it works) would
+      // overflow sideways. Re-measure every ScrollTrigger now.
+      ScrollTrigger.refresh();
       try {
         sessionStorage.setItem("gc-intro", "1");
       } catch {
@@ -193,9 +199,14 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
         // 0.01 s, not 0: a fresh paused timeline does not render its t=0 set() calls on time(0).
         at={storyOn ? undefined : 0.01}
         actions={
-          <Button size="lg" icon={Icon.start} onClick={onWatch} className="hero-cta">
-            {SITE.watchDemo}
-          </Button>
+          <>
+            <Button size="lg" icon={Icon.start} onClick={onWatch} className="hero-cta">
+              {SITE.watchDemo}
+            </Button>
+            <a className={buttonClass("secondary", "lg")} href={RELEASES_URL} target="_blank" rel="noreferrer">
+              {SITE.download}
+            </a>
+          </>
         }
       />
     </div>

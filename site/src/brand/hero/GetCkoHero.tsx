@@ -1,4 +1,4 @@
-// GetCko first-glance hero: "Ask out loud. GetCko points." beside a mock e-service form (site edit:
+// GetCko first-glance hero: "Where do I click? Just ask." beside a mock e-service form (site edit:
 // was a grade sheet) where a voxel GetCko (three.js, the real sprite map extruded) hops to the Upload ID button, rings it, answers in
 // English and cites the guide, offline. Choreography: ./timeline.ts (shared with the demo video).
 // Spec: docs/brand/hero.md.
@@ -279,6 +279,7 @@ export function GetCkoHero({ theme = "auto", autoplay = true, at, className, act
         {/* Words: headline, support line, the four beats, the shortcut. */}
         <div data-hero="copy" className="flex flex-col gap-4 xl:col-span-5 xl:gap-6">
           <h1 id={titleId} className="font-display text-h1 text-balance text-text lg:text-display">
+            <span className="block">{HERO_COPY.headline.lead}</span>{" "}
             {HERO_COPY.headline.before} <Mark>{HERO_COPY.headline.mark}</Mark>
             {HERO_COPY.headline.after}
           </h1>
