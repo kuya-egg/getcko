@@ -671,7 +671,7 @@ fn aim_like_app<'a>(
     let action_body = (actions.len() >= 2).then(|| turn.body(&actions[0]));
     pipeline::aim_step(
         chat,
-        &turn,
+        turn,
         &body,
         action_body.as_deref(),
         mode,

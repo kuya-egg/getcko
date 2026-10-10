@@ -19,7 +19,8 @@ pub const TARGET_RATE: u32 = 16_000;
 const MAX_SECONDS: usize = 30;
 /// A recording nobody stopped (the question was never sent) is closed after this,
 /// so the microphone does not stay on.
-const ABANDONED_AFTER: std::time::Duration = std::time::Duration::from_secs(MAX_SECONDS as u64 + 10);
+const ABANDONED_AFTER: std::time::Duration =
+    std::time::Duration::from_secs(MAX_SECONDS as u64 + 10);
 
 type Reply<T> = SyncSender<EngineResult<T>>;
 

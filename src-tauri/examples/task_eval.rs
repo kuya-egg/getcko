@@ -263,8 +263,7 @@ fn main() {
             let mut done = false;
             if index == 0 {
                 planned = pipeline::without_done(
-                    pipeline::plan(chat.as_ref(), &turn, &body, None, &|| true)
-                        .expect("plan pass"),
+                    pipeline::plan(chat.as_ref(), &turn, &body, None, &|| true).expect("plan pass"),
                     &snapshot,
                 );
                 if planned.len() < 2 {

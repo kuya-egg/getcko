@@ -67,6 +67,15 @@ pub fn run() {
             let engine = Arc::new(OnceLock::new());
             let state = Arc::new(pipeline::AppState { store, engine: Arc::clone(&engine), platform: Arc::from(platform::current()), turns: Arc::new(pipeline::TurnControl::new()), prepared: std::sync::Mutex::new(None), guide: std::sync::Mutex::new(None) });
             let models = paths::models_dir(app.handle()).map_err(Box::<dyn std::error::Error>::from)?;
+            // A first launch without the required models opens the main window (its
+            // download step) now, while GetCko is the active app. Shown later from the
+            // engine thread (after ~15 s of Metal setup), macOS no longer lets it take
+            // focus and the window opened behind the user's other windows.
+            if [engine::CHAT_MODEL_FILE, engine::EMBEDDING_MODEL_FILE].iter().any(|file| !models.join(file).is_file())
+                && let Err(error) = commands::show_main_window(app.handle())
+            {
+                tracing::warn!("could not show main window for missing models: {error}");
+            }
             let handle = app.handle().clone();
             let reembed_store = Arc::clone(&state.store);
             std::thread::spawn(move || {

@@ -38,7 +38,9 @@ fn main() {
 
     std::thread::sleep(Duration::from_secs(3));
     let os = platform::current();
-    let snapshot = os.snapshot(platform::MAX_SNAPSHOT_ELEMENTS).expect("snapshot");
+    let snapshot = os
+        .snapshot(platform::MAX_SNAPSHOT_ELEMENTS)
+        .expect("snapshot");
     let capture = os.capture().expect("capture");
     println!(
         "screen: {} ({} elements), capture {}x{}",
@@ -49,7 +51,10 @@ fn main() {
     );
     let t = Instant::now();
     let full = screenshot::prepare(capture, Some(&snapshot.elements));
-    println!("screenshot::prepare {} ms (this build's optimization level)", t.elapsed().as_millis());
+    println!(
+        "screenshot::prepare {} ms (this build's optimization level)",
+        t.elapsed().as_millis()
+    );
 
     let agent = templates::get(TemplateId::OfficeHelper).draft;
     let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
@@ -61,15 +66,27 @@ fn main() {
             user: turn.warm_user(),
             max_tokens: turn.max_tokens,
             grammar: None,
-            image: shot.map(|s| ImagePart { image: &s.image, text_after: "" }),
+            image: shot.map(|s| ImagePart {
+                image: &s.image,
+                text_after: "",
+            }),
         })
         .expect("prefill");
         t.elapsed().as_millis()
     };
     let target = |mode: ScreenMode, shot: Option<&Prepared>| {
         let t = Instant::now();
-        let aim = pipeline::aim(chat.as_ref(), &turn, &body, mode, &snapshot, shot, None, &|| true)
-            .expect("target pass");
+        let aim = pipeline::aim(
+            chat.as_ref(),
+            &turn,
+            &body,
+            mode,
+            &snapshot,
+            shot,
+            None,
+            &|| true,
+        )
+        .expect("target pass");
         let picked = match aim {
             Aim::Element(e) => e.id.clone(),
             Aim::Point { .. } => "point".into(),
@@ -91,17 +108,35 @@ fn main() {
                     role: ["button", "cell", "textField", "text"][i % 4].into(),
                     label: format!("Learner {} quarter {} grade", i / 4 + 1, i % 4 + 1),
                     value: (i % 4 == 1).then(|| format!("{}", 75 + i % 20)),
-                    bounds: getcko_lib::model::Rect { x: 0.0, y: f64::from(i as u32) * 20.0, width: 80.0, height: 18.0 },
+                    bounds: getcko_lib::model::Rect {
+                        x: 0.0,
+                        y: f64::from(i as u32) * 20.0,
+                        width: 80.0,
+                        height: 18.0,
+                    },
                 })
                 .collect(),
         };
         let fixed = TurnPrompt::new(&agent, Some(&synthetic), &[]);
         for _ in 0..ROUNDS {
-            chat.prefill(&ChatRequest { system: "x", user: "y", max_tokens: 8, grammar: None, image: None }).expect("reset");
+            chat.prefill(&ChatRequest {
+                system: "x",
+                user: "y",
+                max_tokens: 8,
+                grammar: None,
+                image: None,
+            })
+            .expect("reset");
             let t = Instant::now();
             let stats = chat
                 .generate(
-                    &ChatRequest { system: &fixed.system, user: fixed.warm_user(), max_tokens: 1, grammar: None, image: None },
+                    &ChatRequest {
+                        system: &fixed.system,
+                        user: fixed.warm_user(),
+                        max_tokens: 1,
+                        grammar: None,
+                        image: None,
+                    },
                     &mut |_| getcko_lib::engine::Flow::Continue,
                 )
                 .expect("cold read");
@@ -114,9 +149,15 @@ fn main() {
         }
         return;
     }
-    let sizes: Vec<Prepared> = [1024u32, 768, 512].iter().map(|&side| shrink(&full, side)).collect();
+    let sizes: Vec<Prepared> = [1024u32, 768, 512]
+        .iter()
+        .map(|&side| shrink(&full, side))
+        .collect();
     for round in 1..=ROUNDS {
-        println!("== round {round}{}", if round == 1 { " (warm-up)" } else { "" });
+        println!(
+            "== round {round}{}",
+            if round == 1 { " (warm-up)" } else { "" }
+        );
         let before = ahead(None);
         let (after, picked) = target(ScreenMode::Elements, None);
         println!("tier 1: ahead {before} ms, after the question {after} ms -> {picked}");
@@ -143,9 +184,15 @@ fn shrink(prepared: &Prepared, side: u32) -> Prepared {
     let h = ((f64::from(image.height) * ratio).round() as u32).max(1);
     let mut rgb = Vec::with_capacity((w * h * 3) as usize);
     for y in 0..h {
-        let (y0, y1) = (y * image.height / h, ((y + 1) * image.height / h).max(y * image.height / h + 1));
+        let (y0, y1) = (
+            y * image.height / h,
+            ((y + 1) * image.height / h).max(y * image.height / h + 1),
+        );
         for x in 0..w {
-            let (x0, x1) = (x * image.width / w, ((x + 1) * image.width / w).max(x * image.width / w + 1));
+            let (x0, x1) = (
+                x * image.width / w,
+                ((x + 1) * image.width / w).max(x * image.width / w + 1),
+            );
             let mut sum = [0u32; 3];
             for sy in y0..y1 {
                 for sx in x0..x1 {
@@ -160,7 +207,11 @@ fn shrink(prepared: &Prepared, side: u32) -> Prepared {
         }
     }
     Prepared {
-        image: RgbImage { width: w, height: h, rgb },
+        image: RgbImage {
+            width: w,
+            height: h,
+            rgb,
+        },
         scale: prepared.scale * f64::from(w) / f64::from(image.width),
         ..prepared.clone()
     }
