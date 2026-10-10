@@ -30,10 +30,16 @@ pub fn vector_extension(app: &tauri::AppHandle) -> AppResult<PathBuf> {
     Ok(bundled)
 }
 
+/// Where downloaded models go. On Windows the local (not roaming) app data folder: a
+/// roaming profile would copy the 3–5 GB of models to the server at every sign-in and
+/// sign-out on school and office PCs.
 pub fn download_dir(app: &tauri::AppHandle) -> AppResult<PathBuf> {
-    let dir = app
-        .path()
-        .app_data_dir()
+    let paths = app.path();
+    #[cfg(target_os = "windows")]
+    let base = paths.app_local_data_dir();
+    #[cfg(not(target_os = "windows"))]
+    let base = paths.app_data_dir();
+    let dir = base
         .map_err(|e| AppError::new(crate::error::ErrorKind::Io, e.to_string()))?
         .join("models");
     std::fs::create_dir_all(&dir)?;

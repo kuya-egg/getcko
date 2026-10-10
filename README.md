@@ -141,6 +141,7 @@ Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetcKo use
 - **Build llama.cpp with Ninja:** set `CMAKE_GENERATOR=Ninja` and put the `ninja.exe` that ships with the Build Tools (`Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja`) on `PATH`. With the default Visual Studio generator the build fails now and then with "not a CMake build directory (missing CMakeCache.txt)".
 - **Speech helper:** run `scripts\build-whisper.cmd` from Command Prompt or PowerShell instead of `build-whisper.sh`. In Git Bash, Git's own `link.exe` hides the MSVC linker.
 - **Run:** `bun install`, `bun run models`, then `bun run tauri dev`. Windows needs no Accessibility or Screen Recording permission; the microphone follows Settings > Privacy & security > Microphone.
+- **Installer:** `bun run tauri:release:windows` builds `GetCko_<version>_x64-setup.exe` with the speech helper and no models (a Windows installer cannot hold 5 GB); GetCko downloads the models on first launch into `%LOCALAPPDATA%\com.getcko\models`.
 - **Ask:** tap **Ctrl+Space** to type, hold it to talk.
 - **Memory:** with less than 2 GB free after the model loads, GetcKo transcribes speech with Gemma instead of starting the Whisper helper. Close large apps (WSL, chat apps) for the fastest answers.
 

@@ -11,7 +11,8 @@
     "test": "vitest run",
     "models": "bash scripts/fetch-models.sh",
     "tauri:build": "tauri build --config src-tauri/tauri.models.conf.json",
-    "tauri:release": "tauri build --config src-tauri/tauri.release.conf.json --bundles dmg"
+    "tauri:release": "tauri build --config src-tauri/tauri.release.conf.json --bundles dmg",
+    "tauri:release:windows": "tauri build --config src-tauri/tauri.release.conf.json --bundles nsis"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
