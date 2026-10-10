@@ -213,7 +213,7 @@ components:
 - **Creative North Star: "The helper at your elbow."**
 
 - **What it is:** a private, offline desktop helper. Textured sections from the gecko's world, solid content cards, one small green pixel gecko, one yellow ring around the thing to click. A plain white page is slop.
-- **Where personality lives:** the sprite (crisp, integer-scaled, a little cheeky) and the voice (a patient officemate, plain English or Taglish). Everything else is calm desktop UI for people new to computers.
+- **Where personality lives:** the sprite (crisp, integer-scaled, a little cheeky) and the voice (a patient officemate, plain English). Everything else is calm desktop UI for people new to computers.
 - **Dark theme:** ink ground `#121410`, never pure black or navy; same rules.
 - **Eye path:** ask → GetcKo → target → source. The gecko faces into the layout toward the next thing.
 - **Show, don't tell:** headline ≤ 6 words, body ≤ 1 line; the rest becomes keyword chips, steps, a diagram or motion.
@@ -380,7 +380,7 @@ An Ink pill that stays dark in both themes: agent chip, green mic, Screen Help, 
 - **Do** use the pixel icons from `Icon` (24 grid, 2-unit strokes, 24 / 48px), bare and only where they add meaning; see `docs/brand/icons.md`.
 - **Don't** use smooth line-icon packages, icon tiles or tinted icon circles, or an icon on every row or heading.
 - **Do** use one texture per surface; working screens flat or `subtle`; never texture the overlay or behind answer text. Light hero = `footprints` + `canopy-corner`.
-- **Do** write action → reason → source, in sentence case, with Taglish when the agent's language is Taglish.
+- **Do** write action → reason → source, in sentence case, in plain English.
 
 ### Don't:
 - **Don't** ship a plain white page: untextured sections read as generic AI slop.
@@ -413,7 +413,7 @@ Built only from the kit: `Surface`, `GetCkoHero`, `AgentCard`, `KnowledgeBaseRow
 
 **One GetcKo per screen.** `src/gecko/director.ts` draws the page's canvas GetcKo from `buildPose` at integer scale; sections register a slot (`GeckoSlot`), and moving between sections dissolves the sprite into its cells and re-forms it. The hero registers a vacant slot, so the canvas sprite scatters away and the kit's voxel GetcKo is the only one on screen. Halos use the kit's `haloIn` / `haloOut` (140 ms draw, two pulses, hold), with the two-ring dark variant on ink chrome.
 
-**English only (site override of the brand voice):** the landing page is in plain English. No Taglish, Filipino or "Pinoy" copy, and no platform phrase: "on this Mac" becomes "Nothing leaves your computer." / "stored offline", and the tagline shows as its gloss "Now you get it.". The keyword list drops "On this Mac" and "Pinoy"; Templates drops Taglish Explainer; the measured stat keeps "measured on M4 Pro" as its source. These strings live in `src/copy.ts` (and the hero's sample in `src/brand/hero/copy.ts`); the kit lexicon is unchanged for the app.
+**English only:** the product answers in English and the page says so in plain English. The site's `lexicon.ts` matches: no answer-language setting, no Taglish lines or Taglish Explainer template, no "Pinoy" keyword. On the page, "on this Mac" becomes "Nothing leaves your computer." / "stored offline", the tagline shows as its gloss "Now you get it.", and the keyword list drops "On this Mac". The name origin ("gets ko") stays. The measured stat shows 1.04 s with its source line "accented English · median of 10 · M4 Pro" (`docs/MODELS.md` finding 40). Landing strings live in `src/copy.ts` (and the hero's sample in `src/brand/hero/copy.ts`).
 
 **Intro (GSAP, once per session, `?intro` replays, skipped under reduced motion):** `<html class="intro-pending">` is set before first paint. (1) The head mark's cells (`buildHeadMark`) assemble from a scattered pixel field; (2) the ink tile pops in and "GetcKo" and the "Now you get it." badge print; (3) the tile flies into the nav `Wordmark` tile, kept at the same 22:36 head-to-tile ratio; (4) the hero's text column rises; (5) the e-service form window springs up and de-rasters through a pixel curtain; (6) the kit hero timeline starts. Click, scroll or any key skips it.
 
@@ -421,4 +421,4 @@ Built only from the kit: `Surface`, `GetCkoHero`, `AgentCard`, `KnowledgeBaseRow
 
 **Seams (no hard section edges):** every light section uses the `paper` ground, and its texture is painted on a `::before` masked by a 4×4 Bayer dither (`public/site/seam-*.svg`, 4 px cells, 96 px ramp), so the texture dissolves pixel by pixel at its top and bottom: the brand's dither fade, never a gradient. `seam-top` / `seam-bottom` keep the canopy's top edge and the footer's bottom edge crisp. The ink island masks its whole ground, so it dithers out into the page.
 
-**Site edits to vendored kit code:** `GetCkoHero` gains an `actions` prop (the CTA row) and `data-hero="copy" | "window"` hooks for the intro, and its grade sheet is replaced by `EServiceForm`: an LGU business permit renewal at step 2 of 4, with name and TIN filled, no valid ID, and Next disabled. The question is "Bakit hindi ko ma-click ang Next?", GetcKo points at Upload ID, and the source is "Permit guide · p. 2" (sample data in `hero/copy.ts`); `lexicon.ts` `MEASURED.firstSpokenWord` is filled from `docs/MODELS.md`.
+**Site edits to vendored kit code:** `GetCkoHero` gains an `actions` prop (the CTA row) and `data-hero="copy" | "window"` hooks for the intro, and its grade sheet is replaced by `EServiceForm`: an LGU business permit renewal at step 2 of 4, with name and TIN filled, no valid ID, and Next disabled. The question is "Why can't I click Next?", GetcKo points at Upload ID, and the source is "Permit guide · p. 2" (sample data in `hero/copy.ts`). `lexicon.ts` is English only (no `AgentLanguage`, `languages`, `tl` lines or `linesFor`; `say` is the English lines), `VoicePicker` drops the language notice and `LanguagePicker`, `AgentCard` drops the language tag, and `MEASURED.firstSpokenWord` is filled from `docs/MODELS.md`.

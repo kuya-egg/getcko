@@ -46,7 +46,7 @@ export function OgCard() {
         <p className="og-support text-text-2">{HERO_COPY.support}</p>
         <ProofLine
           className="og-proof"
-          items={[T.proof.wifiOff, MEASURED.firstSpokenWord != null && `${fmtSeconds(MEASURED.firstSpokenWord)} to first spoken word`]}
+          items={[T.proof.wifiOff, MEASURED.firstSpokenWord != null && `${fmtSeconds(MEASURED.firstSpokenWord, 2)} to first spoken word`]}
         />
       </div>
       <div ref={stage} className="og-stage">

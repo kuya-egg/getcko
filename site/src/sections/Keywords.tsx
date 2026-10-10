@@ -9,7 +9,7 @@ import { GeckoSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
 /**
- * The brand keywords (T.keywords, minus the place- and culture-specific two), one per line on gecko skin. As you scroll, GetcKo walks
+ * The brand keywords (T.keywords, minus "On this Mac"), one per line on gecko skin. As you scroll, GetcKo walks
  * down the list and points right at the keyword in the reading band; that word wears the green mark.
  */
 export function Keywords() {

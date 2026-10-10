@@ -63,9 +63,19 @@ All models are downloaded once by `bun run models` (listed with SHA-256 checksum
 
 ## How to run
 
+### Fastest: download the app (macOS)
+
+1. Download `GetCko_0.1.0_aarch64.dmg` (8 MB) from the [latest release](https://github.com/kuya-egg/getcko/releases/latest). It needs a Mac with Apple Silicon (M1 or newer).
+2. Open the DMG and drag **GetCko** into **Applications**, then open GetCko from Applications. The app is signed and notarised by Apple, so it opens like any other downloaded app.
+3. **Download the models.** On first launch GetCko asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
+
+Then continue with [First run](#first-run).
+
+### Or build it from source
+
 Tested from a clean clone on an Apple Silicon Mac (M4 Pro, macOS 27.0.1, Xcode installed, Rust 1.99, bun 1.4.2, CMake 4.4).
 
-### What you need
+#### What you need
 
 - **A Mac with Apple Silicon** (M1 or newer). Intel Macs are not supported. 16 GB of memory is recommended.
 - **About 20 GB of free disk space:** 5.4 GB of models, a 5.1 GB app, and build files.
@@ -82,7 +92,7 @@ Tested from a clean clone on an Apple Silicon Mac (M4 Pro, macOS 27.0.1, Xcode i
 
   Open a new terminal after installing Rust and bun.
 
-### Build and open the app
+#### Build and open the app
 
 From the repository root:
 
@@ -98,9 +108,19 @@ The first build takes several minutes because it compiles llama.cpp. Build it in
 
 To run without building an app, use `bun run tauri dev` after `bun run models`. In that mode macOS gives the permissions below to the terminal app that started it (Terminal, iTerm, VS Code, …), not to GetCko.
 
+To make the downloadable DMG (no models inside; the app downloads them on first launch): `bash scripts/build-whisper.sh`, then `bun run tauri:release`. It is written to `src-tauri/target/release/bundle/dmg/` and is ad-hoc signed.
+
+#### Signed release
+
+`scripts/release-macos.sh` builds the same DMG signed with a Developer ID, notarises it with Apple and staples the ticket. One-time setup: a **Developer ID Application** certificate in the login keychain (Xcode > Settings > Accounts > Manage Certificates), and notarisation credentials saved with `xcrun notarytool store-credentials getcko --apple-id <email> --team-id <TEAMID>` (an app-specific password from account.apple.com). Then:
+
+```sh
+APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" bash scripts/release-macos.sh
+```
+
 ### First run
 
-1. **Wait for the models.** The first launch shows "Getting the models ready" for about 25 seconds. Later launches take about a second.
+1. **Wait for the models.** The first launch shows "Getting the models ready" for about 25 seconds (an app downloaded as a DMG first asks to download them). Later launches take about a second.
 2. **Allow the permissions** GetCko asks for. If macOS sends you to System Settings > Privacy & Security, switch GetCko on there.
 
    | Permission | What it is for | Needed? |
@@ -121,6 +141,7 @@ Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetCko use
 - **Build llama.cpp with Ninja:** set `CMAKE_GENERATOR=Ninja` and put the `ninja.exe` that ships with the Build Tools (`Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja`) on `PATH`. With the default Visual Studio generator the build fails now and then with "not a CMake build directory (missing CMakeCache.txt)".
 - **Speech helper:** run `scripts\build-whisper.cmd` from Command Prompt or PowerShell instead of `build-whisper.sh`. In Git Bash, Git's own `link.exe` hides the MSVC linker.
 - **Run:** `bun install`, `bun run models`, then `bun run tauri dev`. Windows needs no Accessibility or Screen Recording permission; the microphone follows Settings > Privacy & security > Microphone.
+- **Installer:** `bun run tauri:release:windows` builds `GetCko_<version>_x64-setup.exe` with the speech helper and no models (a Windows installer cannot hold 5 GB); GetCko downloads the models on first launch into `%LOCALAPPDATA%\com.getcko\models`.
 - **Ask:** tap **Ctrl+Space** to type, hold it to talk.
 - **Memory:** with less than 2 GB free after the model loads, GetCko transcribes speech with Gemma instead of starting the Whisper helper. Close large apps (WSL, chat apps) for the fastest answers.
 
@@ -132,4 +153,4 @@ Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetCko use
 | A permission is on but GetCko still says it is off | Rebuilding changes the app's signature. Remove GetCko from that list in System Settings with the minus button, open GetCko again and allow it again. `tccutil reset All com.getcko` clears every GetCko permission at once. |
 | ⌥ Space does nothing | Another app may use Option+Space (Raycast, Alfred, ChatGPT and other launchers). Quit it or change its shortcut, then reopen GetCko. |
 | "Pick an agent first." | Agents page > Use Office Helper. |
-| "Apple could not verify GetCko" (an app you were sent, not one you built) | Run `xattr -dr com.apple.quarantine /path/to/GetCko.app`, then open it again. The app is not notarised. |
+| "Apple could not verify GetCko" (a copy someone built and sent you, not the release DMG) | Only the release DMG is notarised. Run `xattr -dr com.apple.quarantine /path/to/GetCko.app`, then open it again. |

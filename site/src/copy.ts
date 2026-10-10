@@ -66,9 +66,9 @@ export const SITE = {
     title: "Start from a template.",
   },
 
-  /** English-only landing: the place- and culture-specific keywords (On this Mac, Pinoy) are left out. */
+  /** English-only landing: the place-specific keyword (On this Mac) is left out. */
   /** PROPOSED title, 4 words. */
-  keywords: { eyebrow: T.board.keywords.eyebrow, title: "What GetcKo stands for.", list: T.keywords.filter((k) => k.word !== "Pinoy" && k.word !== "On this Mac") },
+  keywords: { eyebrow: T.board.keywords.eyebrow, title: "What GetcKo stands for.", list: T.keywords.filter((k) => k.word !== "On this Mac") },
 
   offline: {
     eyebrow: T.status.offline,
@@ -76,13 +76,16 @@ export const SITE = {
     nothingLeaves: "Nothing leaves your computer.",
     stackTitle: T.settings.models,
     stackHelp: "Downloaded once. Everything runs offline.",
-    /** Model stack, docs/architecture.md "Local models and runtime". */
+    /** Model stack, docs/MODELS.md. */
     stack: [
       ["Answers and pointing", "Gemma 4 E2B"],
-      ["Hearing your question", "Gemma 4 E2B audio"],
-      ["Search your documents", "EmbeddingGemma 300M · sqlite-vector"],
+      ["Best guess from a screenshot", "Qwen3-VL-2B"],
+      ["Hearing your question", "Whisper small.en"],
+      ["Search your documents", "bge-small-en-v1.5 · sqlite-vector"],
       [T.settings.voice, "Your computer's built-in voices"],
     ] as const,
+    /** Where the first-spoken-word figure ran: docs/MODELS.md finding 40, accented-English clip. */
+    measuredOn: "accented English · median of 10 · M4 Pro",
   },
 
   /** English-only landing: the tagline "Gets mo na." is shown as its English gloss. */
