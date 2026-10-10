@@ -14,65 +14,83 @@ use std::ffi::c_void;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use ::windows::core::{BOOL, BSTR, HSTRING, Interface, PCWSTR, PWSTR, w};
-use ::windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession};
+use ::windows::Graphics::Capture::{
+    Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession,
+};
 use ::windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use ::windows::Graphics::DirectX::DirectXPixelFormat;
 use ::windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
 use ::windows::Media::Ocr::OcrEngine;
 use ::windows::Security::Cryptography::CryptographicBuffer;
-use ::windows::Win32::Foundation::{CloseHandle, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use ::windows::Win32::Foundation::{
+    CloseHandle, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+};
 use ::windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use ::windows::Win32::Graphics::Direct3D11::{
     D3D11_BIND_FLAG, D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
     D3D11_MAPPED_SUBRESOURCE, D3D11_RESOURCE_MISC_FLAG, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
     D3D11_USAGE_STAGING, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
 };
-use ::windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
-use ::windows::Win32::Graphics::Dxgi::IDXGIDevice;
-use ::windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
-use ::windows::Win32::Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW};
-use ::windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoIncrementMTAUsage, CoInitializeEx,
-    CoUninitialize,
+use ::windows::Win32::Graphics::Dwm::{
+    DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
 };
-use ::windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+use ::windows::Win32::Graphics::Dxgi::IDXGIDevice;
+use ::windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+};
+use ::windows::Win32::Storage::FileSystem::{
+    GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+};
+use ::windows::Win32::System::Com::{
+    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoIncrementMTAUsage,
+    CoInitializeEx, CoUninitialize,
+};
+use ::windows::Win32::System::Registry::{
+    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW,
+};
 use ::windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use ::windows::Win32::System::Variant::VARIANT;
-use ::windows::Win32::System::WinRT::Direct3D11::{CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess};
+use ::windows::Win32::System::WinRT::Direct3D11::{
+    CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
+};
 use ::windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
 use ::windows::Win32::UI::Accessibility::{
-    CUIAutomation8, IAccessible, IUIAutomation, IUIAutomation2, IUIAutomationElement, ObjectFromLresult,
-    TreeScope_Children, UIA_AppBarControlTypeId, UIA_CustomControlTypeId, UIA_IsControlElementPropertyId,
-    UIA_IsGridItemPatternAvailablePropertyId, UIA_IsTableItemPatternAvailablePropertyId,
+    CUIAutomation8, IAccessible, IUIAutomation, IUIAutomation2, IUIAutomationElement,
+    ObjectFromLresult, TreeScope_Children, UIA_AppBarControlTypeId,
+    UIA_BoundingRectanglePropertyId, UIA_ButtonControlTypeId, UIA_CONTROLTYPE_ID,
+    UIA_CheckBoxControlTypeId, UIA_ComboBoxControlTypeId, UIA_ControlTypePropertyId,
+    UIA_CustomControlTypeId, UIA_DataGridControlTypeId, UIA_DataItemControlTypeId,
+    UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_GroupControlTypeId,
+    UIA_HeaderItemControlTypeId, UIA_HelpTextPropertyId, UIA_HyperlinkControlTypeId,
+    UIA_ImageControlTypeId, UIA_IsControlElementPropertyId,
+    UIA_IsGridItemPatternAvailablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsPasswordPropertyId,
     UIA_IsRangeValuePatternAvailablePropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
-    UIA_IsTogglePatternAvailablePropertyId, UIA_ProgressBarControlTypeId, UIA_RangeValueValuePropertyId,
-    UIA_SelectionItemIsSelectedPropertyId, UIA_ToggleToggleStatePropertyId, UIA_BoundingRectanglePropertyId, UIA_ButtonControlTypeId,
-    UIA_CheckBoxControlTypeId, UIA_ComboBoxControlTypeId, UIA_CONTROLTYPE_ID, UIA_ControlTypePropertyId,
-    UIA_DataGridControlTypeId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
-    UIA_GroupControlTypeId, UIA_HeaderItemControlTypeId, UIA_HelpTextPropertyId, UIA_HyperlinkControlTypeId,
-    UIA_ImageControlTypeId, UIA_IsOffscreenPropertyId, UIA_IsPasswordPropertyId, UIA_IsValuePatternAvailablePropertyId,
-    UIA_ListControlTypeId, UIA_ListItemControlTypeId, UIA_MenuBarControlTypeId, UIA_MenuControlTypeId,
-    UIA_MenuItemControlTypeId, UIA_NamePropertyId, UIA_PaneControlTypeId, UIA_ProcessIdPropertyId,
-    UIA_RadioButtonControlTypeId, UIA_ScrollBarControlTypeId, UIA_SeparatorControlTypeId, UIA_SliderControlTypeId,
-    UIA_SpinnerControlTypeId, UIA_SplitButtonControlTypeId, UIA_TabItemControlTypeId, UIA_TableControlTypeId,
-    UIA_TextControlTypeId, UIA_ThumbControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
-    UIA_TreeControlTypeId, UIA_TreeItemControlTypeId, UIA_ValueIsReadOnlyPropertyId, UIA_ValueValuePropertyId,
-    UIA_WindowControlTypeId,
+    UIA_IsTableItemPatternAvailablePropertyId, UIA_IsTogglePatternAvailablePropertyId,
+    UIA_IsValuePatternAvailablePropertyId, UIA_ListControlTypeId, UIA_ListItemControlTypeId,
+    UIA_MenuBarControlTypeId, UIA_MenuControlTypeId, UIA_MenuItemControlTypeId, UIA_NamePropertyId,
+    UIA_PaneControlTypeId, UIA_ProcessIdPropertyId, UIA_ProgressBarControlTypeId,
+    UIA_RadioButtonControlTypeId, UIA_RangeValueValuePropertyId, UIA_ScrollBarControlTypeId,
+    UIA_SelectionItemIsSelectedPropertyId, UIA_SeparatorControlTypeId, UIA_SliderControlTypeId,
+    UIA_SpinnerControlTypeId, UIA_SplitButtonControlTypeId, UIA_TabItemControlTypeId,
+    UIA_TableControlTypeId, UIA_TextControlTypeId, UIA_ThumbControlTypeId,
+    UIA_TitleBarControlTypeId, UIA_ToggleToggleStatePropertyId, UIA_ToolBarControlTypeId,
+    UIA_TreeControlTypeId, UIA_TreeItemControlTypeId, UIA_ValueIsReadOnlyPropertyId,
+    UIA_ValueValuePropertyId, UIA_WindowControlTypeId,
 };
 use ::windows::Win32::UI::HiDpi::{
-    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForMonitor, MDT_EFFECTIVE_DPI, SetThreadDpiAwarenessContext,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForMonitor, MDT_EFFECTIVE_DPI,
+    SetThreadDpiAwarenessContext,
 };
 use ::windows::Win32::UI::Shell::ShellExecuteW;
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GW_HWNDNEXT, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetTopWindow, GetWindow,
-    GetWindowRect,
-    GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, OBJID_CLIENT,
-    SMTO_ABORTIFHUNG, SW_SHOWNORMAL, SendMessageTimeoutW, WM_GETOBJECT, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    EnumChildWindows, GW_HWNDNEXT, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetTopWindow,
+    GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
+    IsIconic, IsWindowVisible, OBJID_CLIENT, SMTO_ABORTIFHUNG, SW_SHOWNORMAL, SendMessageTimeoutW,
+    WM_GETOBJECT, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
+use ::windows::core::{BOOL, BSTR, HSTRING, Interface, PCWSTR, PWSTR, w};
 
 use super::{Platform, PlatformError, ScreenCapture, TextBox};
 use crate::model::{
@@ -141,11 +159,22 @@ impl Platform for WindowsPlatform {
             // Nothing can be granted in-process; take the user to the switch.
             let page = match kind {
                 PermissionKind::Microphone => w!("ms-settings:privacy-microphone"),
-                PermissionKind::ScreenRecording => w!("ms-settings:privacy-graphicscaptureprogrammatic"),
+                PermissionKind::ScreenRecording => {
+                    w!("ms-settings:privacy-graphicscaptureprogrammatic")
+                }
                 PermissionKind::Accessibility => return status,
             };
             // SAFETY: all string arguments are static, NUL-terminated wide strings.
-            unsafe { ShellExecuteW(None, w!("open"), page, PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
+            unsafe {
+                ShellExecuteW(
+                    None,
+                    w!("open"),
+                    page,
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                )
+            };
         }
         status
     }
@@ -159,7 +188,9 @@ impl Platform for WindowsPlatform {
 
     fn capture(&self) -> Result<ScreenCapture, PlatformError> {
         if consent("graphicsCaptureProgrammatic") == Consent::Denied {
-            return Err(PlatformError::PermissionDenied(PermissionKind::ScreenRecording));
+            return Err(PlatformError::PermissionDenied(
+                PermissionKind::ScreenRecording,
+            ));
         }
         on_worker("getcko-capture", WORKER_TIMEOUT, move || {
             match topmost_window(std::process::id()) {
@@ -184,7 +215,9 @@ impl Platform for WindowsPlatform {
         }
         let image = OcrImage::from_rgba(width, height, &capture.rgba);
         let origin = (f64::from(capture.x), f64::from(capture.y));
-        on_worker("getcko-ocr", OCR_TIMEOUT, move || recognize_lines(image, origin))
+        on_worker("getcko-ocr", OCR_TIMEOUT, move || {
+            recognize_lines(image, origin)
+        })
     }
 }
 
@@ -197,8 +230,17 @@ struct OcrImage {
 
 impl OcrImage {
     fn from_rgba(width: usize, height: usize, rgba: &[u8]) -> Self {
-        let bgra = rgba.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
-        Self { width, height, bgra }
+        let bgra = rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|p| [p[2], p[1], p[0], 255])
+            .collect();
+        Self {
+            width,
+            height,
+            bgra,
+        }
     }
 
     /// Shrunk by a whole factor until neither side exceeds `max_side` (OCR rejects
@@ -227,7 +269,14 @@ impl OcrImage {
                 bgra.push(255);
             }
         }
-        (Self { width, height, bgra }, factor)
+        (
+            Self {
+                width,
+                height,
+                bgra,
+            },
+            factor,
+        )
     }
 }
 
@@ -235,7 +284,9 @@ impl OcrImage {
 /// user's profile languages), boxed in desktop physical pixels; the counterpart of
 /// Vision's `VNRecognizeTextRequest` in `macos.rs`.
 fn recognize_lines(image: OcrImage, origin: (f64, f64)) -> Result<Vec<TextBox>, PlatformError> {
-    let unavailable = |e: ::windows::core::Error| PlatformError::Unavailable(format!("text recognition is unavailable: {e}"));
+    let unavailable = |e: ::windows::core::Error| {
+        PlatformError::Unavailable(format!("text recognition is unavailable: {e}"))
+    };
     // Fails when none of the user's languages has an OCR pack installed.
     let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(unavailable)?;
     let max_side = OcrEngine::MaxImageDimension().map_err(unavailable)? as usize;
@@ -243,17 +294,29 @@ fn recognize_lines(image: OcrImage, origin: (f64, f64)) -> Result<Vec<TextBox>, 
     if image.width == 0 || image.height == 0 {
         return Ok(Vec::new());
     }
-    let failed = |e: ::windows::core::Error| PlatformError::Os(format!("text recognition failed: {e}"));
+    let failed =
+        |e: ::windows::core::Error| PlatformError::Os(format!("text recognition failed: {e}"));
     let to_i32 = |v: usize| i32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
     let buffer = CryptographicBuffer::CreateFromByteArray(&image.bgra).map_err(failed)?;
-    let bitmap =
-        SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, to_i32(image.width)?, to_i32(image.height)?)
-            .map_err(failed)?;
-    let result = wait_for(engine.RecognizeAsync(&bitmap).map_err(failed)?, OCR_TIMEOUT - OCR_TIMEOUT / 10)?;
+    let bitmap = SoftwareBitmap::CreateCopyFromBuffer(
+        &buffer,
+        BitmapPixelFormat::Bgra8,
+        to_i32(image.width)?,
+        to_i32(image.height)?,
+    )
+    .map_err(failed)?;
+    let result = wait_for(
+        engine.RecognizeAsync(&bitmap).map_err(failed)?,
+        OCR_TIMEOUT - OCR_TIMEOUT / 10,
+    )?;
     let lines = result.Lines().map_err(failed)?;
     // Word boxes are given for the deskewed image (text rotated to level); boxes of
     // tilted text (a scanned page shown at an angle) are turned back onto the screen.
-    let angle = result.TextAngle().ok().and_then(|a| a.Value().ok()).unwrap_or(0.0);
+    let angle = result
+        .TextAngle()
+        .ok()
+        .and_then(|a| a.Value().ok())
+        .unwrap_or(0.0);
     let size = (image.width as f64, image.height as f64);
     let scale = factor as f64;
     let mut boxes = Vec::new();
@@ -267,7 +330,14 @@ fn recognize_lines(image: OcrImage, origin: (f64, f64)) -> Result<Vec<TextBox>, 
         let words = line.Words().map_err(failed)?;
         let rects = (0..words.Size().map_err(failed)?)
             .filter_map(|i| words.GetAt(i).and_then(|w| w.BoundingRect()).ok())
-            .map(|r| (f64::from(r.X), f64::from(r.Y), f64::from(r.X + r.Width), f64::from(r.Y + r.Height)))
+            .map(|r| {
+                (
+                    f64::from(r.X),
+                    f64::from(r.Y),
+                    f64::from(r.X + r.Width),
+                    f64::from(r.Y + r.Height),
+                )
+            })
             .map(|r| unrotate(r, angle, size));
         let Some(bounds) = union(rects) else { continue };
         boxes.push(TextBox {
@@ -290,7 +360,8 @@ fn wait_for<T: ::windows::core::RuntimeType + 'static>(
     op: windows_future::IAsyncOperation<T>,
     timeout: Duration,
 ) -> Result<T, PlatformError> {
-    let failed = |e: ::windows::core::Error| PlatformError::Os(format!("text recognition failed: {e}"));
+    let failed =
+        |e: ::windows::core::Error| PlatformError::Os(format!("text recognition failed: {e}"));
     let started = Instant::now();
     while op.Status().map_err(failed)? == windows_future::AsyncStatus::Started {
         if started.elapsed() >= timeout {
@@ -313,13 +384,24 @@ fn unrotate(rect: (f64, f64, f64, f64), angle: f64, size: (f64, f64)) -> (f64, f
     }
     let (sin, cos) = angle.to_radians().sin_cos();
     let (cx, cy) = (size.0 / 2.0, size.1 / 2.0);
-    let corners = [(rect.0, rect.1), (rect.2, rect.1), (rect.0, rect.3), (rect.2, rect.3)].map(|(x, y)| {
+    let corners = [
+        (rect.0, rect.1),
+        (rect.2, rect.1),
+        (rect.0, rect.3),
+        (rect.2, rect.3),
+    ]
+    .map(|(x, y)| {
         let (dx, dy) = (x - cx, y - cy);
         let (x, y) = (cx + dx * cos - dy * sin, cy + dx * sin + dy * cos);
         (x, y, x, y)
     });
     let (left, top, right, bottom) = union(corners.into_iter()).unwrap_or(rect);
-    (left.clamp(0.0, size.0), top.clamp(0.0, size.1), right.clamp(0.0, size.0), bottom.clamp(0.0, size.1))
+    (
+        left.clamp(0.0, size.0),
+        top.clamp(0.0, size.1),
+        right.clamp(0.0, size.0),
+        bottom.clamp(0.0, size.1),
+    )
 }
 
 /// The smallest (left, top, right, bottom) box holding every box, if any.
@@ -353,7 +435,9 @@ fn on_worker<T: Send + 'static>(
             let result = if com.is_ok() {
                 job()
             } else {
-                Err(PlatformError::Unavailable(format!("COM is unavailable: {com:?}")))
+                Err(PlatformError::Unavailable(format!(
+                    "COM is unavailable: {com:?}"
+                )))
             };
             let _ = tx.send(result);
             if com.is_ok() {
@@ -411,6 +495,8 @@ fn topmost_window(own_pid: u32) -> Option<TargetWindow> {
 /// # Safety
 /// `hwnd` must be a top-level window handle from the system (it may be stale).
 unsafe fn eligible(hwnd: HWND, own_pid: u32, allow_topmost: bool) -> Option<TargetWindow> {
+    // SAFETY: `hwnd` comes from the system (see `# Safety`); every call below only
+    // queries it, and on a stale handle they fail or report nothing, which ends here.
     unsafe {
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
             return None;
@@ -446,7 +532,11 @@ unsafe fn eligible(hwnd: HWND, own_pid: u32, allow_topmost: bool) -> Option<Targ
             return None;
         }
         let bounds = frame_bounds(hwnd)?;
-        (bounds.right > bounds.left && bounds.bottom > bounds.top).then_some(TargetWindow { hwnd, pid, bounds })
+        (bounds.right > bounds.left && bounds.bottom > bounds.top).then_some(TargetWindow {
+            hwnd,
+            pid,
+            bounds,
+        })
     }
 }
 
@@ -481,10 +571,15 @@ unsafe fn window_text(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..usize::try_from(len).unwrap_or(0)])
 }
 
-fn snapshot_window(target: &TargetWindow, max_elements: usize) -> Result<ScreenSnapshot, PlatformError> {
+fn snapshot_window(
+    target: &TargetWindow,
+    max_elements: usize,
+) -> Result<ScreenSnapshot, PlatformError> {
     // SAFETY: COM is initialised on this worker thread (see `on_worker`).
-    let uia: IUIAutomation = unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_INPROC_SERVER) }
-        .map_err(|e| PlatformError::Unavailable(format!("UI Automation is unavailable: {e}")))?;
+    let uia: IUIAutomation = unsafe {
+        CoCreateInstance(&CUIAutomation8, None, CLSCTX_INPROC_SERVER)
+    }
+    .map_err(|e| PlatformError::Unavailable(format!("UI Automation is unavailable: {e}")))?;
     if let Ok(uia2) = uia.cast::<IUIAutomation2>() {
         // SAFETY: plain setters on a valid automation object.
         unsafe {
@@ -505,7 +600,9 @@ fn snapshot_window(target: &TargetWindow, max_elements: usize) -> Result<ScreenS
             cache.AddProperty(property).map_err(uia_error)?;
         }
         let all_children = uia.RawViewCondition().map_err(uia_error)?;
-        let root = uia.ElementFromHandleBuildCache(target.hwnd, &cache).map_err(uia_error)?;
+        let root = uia
+            .ElementFromHandleBuildCache(target.hwnd, &cache)
+            .map_err(uia_error)?;
         (title, root, cache, all_children)
     };
     // The walk budget starts after the web-tree wait, as in `macos.rs`.
@@ -532,14 +629,18 @@ fn snapshot_window(target: &TargetWindow, max_elements: usize) -> Result<ScreenS
             continue;
         }
         // SAFETY: `node` is a live element (full-mode cache request) on this thread.
-        let Ok(children) = (unsafe { node.FindAllBuildCache(TreeScope_Children, &all_children, &cache) }) else {
+        let Ok(children) =
+            (unsafe { node.FindAllBuildCache(TreeScope_Children, &all_children, &cache) })
+        else {
             continue;
         };
         // SAFETY: reading a valid element array within its reported length.
         let count = unsafe { children.Length() }.unwrap_or(0);
         for index in 0..count {
             // SAFETY: `index` is within the array's reported length.
-            let Ok(child) = (unsafe { children.GetElement(index) }) else { continue };
+            let Ok(child) = (unsafe { children.GetElement(index) }) else {
+                continue;
+            };
             visited += 1;
             // SAFETY: cached-property read on a valid element.
             if unsafe { cached_bool(&child, UIA_IsControlElementPropertyId) }
@@ -609,7 +710,9 @@ fn worth_expanding(node: &IUIAutomationElement) -> bool {
 /// icon (a button's label, a link's text), which would repeat the parent's label.
 fn expandable(node: &IUIAutomationElement) -> bool {
     // SAFETY: cached-property read on a valid element.
-    let Ok(control_type) = (unsafe { node.CachedControlType() }) else { return true };
+    let Ok(control_type) = (unsafe { node.CachedControlType() }) else {
+        return true;
+    };
     ![
         UIA_TextControlTypeId,
         UIA_ImageControlTypeId,
@@ -658,7 +761,13 @@ unsafe fn wake_chromium_accessibility(hwnd: HWND) -> bool {
                 );
                 if sent.0 != 0 && result != 0 {
                     let mut object: *mut c_void = std::ptr::null_mut();
-                    if ObjectFromLresult(LRESULT(result as isize), &IAccessible::IID, WPARAM(0), &raw mut object).is_ok()
+                    if ObjectFromLresult(
+                        LRESULT(result as isize),
+                        &IAccessible::IID,
+                        WPARAM(0),
+                        &raw mut object,
+                    )
+                    .is_ok()
                         && !object.is_null()
                     {
                         drop(IAccessible::from_raw(object));
@@ -681,7 +790,9 @@ unsafe fn wake_chromium_accessibility(hwnd: HWND) -> bool {
 fn first_read(pid: u32) -> bool {
     static SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u32>>> =
         std::sync::LazyLock::new(Default::default);
-    SEEN.lock().map(|mut seen| seen.insert(pid)).unwrap_or(false)
+    SEEN.lock()
+        .map(|mut seen| seen.insert(pid))
+        .unwrap_or(false)
 }
 
 fn uia_error(error: ::windows::core::Error) -> PlatformError {
@@ -689,7 +800,9 @@ fn uia_error(error: ::windows::core::Error) -> PlatformError {
     const UIA_E_ELEMENTNOTAVAILABLE: i32 = 0x8004_0201_u32 as i32;
     const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
     match error.code().0 {
-        UIA_E_ELEMENTNOTAVAILABLE | UIA_E_TIMEOUT => PlatformError::Os("the app did not respond".into()),
+        UIA_E_ELEMENTNOTAVAILABLE | UIA_E_TIMEOUT => {
+            PlatformError::Os("the app did not respond".into())
+        }
         // E_ACCESSDENIED: an elevated (administrator) window; UIPI blocks reading it.
         code if code == 0x8007_0005_u32 as i32 => {
             PlatformError::Os("can't read apps running as administrator".into())
@@ -706,7 +819,12 @@ fn describe(node: &IUIAutomationElement, window: Rect, own_pid: u32) -> Option<S
         if node.CachedIsOffscreen().is_ok_and(BOOL::as_bool) {
             return None;
         }
-        if node.CachedProcessId().ok().and_then(|p| u32::try_from(p).ok()) == Some(own_pid) {
+        if node
+            .CachedProcessId()
+            .ok()
+            .and_then(|p| u32::try_from(p).ok())
+            == Some(own_pid)
+        {
             return None;
         }
         let control_type = node.CachedControlType().ok()?;
@@ -752,7 +870,11 @@ fn describe(node: &IUIAutomationElement, window: Rect, own_pid: u32) -> Option<S
             .or_else(|| (role == "text").then(|| raw_value.clone()).flatten())
             .map(|s| clip(super::without_hover_details(&s)))
             .unwrap_or_default();
-        let value = if role == "text" { None } else { raw_value.map(|v| clip(&v)) };
+        let value = if role == "text" {
+            None
+        } else {
+            raw_value.map(|v| clip(&v))
+        };
         if label.is_empty() && value.is_none() && !actionable(role) {
             return None;
         }
@@ -760,7 +882,9 @@ fn describe(node: &IUIAutomationElement, window: Rect, own_pid: u32) -> Option<S
         // only lengthen the prompt. Empty table cells and rows are wrappers whose
         // field or text is listed on its own; in a dense grid they alone fill the
         // element cap (same rule as `macos.rs`).
-        if label.is_empty() && (role == "other" || (value.is_none() && matches!(role, "cell" | "row"))) {
+        if label.is_empty()
+            && (role == "other" || (value.is_none() && matches!(role, "cell" | "row")))
+        {
             return None;
         }
         Some(ScreenElement {
@@ -785,18 +909,21 @@ unsafe fn state_value(node: &IUIAutomationElement, role: &str) -> Option<String>
     // "not supported" sentinel, which would convert to a bogus number.
     unsafe {
         if cached_bool(node, UIA_IsTogglePatternAvailablePropertyId)
-            && let Some(state) = cached_variant(node, UIA_ToggleToggleStatePropertyId).and_then(|v| i32::try_from(&v).ok())
+            && let Some(state) = cached_variant(node, UIA_ToggleToggleStatePropertyId)
+                .and_then(|v| i32::try_from(&v).ok())
         {
             return Some(state.to_string());
         }
         if matches!(role, "radio" | "tab")
             && cached_bool(node, UIA_IsSelectionItemPatternAvailablePropertyId)
-            && let Some(selected) = cached_variant(node, UIA_SelectionItemIsSelectedPropertyId).and_then(|v| bool::try_from(&v).ok())
+            && let Some(selected) = cached_variant(node, UIA_SelectionItemIsSelectedPropertyId)
+                .and_then(|v| bool::try_from(&v).ok())
         {
             return Some(if selected { "1" } else { "0" }.to_owned());
         }
         if role == "slider" && cached_bool(node, UIA_IsRangeValuePatternAvailablePropertyId) {
-            let value = cached_variant(node, UIA_RangeValueValuePropertyId).and_then(|v| f64::try_from(&v).ok())?;
+            let value = cached_variant(node, UIA_RangeValueValuePropertyId)
+                .and_then(|v| f64::try_from(&v).ok())?;
             return Some(format_number(value));
         }
     }
@@ -812,19 +939,28 @@ fn format_number(value: f64) -> String {
     }
 }
 
-unsafe fn cached_variant(node: &IUIAutomationElement, property: ::windows::Win32::UI::Accessibility::UIA_PROPERTY_ID) -> Option<VARIANT> {
+unsafe fn cached_variant(
+    node: &IUIAutomationElement,
+    property: ::windows::Win32::UI::Accessibility::UIA_PROPERTY_ID,
+) -> Option<VARIANT> {
     // SAFETY: cached-property read on a valid element.
     unsafe { node.GetCachedPropertyValue(property) }.ok()
 }
 
-unsafe fn cached_bool(node: &IUIAutomationElement, property: ::windows::Win32::UI::Accessibility::UIA_PROPERTY_ID) -> bool {
+unsafe fn cached_bool(
+    node: &IUIAutomationElement,
+    property: ::windows::Win32::UI::Accessibility::UIA_PROPERTY_ID,
+) -> bool {
     // SAFETY: forwarded to `cached_variant`.
     unsafe { cached_variant(node, property) }
         .and_then(|v| bool::try_from(&v).ok())
         .unwrap_or(false)
 }
 
-unsafe fn cached_string(node: &IUIAutomationElement, property: ::windows::Win32::UI::Accessibility::UIA_PROPERTY_ID) -> Option<String> {
+unsafe fn cached_string(
+    node: &IUIAutomationElement,
+    property: ::windows::Win32::UI::Accessibility::UIA_PROPERTY_ID,
+) -> Option<String> {
     // SAFETY: forwarded to `cached_variant`.
     let value = unsafe { cached_variant(node, property) }?;
     BSTR::try_from(&value).ok().map(|s| s.to_string())
@@ -959,7 +1095,10 @@ fn rank_and_assign(mut elements: Vec<ScreenElement>, max_elements: usize) -> Vec
 /// useful exe, so callers fall back to the window title.
 fn app_name(pid: u32) -> Option<String> {
     let path = process_path(pid)?;
-    let stem = std::path::Path::new(&path).file_stem()?.to_string_lossy().into_owned();
+    let stem = std::path::Path::new(&path)
+        .file_stem()?
+        .to_string_lossy()
+        .into_owned();
     if stem.eq_ignore_ascii_case("ApplicationFrameHost") {
         return None;
     }
@@ -972,7 +1111,12 @@ fn process_path(pid: u32) -> Option<String> {
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
         let mut buf = [0u16; 1024];
         let mut len = buf.len() as u32;
-        let ok = QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &raw mut len);
+        let ok = QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &raw mut len,
+        );
         let _ = CloseHandle(process);
         ok.ok()?;
         Some(String::from_utf16_lossy(&buf[..len as usize]))
@@ -992,8 +1136,13 @@ fn file_description(path: &str) -> Option<String> {
         GetFileVersionInfoW(&path, None, size, data.as_mut_ptr().cast()).ok()?;
         let mut ptr: *mut c_void = std::ptr::null_mut();
         let mut len = 0u32;
-        if !VerQueryValueW(data.as_ptr().cast(), w!("\\VarFileInfo\\Translation"), &raw mut ptr, &raw mut len)
-            .as_bool()
+        if !VerQueryValueW(
+            data.as_ptr().cast(),
+            w!("\\VarFileInfo\\Translation"),
+            &raw mut ptr,
+            &raw mut len,
+        )
+        .as_bool()
             || len < 4
             || ptr.is_null()
         {
@@ -1001,12 +1150,20 @@ fn file_description(path: &str) -> Option<String> {
         }
         let lang = *ptr.cast::<u16>();
         let codepage = *ptr.cast::<u16>().add(1);
-        let key = HSTRING::from(format!("\\StringFileInfo\\{lang:04x}{codepage:04x}\\FileDescription"));
-        if !VerQueryValueW(data.as_ptr().cast(), &key, &raw mut ptr, &raw mut len).as_bool() || len == 0 || ptr.is_null() {
+        let key = HSTRING::from(format!(
+            "\\StringFileInfo\\{lang:04x}{codepage:04x}\\FileDescription"
+        ));
+        if !VerQueryValueW(data.as_ptr().cast(), &key, &raw mut ptr, &raw mut len).as_bool()
+            || len == 0
+            || ptr.is_null()
+        {
             return None;
         }
         let text = std::slice::from_raw_parts(ptr.cast::<u16>(), len as usize);
-        let text = String::from_utf16_lossy(text).trim_end_matches('\0').trim().to_owned();
+        let text = String::from_utf16_lossy(text)
+            .trim_end_matches('\0')
+            .trim()
+            .to_owned();
         (!text.is_empty()).then_some(text)
     }
 }
@@ -1018,12 +1175,16 @@ fn file_description(path: &str) -> Option<String> {
 /// back to the monitor image when the window cannot be captured on its own.
 fn capture_window(target: &TargetWindow) -> Result<ScreenCapture, PlatformError> {
     if !GraphicsCaptureSession::IsSupported().unwrap_or(false) {
-        return Err(PlatformError::Unavailable("screen capture is not supported on this Windows version".into()));
+        return Err(PlatformError::Unavailable(
+            "screen capture is not supported on this Windows version".into(),
+        ));
     }
     let (_, monitor_rect, scale) = monitor_of(target.bounds)?;
     let mut outer = RECT::default();
     // SAFETY: plain query on a window handle from the system; `outer` is writable.
-    let outer = unsafe { GetWindowRect(target.hwnd, &raw mut outer) }.ok().map(|()| outer);
+    let outer = unsafe { GetWindowRect(target.hwnd, &raw mut outer) }
+        .ok()
+        .map(|()| outer);
     let frame = match grab(Source::Window(target.hwnd)) {
         Ok(frame) => frame,
         Err(error) => {
@@ -1052,7 +1213,10 @@ fn capture_window(target: &TargetWindow) -> Result<ScreenCapture, PlatformError>
     };
     let left = (area.left - image.left) as usize;
     let top = (area.top - image.top) as usize;
-    let (width, height) = ((area.right - area.left) as usize, (area.bottom - area.top) as usize);
+    let (width, height) = (
+        (area.right - area.left) as usize,
+        (area.bottom - area.top) as usize,
+    );
     let rgba = to_rgba(&frame, left, top, width, height)?;
     let to_u32 = |v: i32| u32::try_from(v).map_err(|e| PlatformError::Os(e.to_string()));
     Ok(ScreenCapture {
@@ -1074,9 +1238,16 @@ fn capture_window(target: &TargetWindow) -> Result<ScreenCapture, PlatformError>
 /// The whole primary monitor (the one at the desktop origin).
 fn capture_primary_monitor() -> Result<ScreenCapture, PlatformError> {
     if !GraphicsCaptureSession::IsSupported().unwrap_or(false) {
-        return Err(PlatformError::Unavailable("screen capture is not supported on this Windows version".into()));
+        return Err(PlatformError::Unavailable(
+            "screen capture is not supported on this Windows version".into(),
+        ));
     }
-    let (_, primary, _) = monitor_of(RECT { left: 0, top: 0, right: 1, bottom: 1 })?;
+    let (_, primary, _) = monitor_of(RECT {
+        left: 0,
+        top: 0,
+        right: 1,
+        bottom: 1,
+    })?;
     capture_monitor(primary)
 }
 
@@ -1085,8 +1256,18 @@ fn capture_primary_monitor() -> Result<ScreenCapture, PlatformError> {
 /// and the whole window rectangle (`outer`, invisible resize borders included) on some
 /// older builds; whichever matches the image size wins, else the image is centred on
 /// the visible frame.
-fn window_capture_origin(frame: RECT, outer: Option<RECT>, width: usize, height: usize) -> (i32, i32) {
-    let size = |r: RECT| ((r.right - r.left).max(0) as usize, (r.bottom - r.top).max(0) as usize);
+fn window_capture_origin(
+    frame: RECT,
+    outer: Option<RECT>,
+    width: usize,
+    height: usize,
+) -> (i32, i32) {
+    let size = |r: RECT| {
+        (
+            (r.right - r.left).max(0) as usize,
+            (r.bottom - r.top).max(0) as usize,
+        )
+    };
     if size(frame) == (width, height) {
         return (frame.left, frame.top);
     }
@@ -1114,7 +1295,9 @@ fn intersect(a: RECT, b: RECT) -> Option<RECT> {
 
 /// The monitor holding the centre of `window` (else the nearest one), its desktop
 /// rectangle and its scale factor.
-fn monitor_of(window: RECT) -> Result<(::windows::Win32::Graphics::Gdi::HMONITOR, RECT, f64), PlatformError> {
+fn monitor_of(
+    window: RECT,
+) -> Result<(::windows::Win32::Graphics::Gdi::HMONITOR, RECT, f64), PlatformError> {
     let center = POINT {
         x: window.left + (window.right - window.left) / 2,
         y: window.top + (window.bottom - window.top) / 2,
@@ -1122,9 +1305,14 @@ fn monitor_of(window: RECT) -> Result<(::windows::Win32::Graphics::Gdi::HMONITOR
     // SAFETY: plain monitor queries; `info` is a valid MONITORINFO with cbSize set.
     unsafe {
         let monitor = MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
-        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
         if !GetMonitorInfoW(monitor, &raw mut info).as_bool() {
-            return Err(PlatformError::Os("could not read the monitor layout".into()));
+            return Err(PlatformError::Os(
+                "could not read the monitor layout".into(),
+            ));
         }
         let (mut dpi_x, mut dpi_y) = (96u32, 96u32);
         let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &raw mut dpi_x, &raw mut dpi_y);
@@ -1133,7 +1321,13 @@ fn monitor_of(window: RECT) -> Result<(::windows::Win32::Graphics::Gdi::HMONITOR
 }
 
 /// `width`×`height` pixels of `frame` from (`left`, `top`), as opaque RGBA.
-fn to_rgba(frame: &Frame, left: usize, top: usize, width: usize, height: usize) -> Result<Vec<u8>, PlatformError> {
+fn to_rgba(
+    frame: &Frame,
+    left: usize,
+    top: usize,
+    width: usize,
+    height: usize,
+) -> Result<Vec<u8>, PlatformError> {
     let mut rgba = Vec::with_capacity(width * height * 4);
     for row in frame.bgra.chunks(frame.stride).skip(top).take(height) {
         for pixel in row.as_chunks::<4>().0.iter().skip(left).take(width) {
@@ -1151,7 +1345,8 @@ fn to_rgba(frame: &Frame, left: usize, top: usize, width: usize, height: usize) 
 /// cropped to `window`, as `macos.rs` `capture_display` does without a window id.
 fn capture_monitor(window: RECT) -> Result<ScreenCapture, PlatformError> {
     let (monitor, monitor_rect, scale) = monitor_of(window)?;
-    let frame = grab(Source::Monitor(monitor)).map_err(|e| PlatformError::Os(format!("screen capture failed: {e}")))?;
+    let frame = grab(Source::Monitor(monitor))
+        .map_err(|e| PlatformError::Os(format!("screen capture failed: {e}")))?;
     let monitor_width = (monitor_rect.right - monitor_rect.left).max(0) as usize;
     let monitor_height = (monitor_rect.bottom - monitor_rect.top).max(0) as usize;
     if frame.width != monitor_width || frame.height != monitor_height {
@@ -1237,7 +1432,8 @@ fn grab(source: Source) -> ::windows::core::Result<Frame> {
         let context = context.ok_or_else(::windows::core::Error::empty)?;
         let dxgi: IDXGIDevice = device.cast()?;
         let d3d: IDirect3DDevice = CreateDirect3D11DeviceFromDXGIDevice(&dxgi)?.cast()?;
-        let interop = ::windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
+        let interop =
+            ::windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
         let item: GraphicsCaptureItem = match source {
             Source::Monitor(monitor) => interop.CreateForMonitor(monitor)?,
             Source::Window(hwnd) => interop.CreateForWindow(hwnd)?,
@@ -1284,13 +1480,22 @@ fn grab(source: Source) -> ::windows::core::Result<Frame> {
         context.CopyResource(&staging, &texture);
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&raw mut mapped))?;
-        let (width, height, stride) = (desc.Width as usize, desc.Height as usize, mapped.RowPitch as usize);
+        let (width, height, stride) = (
+            desc.Width as usize,
+            desc.Height as usize,
+            mapped.RowPitch as usize,
+        );
         let bgra = std::slice::from_raw_parts(mapped.pData.cast::<u8>(), stride * height).to_vec();
         context.Unmap(&staging, 0);
         let _ = frame.Close();
         let _ = session.Close();
         let _ = pool.Close();
-        Ok(Frame { width, height, stride, bgra })
+        Ok(Frame {
+            width,
+            height,
+            stride,
+            bgra,
+        })
     }
 }
 
@@ -1306,7 +1511,9 @@ enum Consent {
 /// Reads `capability` (e.g. `microphone`) for desktop apps: the device-wide policy,
 /// the user's main switch and "Let desktop apps access …". Any `Deny` wins.
 fn consent(capability: &str) -> Consent {
-    let base = format!(r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\{capability}");
+    let base = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\{capability}"
+    );
     let values = [
         registry_string(HKEY_LOCAL_MACHINE, &base),
         registry_string(HKEY_CURRENT_USER, &base),
@@ -1316,9 +1523,17 @@ fn consent(capability: &str) -> Consent {
 }
 
 fn combine_consent(values: &[Option<String>]) -> Consent {
-    if values.iter().flatten().any(|v| v.eq_ignore_ascii_case("Deny")) {
+    if values
+        .iter()
+        .flatten()
+        .any(|v| v.eq_ignore_ascii_case("Deny"))
+    {
         Consent::Denied
-    } else if values.iter().flatten().any(|v| v.eq_ignore_ascii_case("Allow")) {
+    } else if values
+        .iter()
+        .flatten()
+        .any(|v| v.eq_ignore_ascii_case("Allow"))
+    {
         Consent::Allowed
     } else {
         Consent::Unset
@@ -1347,7 +1562,11 @@ fn registry_string(root: HKEY, subkey: &str) -> Option<String> {
         return None;
     }
     let chars = (len as usize / 2).min(buf.len());
-    Some(String::from_utf16_lossy(&buf[..chars]).trim_end_matches('\0').to_owned())
+    Some(
+        String::from_utf16_lossy(&buf[..chars])
+            .trim_end_matches('\0')
+            .to_owned(),
+    )
 }
 
 #[cfg(test)]
@@ -1357,7 +1576,10 @@ mod tests {
     #[test]
     fn role_mapping_normalizes_known_control_types() {
         assert_eq!(map_role(UIA_ButtonControlTypeId, false, false), "button");
-        assert_eq!(map_role(UIA_SplitButtonControlTypeId, false, false), "button");
+        assert_eq!(
+            map_role(UIA_SplitButtonControlTypeId, false, false),
+            "button"
+        );
         assert_eq!(map_role(UIA_EditControlTypeId, true, false), "textField");
         assert_eq!(map_role(UIA_DocumentControlTypeId, true, false), "textArea");
         // A browser page is a read-only document, not a text box (macOS AXWebArea).
@@ -1367,21 +1589,42 @@ mod tests {
         assert_eq!(map_role(UIA_CustomControlTypeId, false, true), "cell");
         assert_eq!(map_role(UIA_DataItemControlTypeId, false, false), "row");
         assert_eq!(map_role(UIA_CustomControlTypeId, false, false), "other");
-        assert_eq!(map_role(UIA_HeaderItemControlTypeId, false, false), "button");
+        assert_eq!(
+            map_role(UIA_HeaderItemControlTypeId, false, false),
+            "button"
+        );
         assert_eq!(map_role(UIA_CONTROLTYPE_ID(1), false, false), "other");
         let all = [
-            UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId, UIA_RadioButtonControlTypeId,
-            UIA_EditControlTypeId, UIA_ComboBoxControlTypeId, UIA_ListControlTypeId,
-            UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId,
-            UIA_HeaderItemControlTypeId, UIA_DataGridControlTypeId, UIA_MenuControlTypeId,
-            UIA_MenuItemControlTypeId, UIA_MenuBarControlTypeId, UIA_TabItemControlTypeId,
-            UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_TextControlTypeId,
-            UIA_SliderControlTypeId, UIA_ToolBarControlTypeId, UIA_WindowControlTypeId,
+            UIA_ButtonControlTypeId,
+            UIA_CheckBoxControlTypeId,
+            UIA_RadioButtonControlTypeId,
+            UIA_EditControlTypeId,
+            UIA_ComboBoxControlTypeId,
+            UIA_ListControlTypeId,
+            UIA_ListItemControlTypeId,
+            UIA_TreeItemControlTypeId,
+            UIA_DataItemControlTypeId,
+            UIA_HeaderItemControlTypeId,
+            UIA_DataGridControlTypeId,
+            UIA_MenuControlTypeId,
+            UIA_MenuItemControlTypeId,
+            UIA_MenuBarControlTypeId,
+            UIA_TabItemControlTypeId,
+            UIA_HyperlinkControlTypeId,
+            UIA_ImageControlTypeId,
+            UIA_TextControlTypeId,
+            UIA_SliderControlTypeId,
+            UIA_ToolBarControlTypeId,
+            UIA_WindowControlTypeId,
         ];
         for control_type in all {
             for editable in [false, true] {
                 for grid_item in [false, true] {
-                    assert!(super::super::ROLES.contains(&map_role(control_type, editable, grid_item)));
+                    assert!(super::super::ROLES.contains(&map_role(
+                        control_type,
+                        editable,
+                        grid_item
+                    )));
                 }
             }
         }
@@ -1408,10 +1651,19 @@ mod tests {
             role: role.to_owned(),
             label: "x".to_owned(),
             value: None,
-            bounds: Rect { x, y, width: 2.0, height: 2.0 },
+            bounds: Rect {
+                x,
+                y,
+                width: 2.0,
+                height: 2.0,
+            },
         };
         let result = rank_and_assign(
-            vec![make("text", 0.0, 0.0), make("button", 2.0, 4.0), make("button", 0.0, 4.0)],
+            vec![
+                make("text", 0.0, 0.0),
+                make("button", 2.0, 4.0),
+                make("button", 0.0, 4.0),
+            ],
             2,
         );
         assert_eq!(result.len(), 2);
@@ -1433,21 +1685,37 @@ mod tests {
 
     #[test]
     fn window_capture_origin_matches_the_image_size() {
-        let rect = |left, top, right, bottom| RECT { left, top, right, bottom };
+        let rect = |left, top, right, bottom| RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
         let frame = rect(100, 50, 900, 650);
         let outer = Some(rect(93, 50, 907, 657));
         assert_eq!(window_capture_origin(frame, outer, 800, 600), (100, 50));
         assert_eq!(window_capture_origin(frame, outer, 814, 607), (93, 50));
         assert_eq!(window_capture_origin(frame, None, 810, 610), (95, 45));
-        assert_eq!(intersect(rect(0, 0, 10, 10), rect(5, 5, 20, 20)), Some(rect(5, 5, 10, 10)));
+        assert_eq!(
+            intersect(rect(0, 0, 10, 10), rect(5, 5, 20, 20)),
+            Some(rect(5, 5, 10, 10))
+        );
         assert_eq!(intersect(rect(0, 0, 10, 10), rect(10, 0, 20, 10)), None);
     }
 
     #[test]
     fn crop_clamps_window_to_monitor() {
-        let rect = |left, top, right, bottom| RECT { left, top, right, bottom };
+        let rect = |left, top, right, bottom| RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
         let monitor = rect(-1920, 0, 0, 1080);
-        assert_eq!(crop(rect(-1900, 10, -900, 510), monitor), (20, 10, 1020, 510));
+        assert_eq!(
+            crop(rect(-1900, 10, -900, 510), monitor),
+            (20, 10, 1020, 510)
+        );
         // Hanging off the left edge is clipped to the monitor.
         assert_eq!(crop(rect(-2000, 0, -1800, 100), monitor), (0, 0, 120, 100));
         // No overlap: whole monitor.
@@ -1475,7 +1743,10 @@ mod tests {
         // Measured: a line drawn from (200, 600) rising at 15 degrees on a 1600x1200
         // image came back with TextAngle -14.7 and its first word at (220, 465).
         let (left, top, ..) = unrotate((220.0, 465.0, 300.0, 498.0), -14.7, (1600.0, 1200.0));
-        assert!((left - 205.0).abs() < 3.0 && (top - 597.0).abs() < 25.0, "{left}, {top}");
+        assert!(
+            (left - 205.0).abs() < 3.0 && (top - 597.0).abs() < 25.0,
+            "{left}, {top}"
+        );
         let level = (1.0, 2.0, 3.0, 4.0);
         assert_eq!(unrotate(level, 0.0, (10.0, 10.0)), level);
         // Kept within the image.
@@ -1493,7 +1764,10 @@ mod tests {
     #[test]
     fn consent_deny_wins() {
         let v = |s: &str| Some(s.to_owned());
-        assert_eq!(combine_consent(&[v("Allow"), v("Allow"), v("Deny")]), Consent::Denied);
+        assert_eq!(
+            combine_consent(&[v("Allow"), v("Allow"), v("Deny")]),
+            Consent::Denied
+        );
         assert_eq!(combine_consent(&[None, v("Allow"), None]), Consent::Allowed);
         assert_eq!(combine_consent(&[None, None, None]), Consent::Unset);
     }
@@ -1501,8 +1775,14 @@ mod tests {
     #[test]
     fn accessibility_is_never_gated() {
         let platform = WindowsPlatform::new();
-        assert_eq!(platform.permission(PermissionKind::Accessibility), PermissionStatus::NotRequired);
-        assert_ne!(platform.permission(PermissionKind::ScreenRecording), PermissionStatus::Granted);
+        assert_eq!(
+            platform.permission(PermissionKind::Accessibility),
+            PermissionStatus::NotRequired
+        );
+        assert_ne!(
+            platform.permission(PermissionKind::ScreenRecording),
+            PermissionStatus::Granted
+        );
     }
 
     #[test]
@@ -1526,7 +1806,10 @@ mod tests {
             started.elapsed().as_millis()
         );
         for el in snapshot.elements.iter().take(15) {
-            eprintln!("{} {} {:?} {:?} {:?}", el.id, el.role, el.label, el.value, el.bounds);
+            eprintln!(
+                "{} {} {:?} {:?} {:?}",
+                el.id, el.role, el.label, el.value, el.bounds
+            );
         }
         super::super::conformance(&snapshot, max).expect("conformance");
         assert!(!snapshot.app_name.is_empty());
@@ -1546,28 +1829,54 @@ mod tests {
             capture.monitor,
             started.elapsed().as_millis()
         );
-        assert_eq!(capture.rgba.len(), capture.width as usize * capture.height as usize * 4);
+        assert_eq!(
+            capture.rgba.len(),
+            capture.width as usize * capture.height as usize * 4
+        );
         let m = &capture.monitor;
         assert!(capture.x >= m.x && capture.y >= m.y);
-        assert!(i64::from(capture.x) + i64::from(capture.width) <= i64::from(m.x) + i64::from(m.width));
-        assert!(i64::from(capture.y) + i64::from(capture.height) <= i64::from(m.y) + i64::from(m.height));
+        assert!(
+            i64::from(capture.x) + i64::from(capture.width) <= i64::from(m.x) + i64::from(m.width)
+        );
+        assert!(
+            i64::from(capture.y) + i64::from(capture.height)
+                <= i64::from(m.y) + i64::from(m.height)
+        );
         assert!(capture.rgba.chunks(4).all(|p| p[3] == 255));
         // The capture is the target window's visible frame (on its monitor), not the
         // monitor: GetCko's own windows above it cannot be in it.
-        let target = on_worker("test", WORKER_TIMEOUT, || topmost_window(std::process::id()).map(|t| t.bounds).ok_or(PlatformError::NoFocusedApp))
-            .expect("target window");
-        let visible = intersect(target, RECT {
-            left: m.x,
-            top: m.y,
-            right: m.x + m.width as i32,
-            bottom: m.y + m.height as i32,
+        let target = on_worker("test", WORKER_TIMEOUT, || {
+            topmost_window(std::process::id())
+                .map(|t| t.bounds)
+                .ok_or(PlatformError::NoFocusedApp)
         })
+        .expect("target window");
+        let visible = intersect(
+            target,
+            RECT {
+                left: m.x,
+                top: m.y,
+                right: m.x + m.width as i32,
+                bottom: m.y + m.height as i32,
+            },
+        )
         .expect("window on its monitor");
-        eprintln!("target frame {:?}", (visible.left, visible.top, visible.right, visible.bottom));
+        eprintln!(
+            "target frame {:?}",
+            (visible.left, visible.top, visible.right, visible.bottom)
+        );
         assert_eq!((capture.x, capture.y), (visible.left, visible.top));
-        assert_eq!((capture.width as i32, capture.height as i32), (visible.right - visible.left, visible.bottom - visible.top));
+        assert_eq!(
+            (capture.width as i32, capture.height as i32),
+            (visible.right - visible.left, visible.bottom - visible.top)
+        );
         // Not a black frame (a failed capture often is).
-        assert!(capture.rgba.chunks(4).any(|p| p[0] > 16 || p[1] > 16 || p[2] > 16));
+        assert!(
+            capture
+                .rgba
+                .chunks(4)
+                .any(|p| p[0] > 16 || p[1] > 16 || p[2] > 16)
+        );
     }
 
     #[test]
@@ -1578,21 +1887,37 @@ mod tests {
         for round in ["cold", "warm"] {
             let started = Instant::now();
             let boxes = platform.recognize_text(&capture).expect("text recognition");
-            eprintln!("{round}: {} lines in {} ms", boxes.len(), started.elapsed().as_millis());
+            eprintln!(
+                "{round}: {} lines in {} ms",
+                boxes.len(),
+                started.elapsed().as_millis()
+            );
             assert!(!boxes.is_empty(), "no text read");
             let (left, top) = (f64::from(capture.x), f64::from(capture.y));
-            let (right, bottom) = (left + f64::from(capture.width), top + f64::from(capture.height));
+            let (right, bottom) = (
+                left + f64::from(capture.width),
+                top + f64::from(capture.height),
+            );
             for b in &boxes {
                 let r = &b.bounds;
                 assert!(!b.text.trim().is_empty());
                 assert!(r.width > 0.0 && r.height > 0.0);
-                assert!(r.x >= left - 1.0 && r.y >= top - 1.0, "{b:?} outside the capture");
-                assert!(r.x + r.width <= right + 1.0 && r.y + r.height <= bottom + 1.0, "{b:?} outside the capture");
+                assert!(
+                    r.x >= left - 1.0 && r.y >= top - 1.0,
+                    "{b:?} outside the capture"
+                );
+                assert!(
+                    r.x + r.width <= right + 1.0 && r.y + r.height <= bottom + 1.0,
+                    "{b:?} outside the capture"
+                );
             }
             if round == "warm" {
                 for b in boxes.iter().take(12) {
                     let r = &b.bounds;
-                    eprintln!("  {:?} @{:.0},{:.0} {:.0}x{:.0}", b.text, r.x, r.y, r.width, r.height);
+                    eprintln!(
+                        "  {:?} @{:.0},{:.0} {:.0}x{:.0}",
+                        b.text, r.x, r.y, r.width, r.height
+                    );
                 }
             }
         }

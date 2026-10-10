@@ -157,7 +157,10 @@ fn read_screen(
                     read.shot = Some(shot);
                     read.text = Some(text);
                 } else {
-                    read.shot = Some(crate::screenshot::prepare(capture, Some(&snapshot.elements)));
+                    read.shot = Some(crate::screenshot::prepare(
+                        capture,
+                        Some(&snapshot.elements),
+                    ));
                 }
                 read.capture_ms = Some(ms(t));
             }
@@ -202,9 +205,10 @@ fn note_screenshot_cost(elapsed_ms: u32) {
 /// Windows only: a Mac evaluates a screenshot in well under a second, and its first one
 /// after a new build includes Metal shader compilation, which must not turn tier 2 off.
 fn within_budget(mode: ScreenMode) -> ScreenMode {
-    let slow = cfg!(target_os = "windows")
-        && SCREENSHOT_COST_MS.load(Ordering::SeqCst) > TIER2_BUDGET_MS;
-    if mode == ScreenMode::ElementsWithImage && slow && std::env::var("GETCKO_SCREEN_MODE").is_err() {
+    let slow =
+        cfg!(target_os = "windows") && SCREENSHOT_COST_MS.load(Ordering::SeqCst) > TIER2_BUDGET_MS;
+    if mode == ScreenMode::ElementsWithImage && slow && std::env::var("GETCKO_SCREEN_MODE").is_err()
+    {
         ScreenMode::Elements
     } else {
         mode
@@ -465,7 +469,12 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
                         capture_ms: None,
                         ..screen
                     },
-                    None => read_screen(app, state.platform.as_ref(), &p.snapshot, grounder.is_some()),
+                    None => read_screen(
+                        app,
+                        state.platform.as_ref(),
+                        &p.snapshot,
+                        grounder.is_some(),
+                    ),
                 };
                 (Some(p.snapshot), screen)
             }
@@ -743,7 +752,8 @@ fn run(app: &tauri::AppHandle, state: &AppState, id: TurnId, request: AskRequest
         ),
         None => TurnPrompt::answer_task(pointed, &passages),
     };
-    let (answer_user, answer_after) = split_at_image(&turn, &body, &answer_task, screenshot.is_some());
+    let (answer_user, answer_after) =
+        split_at_image(&turn, &body, &answer_task, screenshot.is_some());
     chat.generate(
         &ChatRequest {
             system: &turn.system,
@@ -951,9 +961,7 @@ pub fn aim_step<'a>(
             return Ok(found);
         }
     }
-    aim(
-        chat, turn, body, mode, screen, shot, grounding, keep_going,
-    )
+    aim(chat, turn, body, mode, screen, shot, grounding, keep_going)
 }
 
 /// Plan pass (PRD S5): the actions that answer `body`'s question, in plain words and
@@ -1499,7 +1507,9 @@ fn capture_screen(
     use tauri::Manager;
     // One capture at a time: a second one would show the overlay again mid-capture.
     static CAPTURE: Mutex<()> = Mutex::new(());
-    let _one = CAPTURE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _one = CAPTURE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Hidden only when the capture would show it (Windows captures the target window
     // alone); hiding takes it off screen for the whole capture.
     let overlay = app
@@ -1526,9 +1536,8 @@ fn capture_screen(
 /// button being pressed).
 fn overlay_focused(app: &tauri::AppHandle) -> bool {
     use tauri::Manager;
-    app.get_webview_window("overlay").is_some_and(|w| {
-        w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)
-    })
+    app.get_webview_window("overlay")
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
 }
 
 const OVERLAY_HIDE_DELAY: Duration = Duration::from_millis(60);
@@ -1629,9 +1638,15 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn slow_screenshots_turn_tier_2_into_tier_1() {
-        assert_eq!(within_budget(ScreenMode::ElementsWithImage), ScreenMode::ElementsWithImage);
+        assert_eq!(
+            within_budget(ScreenMode::ElementsWithImage),
+            ScreenMode::ElementsWithImage
+        );
         note_screenshot_cost(TIER2_BUDGET_MS + 1);
-        assert_eq!(within_budget(ScreenMode::ElementsWithImage), ScreenMode::Elements);
+        assert_eq!(
+            within_budget(ScreenMode::ElementsWithImage),
+            ScreenMode::Elements
+        );
         // Tier 3 has no element list to fall back to; tier 1 stays tier 1.
         assert_eq!(within_budget(ScreenMode::ImageOnly), ScreenMode::ImageOnly);
         assert_eq!(within_budget(ScreenMode::Elements), ScreenMode::Elements);
@@ -1648,7 +1663,12 @@ mod tests {
                 role: "button".into(),
                 label: "Save".into(),
                 value: None,
-                bounds: Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
+                bounds: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
             }],
         };
         let turn = TurnPrompt::new(&agent, Some(&snapshot), &[]);
@@ -1660,7 +1680,10 @@ mod tests {
         assert!(after.starts_with(&body[turn.warm_user().len()..]) && after.ends_with("TASK"));
         assert_eq!(format!("{before}{after}"), format!("{body}TASK"));
         // Without an image everything is user text.
-        assert_eq!(split_at_image(&turn, &body, "TASK", false), (format!("{body}TASK"), String::new()));
+        assert_eq!(
+            split_at_image(&turn, &body, "TASK", false),
+            (format!("{body}TASK"), String::new())
+        );
     }
     #[test]
     fn turns_supersede_and_cancel() {

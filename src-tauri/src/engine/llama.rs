@@ -91,8 +91,8 @@ fn runtime_error(error: impl std::fmt::Display) -> EngineError {
     EngineError::Runtime(error.to_string())
 }
 fn threads() -> i32 {
-    let logical =
-        std::thread::available_parallelism().map_or(1, |n| i32::try_from(n.get()).unwrap_or(i32::MAX));
+    let logical = std::thread::available_parallelism()
+        .map_or(1, |n| i32::try_from(n.get()).unwrap_or(i32::MAX));
     // On Windows laptops (4 cores, 8 threads) more CPU threads did not speed up GPU
     // prompt reading, but they starved the speech helper running at the same time.
     #[cfg(target_os = "windows")]
@@ -149,7 +149,8 @@ pub(crate) fn gpu_free_bytes() -> Option<u64> {
         .find(|d| {
             matches!(
                 d.device_type,
-                llama_cpp_2::LlamaBackendDeviceType::Gpu | llama_cpp_2::LlamaBackendDeviceType::IntegratedGpu
+                llama_cpp_2::LlamaBackendDeviceType::Gpu
+                    | llama_cpp_2::LlamaBackendDeviceType::IntegratedGpu
             )
         })
         .map(|d| d.memory_free as u64)
@@ -433,7 +434,8 @@ impl LlamaChat {
             // asserts on a failed buffer allocation); it runs on the CPU instead.
             let room = file_bytes(projector).saturating_mul(3) / 2 + GPU_HEADROOM;
             // Windows only (shared-memory laptop GPUs); a Mac keeps it on the GPU as before.
-            let fits = cfg!(not(target_os = "windows")) || gpu_free_bytes().is_none_or(|free| free >= room);
+            let fits = cfg!(not(target_os = "windows"))
+                || gpu_free_bytes().is_none_or(|free| free >= room);
             let use_gpu = device == "gpu" && fits;
             if device == "gpu" && !use_gpu {
                 tracing::warn!("not enough GPU memory for the image projector; it runs on the CPU");
@@ -635,7 +637,11 @@ fn constrained_greedy(grammar: &mut LlamaSampler, logits: &[f32]) -> Option<Llam
 }
 
 /// The highest-scoring of `indices` that the grammar allows, if any.
-fn best_allowed(grammar: &mut LlamaSampler, logits: &[f32], indices: &[usize]) -> Option<LlamaToken> {
+fn best_allowed(
+    grammar: &mut LlamaSampler,
+    logits: &[f32],
+    indices: &[usize],
+) -> Option<LlamaToken> {
     if indices.is_empty() {
         return None;
     }
@@ -649,7 +655,13 @@ fn best_allowed(grammar: &mut LlamaSampler, logits: &[f32], indices: &[usize]) -
         .iter()
         .filter(|c| c.logit() > f32::NEG_INFINITY)
         .map(|c| (index_of(c.id()), c.logit()))
-        .reduce(|a, b| if b.1 > a.1 || (b.1 == a.1 && b.0 < a.0) { b } else { a })
+        .reduce(|a, b| {
+            if b.1 > a.1 || (b.1 == a.1 && b.0 < a.0) {
+                b
+            } else {
+                a
+            }
+        })
         .map(|(i, _)| token_at(i))
 }
 
@@ -1104,7 +1116,10 @@ mod tests {
         let scores = [1.0, 3.0, 3.0, f32::NEG_INFINITY];
         assert_eq!(super::argmax(scores.iter().copied().enumerate()), 1);
         assert_eq!(super::argmax(std::iter::empty()), 0);
-        assert_eq!(super::argmax([(7, f32::NEG_INFINITY), (9, -1.0)].into_iter()), 9);
+        assert_eq!(
+            super::argmax([(7, f32::NEG_INFINITY), (9, -1.0)].into_iter()),
+            9
+        );
     }
 
     use super::*;

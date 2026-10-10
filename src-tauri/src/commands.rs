@@ -321,7 +321,11 @@ pub async fn ptt_start(
     if screen_help.unwrap_or(true) {
         let prepare = state(&s);
         tauri::async_runtime::spawn_blocking(move || {
-            crate::pipeline::prepare_turn(&app, &prepare, crate::pipeline::PrepareFor::Voice(press));
+            crate::pipeline::prepare_turn(
+                &app,
+                &prepare,
+                crate::pipeline::PrepareFor::Voice(press),
+            );
         });
     }
     let e = Arc::clone(&s.engine);

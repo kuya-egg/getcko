@@ -63,9 +63,26 @@ All models are downloaded once by `bun run models` (listed with SHA-256 checksum
 
 ## How to run
 
+### Fastest: download the app (macOS)
+
+1. Download `GetCko_0.1.0_aarch64.dmg` (8 MB) from the [latest release](https://github.com/kuya-egg/getcko/releases/latest). It needs a Mac with Apple Silicon (M1 or newer).
+2. Open the DMG and drag **GetCko** into **Applications**.
+3. The app is not notarised by Apple, so macOS blocks the first open. Run this once in Terminal, then open GetCko from Applications:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/GetCko.app
+   ```
+
+   Or open it once, then go to System Settings > Privacy & Security and click **Open Anyway**.
+4. **Download the models.** On first launch GetCko asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
+
+Then continue with [First run](#first-run).
+
+### Or build it from source
+
 Tested from a clean clone on an Apple Silicon Mac (M4 Pro, macOS 27.0.1, Xcode installed, Rust 1.99, bun 1.4.2, CMake 4.4).
 
-### What you need
+#### What you need
 
 - **A Mac with Apple Silicon** (M1 or newer). Intel Macs are not supported. 16 GB of memory is recommended.
 - **About 20 GB of free disk space:** 5.4 GB of models, a 5.1 GB app, and build files.
@@ -82,7 +99,7 @@ Tested from a clean clone on an Apple Silicon Mac (M4 Pro, macOS 27.0.1, Xcode i
 
   Open a new terminal after installing Rust and bun.
 
-### Build and open the app
+#### Build and open the app
 
 From the repository root:
 
@@ -98,9 +115,11 @@ The first build takes several minutes because it compiles llama.cpp. Build it in
 
 To run without building an app, use `bun run tauri dev` after `bun run models`. In that mode macOS gives the permissions below to the terminal app that started it (Terminal, iTerm, VS Code, …), not to GetCko.
 
+To make the downloadable DMG (no models inside; the app downloads them on first launch): `bash scripts/build-whisper.sh`, then `bun run tauri:release`. It is written to `src-tauri/target/release/bundle/dmg/`.
+
 ### First run
 
-1. **Wait for the models.** The first launch shows "Getting the models ready" for about 25 seconds. Later launches take about a second.
+1. **Wait for the models.** The first launch shows "Getting the models ready" for about 25 seconds (an app downloaded as a DMG first asks to download them). Later launches take about a second.
 2. **Allow the permissions** GetCko asks for. If macOS sends you to System Settings > Privacy & Security, switch GetCko on there.
 
    | Permission | What it is for | Needed? |
