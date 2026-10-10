@@ -139,7 +139,8 @@ export function TryAgent({ agentId, agentName, templateId = null, dirty, onOpenS
           onTalkStart={() => {
             if (agentId == null) return;
             talkFailed.current = false;
-            void pttStart().catch((error) => {
+            // Voice here never uses screen help, so the screen is not read ahead.
+            void pttStart(false).catch((error) => {
               talkFailed.current = true;
               const key = ++keySeq.current;
               dispatch({ type: "ask", key, question: "", voice: true });

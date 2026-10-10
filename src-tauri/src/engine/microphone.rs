@@ -17,6 +17,9 @@ use super::{EngineError, EngineResult, Microphone};
 pub const TARGET_RATE: u32 = 16_000;
 /// Longest recording kept; the transcriber accepts at most 30 s.
 const MAX_SECONDS: usize = 30;
+/// A recording nobody stopped (the question was never sent) is closed after this,
+/// so the microphone does not stay on.
+const ABANDONED_AFTER: std::time::Duration = std::time::Duration::from_secs(MAX_SECONDS as u64 + 10);
 
 type Reply<T> = SyncSender<EngineResult<T>>;
 
@@ -84,7 +87,23 @@ struct Recording {
 
 fn run(commands: &Receiver<Command>) {
     let mut recording: Option<Recording> = None;
-    while let Ok(command) = commands.recv() {
+    loop {
+        let command = if recording.is_some() {
+            match commands.recv_timeout(ABANDONED_AFTER) {
+                Ok(command) => command,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    tracing::warn!("recording was never stopped; closing the microphone");
+                    recording = None;
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        } else {
+            match commands.recv() {
+                Ok(command) => command,
+                Err(_) => break,
+            }
+        };
         match command {
             Command::Start(reply) => {
                 // A second press restarts: the old stream is dropped first.
@@ -113,7 +132,9 @@ fn run(commands: &Receiver<Command>) {
                         );
                         Ok(resample(&mono, rate, TARGET_RATE))
                     }
-                    None => Err(EngineError::Runtime("not recording".into())),
+                    None => Err(EngineError::Runtime(
+                        "nothing was recorded (the microphone closes after 40 s); hold to talk again".into(),
+                    )),
                 };
                 let _ = reply.send(result);
             }

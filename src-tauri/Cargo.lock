@@ -1635,6 +1635,8 @@ dependencies = [
  "ts-rs",
  "tts",
  "ureq",
+ "windows 0.62.2",
+ "windows-future",
  "zip",
 ]
 

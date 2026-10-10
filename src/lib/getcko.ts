@@ -90,8 +90,10 @@ export const agentDelete = (id: AgentId): Promise<null> => command("agent_delete
 export const agentActive = (): Promise<Agent | null> => command("agent_active");
 /** Set the active agent. */
 export const agentSetActive = (id: AgentId): Promise<Agent> => command("agent_set_active", { id });
-/** Start push-to-talk recording. */
-export const pttStart = (): Promise<null> => command("ptt_start");
+/** Start push-to-talk recording; with screen help on, the screen is read while the user speaks. */
+export const pttStart = (screenHelp: boolean): Promise<null> => command("ptt_start", { screenHelp });
+/** Read the screen ahead of a typed question (the composer opened). */
+export const screenPrepare = (): Promise<null> => command("screen_prepare");
 /** Start an assistant turn. */
 export const ask = (request: AskRequest): Promise<TurnId> => command("ask", { request });
 /** Cancel the current turn and stop speech. */

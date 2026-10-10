@@ -24,7 +24,7 @@ use llama_cpp_2::{
     },
     sampling::LlamaSampler,
     send_logs_to_tracing,
-    token::LlamaToken,
+    token::{LlamaToken, data::LlamaTokenData, data_array::LlamaTokenDataArray},
 };
 fn token_text_piece(
     vocab: &llama_cpp_2::vocab::LlamaVocab<'_>,
@@ -91,7 +91,13 @@ fn runtime_error(error: impl std::fmt::Display) -> EngineError {
     EngineError::Runtime(error.to_string())
 }
 fn threads() -> i32 {
-    std::thread::available_parallelism().map_or(1, |n| i32::try_from(n.get()).unwrap_or(i32::MAX))
+    let logical =
+        std::thread::available_parallelism().map_or(1, |n| i32::try_from(n.get()).unwrap_or(i32::MAX));
+    // On Windows laptops (4 cores, 8 threads) more CPU threads did not speed up GPU
+    // prompt reading, but they starved the speech helper running at the same time.
+    #[cfg(target_os = "windows")]
+    let logical = logical.min(4);
+    logical
 }
 
 fn load_model(rt: &Runtime, path: &Path, layers: u32) -> EngineResult<LlamaModel> {
@@ -119,7 +125,39 @@ fn context<'a>(
         .with_n_threads_batch(threads())
         .with_embeddings(embeddings)
         .with_pooling_type(pooling);
+    // Vulkan's flash-attention kernels are slower than plain attention on laptop GPUs
+    // without matrix cores: on Intel Iris Xe, "auto" read a 150-element screen
+    // (2,945 tokens) at 53 tokens/s and disabled at 150 tokens/s (MODELS.md). Only
+    // Iris Xe was measured; other Windows GPUs get the same setting.
+    #[cfg(target_os = "windows")]
+    let params = params.with_flash_attention_policy(FLASH_ATTENTION_DISABLED);
     model.new_context(backend, params).map_err(runtime_error)
+}
+
+/// llama.cpp's `LLAMA_FLASH_ATTN_TYPE_DISABLED`.
+#[cfg(target_os = "windows")]
+const FLASH_ATTENTION_DISABLED: i32 = 0;
+
+/// GPU memory left free for the system and the models already loaded.
+const GPU_HEADROOM: u64 = 256 << 20;
+
+/// Free memory of the GPU llama.cpp offloads to (shared memory on an integrated
+/// GPU), or `None` without one.
+pub(crate) fn gpu_free_bytes() -> Option<u64> {
+    llama_cpp_2::list_llama_ggml_backend_devices()
+        .into_iter()
+        .find(|d| {
+            matches!(
+                d.device_type,
+                llama_cpp_2::LlamaBackendDeviceType::Gpu | llama_cpp_2::LlamaBackendDeviceType::IntegratedGpu
+            )
+        })
+        .map(|d| d.memory_free as u64)
+}
+
+/// Size of `path` on disk, 0 when unreadable.
+pub(crate) fn file_bytes(path: &Path) -> u64 {
+    std::fs::metadata(path).map_or(0, |m| m.len())
 }
 
 /// Chat model loaded from a GGUF file.
@@ -391,8 +429,17 @@ impl LlamaChat {
         )?;
         let mtmd = if projector.is_file() {
             let projector_path = projector.to_string_lossy();
+            // A projector the GPU has no room for would abort the process (llama.cpp
+            // asserts on a failed buffer allocation); it runs on the CPU instead.
+            let room = file_bytes(projector).saturating_mul(3) / 2 + GPU_HEADROOM;
+            // Windows only (shared-memory laptop GPUs); a Mac keeps it on the GPU as before.
+            let fits = cfg!(not(target_os = "windows")) || gpu_free_bytes().is_none_or(|free| free >= room);
+            let use_gpu = device == "gpu" && fits;
+            if device == "gpu" && !use_gpu {
+                tracing::warn!("not enough GPU memory for the image projector; it runs on the CPU");
+            }
             let params = MtmdContextParams {
-                use_gpu: device == "gpu",
+                use_gpu,
                 n_threads: threads(),
                 print_timings: false,
                 ..MtmdContextParams::default()
@@ -523,19 +570,109 @@ impl LlamaChat {
         session.evaluate(plan, guard.as_deref_mut())
     }
 
-    fn sampler(&self, grammar: Option<&str>) -> EngineResult<LlamaSampler> {
+    fn sampler(&self, grammar: Option<&str>) -> EngineResult<Sampling> {
         let Some(grammar) = grammar else {
-            return Ok(LlamaSampler::chain_simple([
+            return Ok(Sampling::Free(LlamaSampler::chain_simple([
                 LlamaSampler::temp(0.2),
                 LlamaSampler::dist(0),
-            ]));
+            ])));
         };
-        let grammar = LlamaSampler::grammar(&self.model, grammar, "root").map_err(runtime_error)?;
-        Ok(LlamaSampler::chain_simple([
-            grammar,
-            LlamaSampler::greedy(),
-        ]))
+        LlamaSampler::grammar(&self.model, grammar, "root")
+            .map(Sampling::Constrained)
+            .map_err(runtime_error)
     }
+}
+
+/// How the next token is chosen.
+enum Sampling {
+    /// Low-temperature sampling for free text.
+    Free(LlamaSampler),
+    /// Greedy within a GBNF grammar (element ids, points).
+    Constrained(LlamaSampler),
+}
+
+impl Sampling {
+    /// Picks and accepts the next token from the last evaluated position.
+    ///
+    /// # Errors
+    /// The grammar allows no token at all.
+    fn next(&mut self, ctx: &LlamaContext<'_>) -> EngineResult<LlamaToken> {
+        match self {
+            Self::Free(sampler) => Ok(sampler.sample(ctx, -1)),
+            Self::Constrained(grammar) => {
+                let token = constrained_greedy(grammar, ctx.get_logits_ith(-1))
+                    .ok_or_else(|| runtime_error("the reply grammar allows no token here"))?;
+                grammar.accept(token);
+                Ok(token)
+            }
+        }
+    }
+}
+
+/// Candidates checked against the grammar at once when the model's own best token
+/// is not allowed.
+const GRAMMAR_SHORTLIST: usize = 256;
+
+/// The highest-scoring token the grammar allows: the choice of running the grammar
+/// over every candidate and then picking greedily (only ties at the shortlist's
+/// lowest score may break differently), without matching all ~262k vocabulary
+/// entries against the grammar on every step (seconds per reply on a laptop CPU).
+/// The model's best token is checked first, then its top [`GRAMMAR_SHORTLIST`]; the
+/// best allowed token there is the best allowed overall. The whole vocabulary is
+/// checked only when none of those is allowed. `None` when the grammar allows nothing.
+fn constrained_greedy(grammar: &mut LlamaSampler, logits: &[f32]) -> Option<LlamaToken> {
+    let best = argmax(logits.iter().copied().enumerate());
+    if let Some(token) = best_allowed(grammar, logits, &[best]) {
+        return Some(token);
+    }
+    let mut order: Vec<usize> = (0..logits.len()).collect();
+    let shortlist = GRAMMAR_SHORTLIST.min(order.len());
+    if shortlist > 0 && shortlist < order.len() {
+        order.select_nth_unstable_by(shortlist - 1, |a, b| logits[*b].total_cmp(&logits[*a]));
+    }
+    best_allowed(grammar, logits, &order[..shortlist])
+        .or_else(|| best_allowed(grammar, logits, &order[shortlist..]))
+}
+
+/// The highest-scoring of `indices` that the grammar allows, if any.
+fn best_allowed(grammar: &mut LlamaSampler, logits: &[f32], indices: &[usize]) -> Option<LlamaToken> {
+    if indices.is_empty() {
+        return None;
+    }
+    let mut shortlist = LlamaTokenDataArray::new(
+        indices.iter().map(|&i| candidate(i, logits[i])).collect(),
+        false,
+    );
+    grammar.apply(&mut shortlist);
+    shortlist
+        .data
+        .iter()
+        .filter(|c| c.logit() > f32::NEG_INFINITY)
+        .map(|c| (index_of(c.id()), c.logit()))
+        .reduce(|a, b| if b.1 > a.1 || (b.1 == a.1 && b.0 < a.0) { b } else { a })
+        .map(|(i, _)| token_at(i))
+}
+
+/// Index of the largest score; the first one on ties, like llama.cpp's greedy sampler.
+fn argmax(scores: impl Iterator<Item = (usize, f32)>) -> usize {
+    scores
+        .fold(None, |best: Option<(usize, f32)>, (i, score)| match best {
+            Some((_, top)) if top >= score => best,
+            _ => Some((i, score)),
+        })
+        .map_or(0, |(i, _)| i)
+}
+
+fn candidate(index: usize, logit: f32) -> LlamaTokenData {
+    LlamaTokenData::new(token_at(index), logit, 0.0)
+}
+
+fn token_at(index: usize) -> LlamaToken {
+    LlamaToken::new(i32::try_from(index).unwrap_or(i32::MAX))
+}
+
+fn index_of(token: LlamaToken) -> usize {
+    usize::try_from(token.0).unwrap_or(0)
 }
 
 /// Hash of an image's size and pixels; equal screenshots share KV-cache slots.
@@ -596,8 +733,8 @@ impl ChatModel for LlamaChat {
         let mut raw = Vec::with_capacity(8);
         let mut pending = Vec::with_capacity(4);
         for index in 0..request.max_tokens {
-            // `sample` also accepts the token into the sampler (grammar state).
-            let token = sampler.sample(&session.ctx, -1);
+            // Also accepts the token into the sampler (grammar state).
+            let token = sampler.next(&session.ctx)?;
             stats.generated_tokens = index.saturating_add(1);
             if vocab.is_eog(token) {
                 break;
@@ -749,6 +886,7 @@ pub struct OnDemand<T> {
     loaded: std::sync::OnceLock<T>,
     /// Serializes the first load so two callers do not both load.
     loading: Mutex<()>,
+    check: Option<Box<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl<T> OnDemand<T> {
@@ -770,6 +908,7 @@ impl<T> OnDemand<T> {
             what,
             loaded: std::sync::OnceLock::new(),
             loading: Mutex::new(()),
+            check: None,
         })
     }
 
@@ -798,6 +937,18 @@ impl<T> OnDemand<T> {
     /// Whether the model is in memory.
     pub fn is_loaded(&self) -> bool {
         self.loaded.get().is_some()
+    }
+
+    /// Whether loading would be attempted now (see [`OnDemand::with_check`]).
+    pub fn can_load(&self) -> bool {
+        self.check.as_ref().is_none_or(|check| check())
+    }
+
+    /// Adds a check that must pass before loading (e.g. free GPU memory).
+    #[must_use]
+    pub fn with_check(mut self, check: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        self.check = Some(Box::new(check));
+        self
     }
 }
 
@@ -948,6 +1099,14 @@ impl Embedder for LlamaEmbedder {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn argmax_takes_the_first_of_equal_scores() {
+        let scores = [1.0, 3.0, 3.0, f32::NEG_INFINITY];
+        assert_eq!(super::argmax(scores.iter().copied().enumerate()), 1);
+        assert_eq!(super::argmax(std::iter::empty()), 0);
+        assert_eq!(super::argmax([(7, f32::NEG_INFINITY), (9, -1.0)].into_iter()), 9);
+    }
+
     use super::*;
     use crate::engine::ImagePart;
     use std::path::PathBuf;

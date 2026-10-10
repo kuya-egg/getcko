@@ -113,6 +113,17 @@ To run without building an app, use `bun run tauri dev` after `bun run models`. 
 4. **Close the main window** (⌘W). The GetCko bar stays at the bottom of the screen; click its agent name to open the window again.
 5. **Ask.** Open any app, tap **⌥ Space** (Option+Space), type a question such as "How do I make the title bold?" in TextEdit, and press Return. Hold **⌥ Space** to ask by voice instead. Press Esc to stop an answer.
 
+### Windows
+
+Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetCko uses the GPU through Vulkan and falls back to the CPU.
+
+- **Tools:** Visual Studio Build Tools (C++), Rust, [bun](https://bun.sh/), CMake, the [Vulkan SDK](https://vulkan.lunarg.com/), LLVM (set `LIBCLANG_PATH` to its `bin` folder), and Git for Windows (Git Bash runs `bun run models`).
+- **Build llama.cpp with Ninja:** set `CMAKE_GENERATOR=Ninja` and put the `ninja.exe` that ships with the Build Tools (`Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja`) on `PATH`. With the default Visual Studio generator the build fails now and then with "not a CMake build directory (missing CMakeCache.txt)".
+- **Speech helper:** run `scripts\build-whisper.cmd` from Command Prompt or PowerShell instead of `build-whisper.sh`. In Git Bash, Git's own `link.exe` hides the MSVC linker.
+- **Run:** `bun install`, `bun run models`, then `bun run tauri dev`. Windows needs no Accessibility or Screen Recording permission; the microphone follows Settings > Privacy & security > Microphone.
+- **Ask:** tap **Ctrl+Space** to type, hold it to talk.
+- **Memory:** with less than 2 GB free after the model loads, GetCko transcribes speech with Gemma instead of starting the Whisper helper. Close large apps (WSL, chat apps) for the fastest answers.
+
 ### If something goes wrong
 
 | Problem | Fix |

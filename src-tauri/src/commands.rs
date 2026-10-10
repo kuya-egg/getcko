@@ -310,10 +310,20 @@ pub async fn agent_set_active(
     .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
 }
 #[tauri::command]
-pub async fn ptt_start(s: State<'_, Arc<AppState>>) -> AppResult<()> {
-    // Read the screen and evaluate its prompt while the user speaks.
-    let prepare = state(&s);
-    tauri::async_runtime::spawn_blocking(move || crate::pipeline::prepare_turn(&prepare));
+pub async fn ptt_start(
+    app: tauri::AppHandle,
+    screen_help: Option<bool>,
+    s: State<'_, Arc<AppState>>,
+) -> AppResult<()> {
+    // Read the screen and evaluate its prompt while the user speaks; with screen help
+    // off the screen is not read at all.
+    let press = crate::pipeline::next_voice_prepare();
+    if screen_help.unwrap_or(true) {
+        let prepare = state(&s);
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::pipeline::prepare_turn(&app, &prepare, crate::pipeline::PrepareFor::Voice(press));
+        });
+    }
     let e = Arc::clone(&s.engine);
     tauri::async_runtime::spawn_blocking(move || {
         let engine = e
@@ -328,6 +338,15 @@ pub async fn ptt_start(s: State<'_, Arc<AppState>>) -> AppResult<()> {
     })
     .await
     .map_err(|e| crate::error::AppError::unavailable(e.to_string()))?
+}
+/// Reads the screen and evaluates its prompt while the user types a question (the
+/// composer opened with screen help on). No screenshot: the composer has focus.
+#[tauri::command]
+pub fn screen_prepare(app: tauri::AppHandle, s: State<'_, Arc<AppState>>) {
+    let prepare = state(&s);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pipeline::prepare_turn(&app, &prepare, crate::pipeline::PrepareFor::Typing);
+    });
 }
 #[tauri::command]
 pub fn ask(

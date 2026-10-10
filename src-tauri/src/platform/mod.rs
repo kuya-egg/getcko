@@ -7,6 +7,8 @@
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 use crate::error::{AppError, ErrorKind};
 use crate::model::{
     MonitorFrame, PermissionKind, PermissionStatus, Rect, ScreenElement, ScreenSnapshot,
@@ -72,6 +74,13 @@ pub trait Platform: Send + Sync {
     /// [`PlatformError::PermissionDenied`] when Screen Recording is not granted,
     /// [`PlatformError::Unavailable`] where capture is not implemented.
     fn capture(&self) -> Result<ScreenCapture, PlatformError>;
+
+    /// Whether [`Platform::capture`] would show GetCko's own windows lying over the
+    /// target, so the caller must hide them around it. `false` lets the overlay stay
+    /// on screen (no flicker) when capture takes the target window alone.
+    fn capture_shows_own_windows(&self) -> bool {
+        true
+    }
 
     /// Text the OS reads in `capture` (tier 3: screens without accessible elements).
     /// Bounds are desktop physical pixels, like [`ScreenElement::bounds`]. On-device
@@ -139,17 +148,17 @@ pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]
     return Box::new(macos::MacPlatform::new());
     #[cfg(target_os = "windows")]
-    return Box::new(Unbuilt("Windows"));
+    return Box::new(windows::WindowsPlatform::new());
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     return Box::new(Unbuilt(std::env::consts::OS));
 }
 
 /// Reports screen reading as unavailable; used until an OS implementation lands
 /// and on unsupported OSes.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 struct Unbuilt(&'static str);
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Platform for Unbuilt {
     fn permission(&self, kind: PermissionKind) -> PermissionStatus {
         match kind {

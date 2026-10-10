@@ -4,7 +4,7 @@ import type { AskInput } from "../bindings/AskInput";
 import type { TaskStep } from "../bindings/TaskStep";
 import type { MonitorFrame } from "../bindings/MonitorFrame";
 import type { Rect } from "../bindings/Rect";
-import { agentActive, ask, onAgent, onTurn, pttStart, stop } from "../lib/getcko";
+import { agentActive, ask, onAgent, onTurn, pttStart, screenPrepare, stop } from "../lib/getcko";
 import { registerAskHotkey, setStopKeyActive } from "./input/hotkeys";
 import { detectPlatform } from "./input/platform";
 import { Gecko } from "./pointer/Gecko";
@@ -215,14 +215,14 @@ export function Overlay() {
     localStorage.setItem("getcko.barHidden", "false");
     if (recording.current) return;
     dispatch({ type: "listen" });
-    recording.current = pttStart().then(
+    recording.current = pttStart(screenHelp).then(
       () => true,
       (e: unknown) => {
         dispatch({ type: "askRejected", message: e instanceof Error ? e.message : String(e) });
         return false;
       },
     );
-  }, []);
+  }, [screenHelp]);
 
   const micUp = useCallback(() => {
     const started = recording.current;
@@ -242,8 +242,10 @@ export function Overlay() {
     setBarVisible(true);
     localStorage.setItem("getcko.barHidden", "false");
     dispatch({ type: "openComposer" });
+    // Read the screen while the user types, as push-to-talk does while they speak.
+    if (screenHelp) void screenPrepare().catch((e: unknown) => console.error("screen prepare failed", e));
     void getCurrentWindow().setFocus().catch((e: unknown) => console.error("overlay focus failed", e));
-  }, []);
+  }, [screenHelp]);
 
   // Global ask hotkey: hold = talk, tap = type. Handlers go through a ref so the
   // registration happens once and always calls the latest callbacks.

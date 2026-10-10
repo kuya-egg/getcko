@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Downloads models listed in src-tauri/models.json into src-tauri/models/.
-# Requires python3, curl, and sha256sum or shasum. Run before building; the app
-# itself never downloads models at runtime.
+# Requires python3 (or python, as on Windows), curl, and sha256sum or shasum. Run
+# before building; the app itself never downloads models at runtime.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$ROOT/src-tauri/models"
 mkdir -p "$DEST"
+
+# On Windows `python3` is often only the Microsoft Store placeholder; use one that runs.
+PYTHON=python3
+"$PYTHON" -c "" >/dev/null 2>&1 || PYTHON=python
 
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
@@ -29,4 +33,5 @@ while IFS='|' read -r name url sum; do
   fi
   mv "$path.part" "$path"
   echo "ok       $name"
-done < <(python3 -c 'import json,sys; [print(x["file"]+"|"+x["url"]+"|"+x["sha256"]) for x in json.load(open(sys.argv[1]))]' "$ROOT/src-tauri/models.json")
+# Windows Python ends its lines with CRLF; the checksums must not keep the CR.
+done < <("$PYTHON" -c 'import json,sys; [print(x["file"]+"|"+x["url"]+"|"+x["sha256"]) for x in json.load(open(sys.argv[1]))]' "$ROOT/src-tauri/models.json" | tr -d '\r')

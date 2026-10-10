@@ -63,7 +63,7 @@ export interface OverlayState {
 
 export type OverlayAction =
   | { type: "event"; event: TurnEvent }
-  /** Mic held (`pttStart()` called). */
+  /** Mic held (`pttStart(screenHelp)` called). */
   | { type: "listen" }
   /**
    * Local ask about to be sent; `question` is known for text input only. `task` holds the earlier

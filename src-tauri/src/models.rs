@@ -290,8 +290,26 @@ fn available_space(path: &Path) -> std::io::Result<u64> {
         let stats = unsafe { stats.assume_init() };
         Ok(u64::from(stats.f_bavail).saturating_mul(stats.f_frsize))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
+        use std::os::windows::ffi::OsStrExt;
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut free = 0u64;
+        // SAFETY: `wide` is NUL-terminated and outlives the call; `free` is writable.
+        unsafe {
+            windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                windows::core::PCWSTR(wide.as_ptr()),
+                Some(&raw mut free),
+                None,
+                None,
+            )
+        }
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+        Ok(free)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "free space is unavailable on this platform",

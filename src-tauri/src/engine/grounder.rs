@@ -43,15 +43,49 @@ impl OnDemand<LlamaGrounder> {
     pub fn grounder(rt: &Runtime, model: &Path, projector: &Path) -> EngineResult<Self> {
         let (rt, owned_model, owned_projector) =
             (rt.clone(), model.to_owned(), projector.to_owned());
-        Self::new("grounding", &[model, projector], move || {
+        let (check_model, check_projector) = (model.to_owned(), projector.to_owned());
+        Ok(Self::new("grounding", &[model, projector], move || {
+            if !grounder_fits(&owned_model, &owned_projector) {
+                return Err(super::EngineError::Runtime(
+                    "not enough GPU memory for the grounding model".into(),
+                ));
+            }
             LlamaGrounder::load(&rt, &owned_model, &owned_projector)
-        })
+        })?
+        .with_check(move || grounder_fits(&check_model, &check_projector)))
     }
+}
+
+/// Whether the GPU has room for the grounding model next to Gemma. Loaded, Qwen3-VL-2B
+/// takes about twice its files (weights, cache, compute buffers: 2.8 GB for its 1.1 GB
+/// model on Intel Iris Xe), and a failed GPU allocation aborts the app. Without a GPU
+/// the model would run on the CPU, where it is too slow to help.
+fn grounder_fits(model: &Path, projector: &Path) -> bool {
+    // Measured only on Windows (Intel Iris Xe, shared memory); a Mac keeps loading the
+    // grounder as before.
+    if cfg!(not(target_os = "windows")) {
+        return true;
+    }
+    use super::llama::{file_bytes, gpu_free_bytes};
+    let needed = (file_bytes(model) + file_bytes(projector)).saturating_mul(2) + (256 << 20);
+    let free = gpu_free_bytes().unwrap_or(0);
+    if free < needed {
+        tracing::info!(
+            free_mb = free >> 20,
+            needed_mb = needed >> 20,
+            "grounding model does not fit in GPU memory; tier 3 reads text"
+        );
+    }
+    free >= needed
 }
 
 impl Grounder for OnDemand<LlamaGrounder> {
     fn name(&self) -> &'static str {
         "Qwen3-VL-2B"
+    }
+
+    fn ready(&self) -> bool {
+        self.is_loaded() || self.can_load()
     }
 
     fn ground(&self, image: &RgbImage, instruction: &str) -> EngineResult<Option<(f64, f64)>> {

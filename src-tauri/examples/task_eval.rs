@@ -171,7 +171,7 @@ fn plan_on(
 ) -> Vec<String> {
     let turn = TurnPrompt::new(agent, Some(snapshot), &[]);
     let actions =
-        pipeline::plan(chat, &turn.system, &turn.body(question), &|| true).expect("plan pass");
+        pipeline::plan(chat, &turn, &turn.body(question), None, &|| true).expect("plan pass");
     pipeline::without_done(actions, snapshot)
 }
 
@@ -186,7 +186,7 @@ fn first_grounded(
     let action = actions.first()?;
     match pipeline::aim(
         chat,
-        &turn.system,
+        &turn,
         &turn.body(action),
         ScreenMode::Elements,
         snapshot,
@@ -263,7 +263,7 @@ fn main() {
             let mut done = false;
             if index == 0 {
                 planned = pipeline::without_done(
-                    pipeline::plan(chat.as_ref(), &turn.system, &body, &|| true)
+                    pipeline::plan(chat.as_ref(), &turn, &body, None, &|| true)
                         .expect("plan pass"),
                     &snapshot,
                 );
@@ -284,7 +284,7 @@ fn main() {
             let aim_with = |body: &str| {
                 pipeline::aim(
                     chat.as_ref(),
-                    &turn.system,
+                    &turn,
                     body,
                     ScreenMode::Elements,
                     &snapshot,
