@@ -19,7 +19,7 @@ OWN-WORLD: The brand kit. Textured sections from the gecko's world (footprints, 
 
 STORY: The logo is born from pixels and walks into the nav. The hero shows the whole loop (ask, point, source, offline). Then: how it points, your documents, voice, templates, the brand keywords, the one dark offline island, and "Now you get it." English only: no Taglish, Filipino, Pinoy or "this Mac" copy.
 
-FIRST VIEWPORT: The kit's GetCkoHero. On the left, "Ask out loud. GetcKo points." with the CTA, the beats, the shortcut and "Nothing leaves your computer." On the right, an LGU e-service form (business permit renewal, step 2 of 4, Next disabled until a valid ID is added), the voxel GetcKo hopping to Upload ID, the answer card and the source.
+FIRST VIEWPORT: The kit's GetCkoHero. On the left, "Where do I click? Just ask." with "GetcKo points at the button and tells you why. Works offline.", the CTA and download link, the beats, the shortcut and "Nothing leaves your computer." On the right, an LGU e-service form (business permit renewal, step 2 of 4, Next disabled until a valid ID is added), the voxel GetcKo hopping to Upload ID, the answer card and the source.
 
 FORM: A GSAP logo intro hands off to the kit hero timeline. A canvas GetcKo re-forms per section from MOMENT_POSE, with a halo via haloIn.
 
@@ -27,5 +27,4 @@ SIGNATURE: The brand keywords. GetcKo walks down the list and points at each wor
 
 ## Unresolved
 
-- `DEMO_VIDEO_URL` is empty.
-- `REPO_PUBLIC` is false.
+- `REPO_PUBLIC` is false (the repo has no license yet).
