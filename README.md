@@ -66,15 +66,8 @@ All models are downloaded once by `bun run models` (listed with SHA-256 checksum
 ### Fastest: download the app (macOS)
 
 1. Download `GetCko_0.1.0_aarch64.dmg` (8 MB) from the [latest release](https://github.com/kuya-egg/getcko/releases/latest). It needs a Mac with Apple Silicon (M1 or newer).
-2. Open the DMG and drag **GetCko** into **Applications**.
-3. The app is not notarised by Apple, so macOS blocks the first open. Run this once in Terminal, then open GetCko from Applications:
-
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/GetCko.app
-   ```
-
-   Or open it once, then go to System Settings > Privacy & Security and click **Open Anyway**.
-4. **Download the models.** On first launch GetCko asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
+2. Open the DMG and drag **GetCko** into **Applications**, then open GetCko from Applications. The app is signed and notarised by Apple, so it opens like any other downloaded app.
+3. **Download the models.** On first launch GetCko asks to download its models once (3.4 GB required, about 2 GB more for the optional speech and hard-screen pointing models) and checks each file. After that it runs offline.
 
 Then continue with [First run](#first-run).
 
@@ -115,7 +108,15 @@ The first build takes several minutes because it compiles llama.cpp. Build it in
 
 To run without building an app, use `bun run tauri dev` after `bun run models`. In that mode macOS gives the permissions below to the terminal app that started it (Terminal, iTerm, VS Code, …), not to GetCko.
 
-To make the downloadable DMG (no models inside; the app downloads them on first launch): `bash scripts/build-whisper.sh`, then `bun run tauri:release`. It is written to `src-tauri/target/release/bundle/dmg/`.
+To make the downloadable DMG (no models inside; the app downloads them on first launch): `bash scripts/build-whisper.sh`, then `bun run tauri:release`. It is written to `src-tauri/target/release/bundle/dmg/` and is ad-hoc signed.
+
+#### Signed release
+
+`scripts/release-macos.sh` builds the same DMG signed with a Developer ID, notarises it with Apple and staples the ticket. One-time setup: a **Developer ID Application** certificate in the login keychain (Xcode > Settings > Accounts > Manage Certificates), and notarisation credentials saved with `xcrun notarytool store-credentials getcko --apple-id <email> --team-id <TEAMID>` (an app-specific password from account.apple.com). Then:
+
+```sh
+APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" bash scripts/release-macos.sh
+```
 
 ### First run
 
@@ -151,4 +152,4 @@ Tested on Windows 11 with an Intel Iris Xe laptop (i7-11370H, 16 GB). GetCko use
 | A permission is on but GetCko still says it is off | Rebuilding changes the app's signature. Remove GetCko from that list in System Settings with the minus button, open GetCko again and allow it again. `tccutil reset All com.getcko` clears every GetCko permission at once. |
 | ⌥ Space does nothing | Another app may use Option+Space (Raycast, Alfred, ChatGPT and other launchers). Quit it or change its shortcut, then reopen GetCko. |
 | "Pick an agent first." | Agents page > Use Office Helper. |
-| "Apple could not verify GetCko" (an app you were sent, not one you built) | Run `xattr -dr com.apple.quarantine /path/to/GetCko.app`, then open it again. The app is not notarised. |
+| "Apple could not verify GetCko" (a copy someone built and sent you, not the release DMG) | Only the release DMG is notarised. Run `xattr -dr com.apple.quarantine /path/to/GetCko.app`, then open it again. |
