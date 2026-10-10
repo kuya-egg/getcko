@@ -210,7 +210,7 @@ components:
 - **Creative North Star: "The helper at your elbow."**
 
 - **What it is:** a private, offline desktop helper. Textured sections from the gecko's world, solid content cards, one small green pixel gecko, one yellow ring around the thing to click. A plain white page is slop.
-- **Where personality lives:** the sprite (crisp, integer-scaled, a little cheeky) and the voice (a patient officemate, plain English or Taglish). Everything else is calm desktop UI for people new to computers.
+- **Where personality lives:** the sprite (crisp, integer-scaled, a little cheeky) and the voice (a patient officemate, plain English). Everything else is calm desktop UI for people new to computers.
 - **Dark theme:** ink ground `#121410`, never pure black or navy; same rules.
 - **Eye path:** ask → GetcKo → target → source. The gecko faces into the layout toward the next thing.
 - **Show, don't tell:** headline ≤ 6 words, body ≤ 1 line; the rest becomes keyword chips, steps, a diagram or motion.
@@ -377,7 +377,7 @@ An Ink pill that stays dark in both themes: agent chip, green mic, Screen Help, 
 - **Do** use the pixel icons from `Icon` (24 grid, 2-unit strokes, 24 / 48px), bare and only where they add meaning; see `docs/brand/icons.md`.
 - **Don't** use smooth line-icon packages, icon tiles or tinted icon circles, or an icon on every row or heading.
 - **Do** use one texture per surface; working screens flat or `subtle`; never texture the overlay or behind answer text. Light hero = `footprints` + `canopy-corner`.
-- **Do** write action → reason → source, in sentence case, with Taglish when the agent's language is Taglish.
+- **Do** write action → reason → source, in sentence case, in plain English.
 
 ### Don't:
 - **Don't** ship a plain white page: untextured sections read as generic AI slop.

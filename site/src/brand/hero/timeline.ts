@@ -1,10 +1,10 @@
 // The hero's choreography as one GSAP timeline, independent of React and of three.js, so the demo
 // video (HyperFrames) can reuse it: build it paused and add it to the master timeline.
 //
-//   Ask      0.15 s  shortcut pill + "Listening", then the Taglish question
-//   Point    1.90 s  GetCko hops to the target cell, the sun halo draws in (haloIn)
-//   Source   2.90 s  answer line, GetCko speaks, source chip "Manual · p. 4"
-//   Offline  4.10 s  "Offline · on this Mac", then the tagline beside GetCko
+//   Ask      0.15 s  shortcut pill + "Listening", then the question ("Why can't I click Next?")
+//   Point    1.90 s  GetCko hops to the target (Upload ID), the sun halo draws in (haloIn)
+//   Source   2.90 s  answer line, GetCko speaks, source chip "Permit guide · p. 2"
+//   Offline  4.10 s  the Offline badge, then the tagline beside GetCko
 //   hold to 6.0 s, reset 6.0 to 6.6 s, loop.
 //
 // Seek-safe: no Math.random, no wall clock, no tl.call. Everything GetCko does (position, pose,

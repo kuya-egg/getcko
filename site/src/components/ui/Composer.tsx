@@ -25,7 +25,7 @@ export interface ComposerProps {
   askLabel?: string;
   /** While listening, show GetcKo listening (3x) above the row with `listeningLine`. One GetcKo per screen. */
   mascot?: boolean;
-  /** GetcKo's listening line. Default say.en.listening; pass linesFor(language).listening for Taglish agents. */
+  /** GetcKo's listening line. Default say.listening. */
   listeningLine?: string;
   /** Accessible name of the text input. */
   inputLabel?: string;
@@ -51,7 +51,7 @@ export function Composer({
   askLabel = T.actions.ask,
   inputLabel = T.composer.label,
   mascot,
-  listeningLine = say.en.listening,
+  listeningLine = say.listening,
   disabled,
   className,
   inputRef,
