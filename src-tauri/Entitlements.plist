@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The bundled sqlite-vector library is signed by its vendor (SQLabs, another team);
+       the hardened runtime refuses to load it otherwise. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <!-- Hold to talk. -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>
