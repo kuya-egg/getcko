@@ -10,8 +10,8 @@ export const SITE = {
   watchDemo: "Watch the 1-min demo",
   /** PROPOSED T.site.watchDemoShort: nav-sized label. */
   watchDemoShort: "Watch the demo",
-  /** PROPOSED T.site.demoRecording: until DEMO_VIDEO_URL exists. */
-  demoRecording: { title: "The demo is being recorded.", body: "Wi-Fi off: ask out loud, GetcKo points at the cell and cites the manual." },
+  /** PROPOSED T.site.download: the releases link (macOS and Windows installers). */
+  download: "Download for Mac or Windows",
   readCode: "Read the code",
   /** PROPOSED T.site.demoTitle: the demo poster title (≤ 6 words). */
   demoTitle: "GetcKo in one minute",

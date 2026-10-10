@@ -7,7 +7,7 @@ export type { Platform } from "./platform";
 export { useHoldToTalk } from "./useHoldToTalk";
 export type { HoldToTalkOptions } from "./useHoldToTalk";
 
-export { Button, IconButton } from "./Button";
+export { Button, IconButton, buttonClass } from "./Button";
 export type { ButtonProps, ButtonVariant, ButtonSize, IconButtonProps, IconButtonVariant } from "./Button";
 export { Keycap } from "./Keycap";
 export type { KeycapProps } from "./Keycap";
