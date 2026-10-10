@@ -9,7 +9,7 @@ import { KnowledgeBasesScreen } from "../screens/knowledge";
 import { OnboardingScreen } from "../screens/onboarding";
 import { APP_COPY } from "./copy";
 import { errorCopy } from "./errors";
-import { AppNavContext, initialRoute, type AppNav, type LeaveGuard, type Screen } from "./nav";
+import { AppNavContext, initialRoute, useAppNav, type AppNav, type LeaveGuard, type Screen } from "./nav";
 import { place } from "./platform";
 import { SettingsScreen } from "./SettingsScreen";
 import { missingComponents, modelsLoading, needsSetup, useSetup } from "./setup";
@@ -110,6 +110,7 @@ export function MainWindow() {
  */
 function ShellFooter() {
   const { status } = useSetup();
+  const { showOnboarding } = useAppNav();
   const missing = missingComponents(status).length > 0;
   return (
     <>
@@ -118,7 +119,12 @@ function ShellFooter() {
         <span>{T.sessionBar.shortcutHint}</span>
       </p>
       {modelsLoading(status) && <StatusChip status="processing" className="self-start">{T.settings.models}</StatusChip>}
-      {missing && <StatusChip status="failed" className="self-start">{T.settings.modelsNotLoaded}</StatusChip>}
+      {missing && (
+        // Opens the download step again: skipped once, it was otherwise the only way to get the models.
+        <button type="button" onClick={showOnboarding} className="self-start rounded-full" title={T.settings.modelsNotLoaded}>
+          <StatusChip status="failed">{T.settings.modelsNotLoaded}</StatusChip>
+        </button>
+      )}
       <OfflineBadge detail={place.onThis} className="self-start" />
     </>
   );
