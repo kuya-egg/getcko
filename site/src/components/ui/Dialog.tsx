@@ -15,6 +15,8 @@ export interface DialogProps {
   actions?: ReactNode;
   /** Close when the scrim is clicked. Default true. */
   dismissOnScrim?: boolean;
+  /** 768px panel instead of 448px, for media such as the demo video. */
+  wide?: boolean;
   className?: string;
 }
 
@@ -26,7 +28,7 @@ const FOCUSABLE =
  * radius 20 panel with shadow-overlay. Focus moves into the dialog, Tab wraps inside it, and focus
  * returns to the opener on close. Use only for destructive confirmations or a task that needs focus.
  */
-export function Dialog({ open, onClose, title, body, children, actions, dismissOnScrim = true, className }: DialogProps) {
+export function Dialog({ open, onClose, title, body, children, actions, dismissOnScrim = true, wide = false, className }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const titleId = useId();
@@ -92,7 +94,8 @@ export function Dialog({ open, onClose, title, body, children, actions, dismissO
         if (dismissOnScrim && e.target === e.currentTarget) onClose();
       }}
       className={cn(
-        "z-dialog m-auto w-full max-w-md overflow-visible rounded-panel border border-border bg-surface p-0 text-text shadow-overlay",
+        "z-dialog m-auto w-full overflow-visible rounded-panel border border-border bg-surface p-0 text-text shadow-overlay",
+        wide ? "max-w-3xl" : "max-w-md",
         "backdrop:bg-ink/40",
         className,
       )}

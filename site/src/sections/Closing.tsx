@@ -5,7 +5,7 @@ import { ICON_SIZE, Icon } from "../brand/icons";
 import { plateStyle } from "../brand/textures";
 import { Surface, Wordmark } from "../components/ui";
 import { GeckoSlot } from "../gecko/react";
-import { REPO_PUBLIC, REPO_URL } from "../config";
+import { RELEASES_URL, REPO_PUBLIC, REPO_URL } from "../config";
 import { SITE } from "../copy";
 
 /**
@@ -26,6 +26,9 @@ export function Closing({ onWatch }: { onWatch: () => void }) {
               {c.title}
             </h2>
             <p className="text-title font-sans font-normal text-text-2">{c.line}</p>
+            <a className="closing-link self-start" href={RELEASES_URL} target="_blank" rel="noreferrer">
+              {SITE.download}
+            </a>
             {REPO_PUBLIC && (
               <a className="closing-link self-start" href={REPO_URL} target="_blank" rel="noreferrer">
                 {SITE.readCode}

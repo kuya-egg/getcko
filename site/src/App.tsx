@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./brand/icons";
 import { T } from "./brand/lexicon";
-import { Button, Dialog, Wordmark, cn } from "./components/ui";
+import { Button, Dialog, Wordmark, buttonClass, cn } from "./components/ui";
 import { GeckoCanvas } from "./gecko/react";
-import { DEMO_VIDEO_URL, REPO_PUBLIC, REPO_URL } from "./config";
+import { DEMO_YOUTUBE_ID, RELEASES_URL } from "./config";
 import { SITE } from "./copy";
 import { Hero } from "./sections/Hero";
 import { HowItWorks } from "./sections/HowItWorks";
@@ -69,17 +69,25 @@ export function App() {
       <Dialog
         open={demo}
         onClose={() => setDemo(false)}
-        title={DEMO_VIDEO_URL ? SITE.watchDemo : SITE.demoRecording.title}
-        body={DEMO_VIDEO_URL ? undefined : SITE.demoRecording.body}
+        title={SITE.watchDemo}
+        wide
         actions={
-          REPO_PUBLIC && !DEMO_VIDEO_URL ? (
-            <a className="text-label text-accent-text" href={REPO_URL} target="_blank" rel="noreferrer">
-              {SITE.readCode}
-            </a>
-          ) : undefined
+          <a className={buttonClass("secondary", "sm")} href={RELEASES_URL} target="_blank" rel="noreferrer">
+            {SITE.download}
+          </a>
         }
       >
-        {DEMO_VIDEO_URL && <video className="demo-video" src={DEMO_VIDEO_URL} controls playsInline preload="metadata" />}
+        {/* Mounted only while open, so closing the dialog stops playback. */}
+        {demo && (
+          <iframe
+            className="demo-video"
+            src={`https://www.youtube-nocookie.com/embed/${DEMO_YOUTUBE_ID}?autoplay=1&rel=0`}
+            title={SITE.demoTitle}
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
+        )}
       </Dialog>
 
       <GeckoCanvas />
