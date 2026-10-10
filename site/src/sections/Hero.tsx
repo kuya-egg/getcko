@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { GetCkoHero } from "../brand/hero";
 import { buildHeadMark, PALETTE } from "../brand/mascot";
@@ -11,7 +12,7 @@ import { RELEASES_URL } from "../config";
 import { useVacantSlot } from "../gecko/react";
 import { SITE } from "../copy";
 
-gsap.registerPlugin(SplitText);
+gsap.registerPlugin(ScrollTrigger, SplitText);
 
 /** Head-mark cells (rows 0–10 of the real sprite) for the logo entry. */
 const HEAD_CELLS = buildHeadMark().flatMap((row, y) =>
@@ -57,6 +58,10 @@ export function Hero({ onWatch }: { onWatch: () => void }) {
 
     const finish = () => {
       html.classList.remove("intro-pending");
+      // The intro hid the page scrollbar; with classic (always-shown) scrollbars its return narrows the
+      // page by its width without a resize event, so pins measured at the wider width (How it works) would
+      // overflow sideways. Re-measure every ScrollTrigger now.
+      ScrollTrigger.refresh();
       try {
         sessionStorage.setItem("gc-intro", "1");
       } catch {
