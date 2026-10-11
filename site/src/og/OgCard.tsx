@@ -39,6 +39,7 @@ export function OgCard() {
       <div className="og-copy">
         <Wordmark size="lg" />
         <h1 className="og-title font-display text-text">
+          <span className="block">{HERO_COPY.headline.lead}</span>{" "}
           {HERO_COPY.headline.before}{" "}
           <span className="og-mark">{HERO_COPY.headline.mark}</span>
           {HERO_COPY.headline.after}

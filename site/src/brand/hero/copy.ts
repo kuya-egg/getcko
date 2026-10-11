@@ -10,10 +10,13 @@ export type HeroBeat = "ask" | "point" | "source" | "offline";
 export const HERO_BEATS: readonly HeroBeat[] = ["ask", "point", "source", "offline"];
 
 export const HERO_COPY = {
-  /** PROPOSED T.hero.headline. 5 words. `mark` is the highlighted word. */
-  headline: { before: `Ask out loud. ${T.product.name}`, mark: "points", after: "." },
-  /** Support line, 7 words: T.product.descriptor. */
-  support: T.product.descriptor,
+  /**
+   * PROPOSED T.hero.headline. 6 words, the user's own question. `lead` is its own line (the question),
+   * then `before` + highlighted `mark` + `after`.
+   */
+  headline: { lead: "Where do I click?", before: "Just", mark: "ask", after: "." },
+  /** PROPOSED T.hero.support. Says what the headline leaves to the animation: the pointing, the why, offline. */
+  support: `${T.product.name} points at the button and tells you why. Works offline.`,
   /** One keyword per beat. Ask and Offline are lexicon keys; Point and Source are PROPOSED keys. */
   beats: {
     ask: T.actions.ask,
