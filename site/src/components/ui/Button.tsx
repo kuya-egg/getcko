@@ -39,6 +39,19 @@ const SIZE: Record<ButtonSize, string> = {
   lg: "h-[52px] px-6 text-body leading-5",
 };
 
+/** Button classes, for an <a> that must look like a Button (an external link such as a download). */
+export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md", className?: string): string {
+  return cn(
+    "inline-flex min-h-11 shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-button font-semibold",
+    "transition-[background-color,border-color,color,text-decoration-thickness,translate] active:translate-y-px",
+    "disabled:cursor-not-allowed disabled:active:translate-y-0",
+    variant !== "ghost" && SIZE[size],
+    variant === "ghost" && (size === "sm" ? "text-label leading-5" : "text-body leading-5"),
+    VARIANT[variant],
+    className,
+  );
+}
+
 /** Primary / secondary / ghost button. Sentence-case labels, one primary per view. */
 export function Button({
   variant = "primary",
@@ -64,15 +77,7 @@ export function Button({
       ref={ref}
       type={type}
       {...rest}
-      className={cn(
-        "inline-flex min-h-11 shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-button font-semibold",
-        "transition-[background-color,border-color,color,text-decoration-thickness,translate] active:translate-y-px",
-        "disabled:cursor-not-allowed disabled:active:translate-y-0",
-        variant !== "ghost" && SIZE[size],
-        variant === "ghost" && (size === "sm" ? "text-label leading-5" : "text-body leading-5"),
-        VARIANT[variant],
-        className,
-      )}
+      className={buttonClass(variant, size, className)}
     >
       {Icon && <Icon {...ICON_PROPS} className="-my-1 -ml-1" />}
       {children}

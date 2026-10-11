@@ -100,7 +100,8 @@ web
 ## Landing page (`site/`)
 
 - **Surface:** the public marketing page, Vite + React, deployed at https://getcko.vercel.app (Vercel project `getcko`). Mode: persuade.
-- **Primary action:** "Watch the 1-min demo" (`DEMO_VIDEO_URL` in `src/config.ts`; until set, the dialog says the demo is being recorded).
+- **Primary action:** "Watch the 1-min demo" opens a dialog that plays the YouTube demo (`DEMO_YOUTUBE_ID` in `src/config.ts`, embedded from youtube-nocookie.com, mounted only while open).
+- **Secondary action:** "Download for Mac or Windows" links to the GitHub releases (`RELEASES_URL`: the macOS .dmg and Windows .exe) from the hero, the demo dialog and the closing section.
 - **Audience on this page:** hackathon judges first (seconds of attention), then teachers and LGU staff.
 - **Proof shown:** the one measured figure in `MEASURED`: end of speech → first spoken word, 1.04 s (accented-English clip, 10-run median, M4 Pro, Whisper small.en; the US-English clip measured 1.19 s), `docs/MODELS.md` finding 40. Every other number stays `null` and renders nothing.
-- **Open:** GitHub links and "Open source" stay hidden until `REPO_PUBLIC = true` in `src/config.ts`.
+- **Open:** "Read the code", the footer GitHub link and "Open source" stay hidden until `REPO_PUBLIC = true` in `src/config.ts` (the repo has no license yet). The releases link is always shown.
